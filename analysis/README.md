@@ -2,6 +2,44 @@
 
 从仓库根目录运行。环境、模型缓存和临时文件均放在 `analysis/`。Whisper 使用 MLX，需要 Apple Silicon 的 Metal 访问权限；无 GPU 权限的沙箱需放行本地计算。Demucs 默认 CPU。
 
+## X3 定稿数据
+
+`stage3.py` 复用已有分轨，生成允许变速的逐拍网格、Whisper 粗锚点约束的双模型 CTC 对齐、正式数据和点击验收音轨。实测结果与限制见 [X3_REPORT.md](X3_REPORT.md)。以下命令在 **clawd-mv-x3 根目录**执行；全部模型、临时文件和缓存留在当前 worktree。Whisper 优先使用 `analysis/.cache/models/whisper-large-v3-turbo/`，不会重新下载这份本地权重。CTC 使用 torchaudio 官方 MMS_FA、LV60K 权重，首次缺失时下载至本地 torch 缓存。
+
+```sh
+cd /Users/tim/DEV/clawd-mv-x3
+export UV_CACHE_DIR="$PWD/analysis/.cache/uv"
+export UV_PYTHON_INSTALL_DIR="$PWD/analysis/.cache/python"
+export TMPDIR="$PWD/analysis/.cache/tmp"
+export XDG_CACHE_HOME="$PWD/analysis/.cache/xdg"
+
+rtk proxy uv sync --project analysis
+for stage in prepare transcribe beats align deliver; do
+  rtk proxy uv run --project analysis python analysis/stage3.py \
+    --audio audio/candidates/c1-works-on-my-machine.wav \
+    --structure analysis/structures/clawd.json --song-id c1 \
+    --stage "$stage" --extra-vocal-near 140.3
+done
+
+rtk proxy uv run --project analysis python analysis/stage3.py \
+  --audio reference/pdoom/audio/pdoom.mp3 \
+  --structure analysis/structures/pdoom.json --song-id pdoom --stage prepare
+rtk proxy uv run --project analysis python analysis/stage3.py \
+  --audio reference/pdoom/audio/pdoom.mp3 \
+  --structure analysis/structures/pdoom.json --song-id pdoom --stage regression \
+  --reference-audio-json reference/pdoom/data/audio.json
+
+rtk proxy uv run --project analysis python analysis/verify_x3.py
+```
+
+`verify_x3.py` 运行全部 Python 测试、TypeScript 检查、20–25 秒视频、5/30/90 秒静帧，以及浏览器预览的 WAV/MP3 回退检查。它使用单独的 Vite 服务，避免连接到其他 worktree 的预览；日志和 ffprobe 数据在 `out/x3/`，不截图、不审图、不播放音频。浏览器和 CTC 的 Metal 计算需要本机 GPU 权限。
+
+主要中间证据在 `analysis/work/c1/{beats,align_debug,stage3}.json`，pdoom 回归在 `analysis/work/pdoom/regression.json`。`beats.json` 含逐拍残差、8 秒窗口原始 kick 局部拟合、恒速对照；`align_debug.json` 含所有低置信度词及原因。有效 Whisper/CTC 缓存可以复用；CTC 缓存会检查帧数、可读性和有限值，未写完的文件重新计算。最终的 `bpm` 仅是中位数，动画必须使用 `beats[]/downbeats[]`。
+
+`deliver` 会写入 `data/audio.json`、`data/lyrics.json`、本地 `audio/song.wav`，删除两个 `.approx.json`，并输出 `out/x3/click-check.wav` 与 `out/x3/click-check-hooks.wav`。小节相位和歌词置信度均为启发式，不代替 Tim 的听感验收。
+
+## X1 候选测量
+
 ```sh
 cd /Users/tim/DEV/clawd-mv-x1
 export UV_CACHE_DIR="$PWD/analysis/.cache/uv"
@@ -75,9 +113,9 @@ uv run --project analysis python analysis/vocal_feats.py \
 uv run --project analysis python analysis/ctc_emissions.py \
   --audio reference/pdoom/audio/pdoom.mp3 --structure analysis/structures/pdoom.json vocals vocL vocR
 uv run --project analysis python analysis/align.py \
-  --audio reference/pdoom/audio/pdoom.mp3 --structure analysis/structures/pdoom.json --plots
+  --audio reference/pdoom/audio/pdoom.mp3 --structure analysis/structures/pdoom.json
 ```
 
-最后一条仍需原有完整 CTC emissions、特征及 karaoke lead（现放在 `stems/karaoke/<song_id>/lead.wav`）。X1 不提供 karaoke 分离、不重跑完整 CTC。`align.py` 手工修正、`pron.py` 词典和 `ctcalign.py` 固定长度仍是上游 pdoom 算法，阶段 3 才改。路径参数化不代表这些旧工具已能精确对齐新歌。`lyrics.json` 输出到该歌 `work/.../data/`，不修改仓库 `data/`。
+X3 的 `align.py` 只需 mono vocal 的 MMS/LV60K emissions、vocal features 和 Whisper 转写，不依赖 karaoke lead 或 pdoom 手工锚点。`stage3.py --stage align` 会准备前两项；先运行 `transcribe`。连字符词拆成读音子词，再合回显示词的 `syl`；`cache` 按 `cash` 对齐。`ctcalign.py` 的帧数随音源变化。单独运行 `align.py` 仍只写该歌的 `work/.../data/lyrics.json`，正式文件由 `deliver` 写入。
 
 `make_fonts.py` 是字体工具，不属于按歌分析，未运行。`qa_plot.py` 是绘图辅助模块。本任务不截屏、不审图、不评价听感。

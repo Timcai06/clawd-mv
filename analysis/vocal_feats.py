@@ -14,7 +14,7 @@ SR = 22050
 HOP = 110  # ~5 ms
 
 
-def compute():
+def compute(pitch=True):
     y, sr = common.load_stem("vocals", sr=SR)
     t_len = 1 + len(y) // HOP
     rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=HOP, center=True)[0]
@@ -27,8 +27,11 @@ def compute():
     mel = librosa.feature.melspectrogram(S=S, sr=SR, n_mels=96, fmax=8000)
     logmel = librosa.power_to_db(mel, ref=np.max)
     onset = librosa.onset.onset_strength(S=logmel, sr=SR, hop_length=HOP, lag=2, max_size=3)
-    f0, vflag, vprob = librosa.pyin(y, fmin=70, fmax=1000, sr=SR, frame_length=2048,
+    if pitch:
+        f0, vflag, vprob = librosa.pyin(y, fmin=70, fmax=1000, sr=SR, frame_length=2048,
                                      hop_length=HOP, center=True)
+    else:
+        f0, vflag, vprob = np.full(t_len, np.nan), np.zeros(t_len, bool), np.zeros(t_len)
     n = min(len(rms), len(f0), S.shape[1])
     np.savez_compressed(common.WORK / "vocal_feats.npz", hop_s=HOP / SR,
                         rms_db=librosa.amplitude_to_db(rms[:n], ref=1.0),

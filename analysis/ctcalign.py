@@ -8,8 +8,8 @@
   (best token log-prob - margin), so it absorbs ad-libs / backing vocals /
   outro that are not in the lyric text, while lyric words still win wherever
   they really match.
-* Optional per-subword time windows ("anchors") constrain the path; used for
-  manually verified hard spots.
+* Optional per-subword time windows ("anchors") constrain the path; the X3
+  pipeline derives these broad windows from exact Whisper sequence matches.
 """
 import common  # noqa: F401
 import numpy as np
@@ -18,15 +18,12 @@ import torchaudio
 from pron import pron
 
 FRAME = 0.02  # s per emission frame
-N_FRAMES = 7833
 ALPHA = ["-"] + list("abcdefghijklmnopqrstuvwxyz'")
 AIDX = {c: i for i, c in enumerate(ALPHA)}
 
 
 def _common_logp(model):
     em = np.load(common.WORK / f"emission_{model}.npy").astype(np.float64)
-    if len(em) < N_FRAMES:
-        em = np.concatenate([em, np.repeat(em[-1:], N_FRAMES - len(em), 0)])
     if model.startswith("mms"):
         labs = list(torchaudio.pipelines.MMS_FA.get_labels(star=None))
     else:
@@ -149,6 +146,8 @@ def align(E, lines_tokens, margin=1.5, anchors=None, pron_override=None, line_wi
             if wh is not None:
                 hi[a:b] = np.minimum(hi[a:b], int(round(wh / FRAME)))
     path, score = _viterbi(Ex, tgt, lo, hi)
+    if score < -1e17:
+        raise ValueError("No feasible CTC path within the supplied anchor windows")
     tokpos = np.where(path % 2 == 1, (path - 1) // 2, -1)
     P = np.exp(Ex[np.arange(T), np.where(tokpos >= 0, tgt[np.maximum(tokpos, 0)], 0)])
     spans = {}

@@ -1,0 +1,1796 @@
+{
+  "lines": [
+    {
+      "i": 0,
+      "text": "Nine o'clock, a ping on my screen",
+      "start": 4.131,
+      "end": 6.72,
+      "words": [
+        {
+          "w": "Nine",
+          "start": 4.131,
+          "end": 4.56,
+          "conf": 0.416
+        },
+        {
+          "w": "o'clock,",
+          "start": 4.56,
+          "end": 5.108,
+          "conf": 0.394
+        },
+        {
+          "w": "a",
+          "start": 5.198,
+          "end": 5.478,
+          "conf": 0.969
+        },
+        {
+          "w": "ping",
+          "start": 5.56,
+          "end": 5.867,
+          "conf": 0.769
+        },
+        {
+          "w": "on",
+          "start": 5.867,
+          "end": 6.02,
+          "conf": 0.74
+        },
+        {
+          "w": "my",
+          "start": 6.02,
+          "end": 6.116,
+          "conf": 0.814
+        },
+        {
+          "w": "screen",
+          "start": 6.116,
+          "end": 6.72,
+          "conf": 0.943
+        }
+      ]
+    },
+    {
+      "i": 1,
+      "text": "Got a bug report, the weirdest I've seen",
+      "start": 6.72,
+      "end": 10.54,
+      "words": [
+        {
+          "w": "Got",
+          "start": 6.72,
+          "end": 7.04,
+          "conf": 0.8
+        },
+        {
+          "w": "a",
+          "start": 7.04,
+          "end": 7.16,
+          "conf": 0.738
+        },
+        {
+          "w": "bug",
+          "start": 7.16,
+          "end": 7.678,
+          "conf": 0.945
+        },
+        {
+          "w": "report,",
+          "start": 7.678,
+          "end": 8.396,
+          "conf": 0.714
+        },
+        {
+          "w": "the",
+          "start": 8.67,
+          "end": 9.2,
+          "conf": 0.809
+        },
+        {
+          "w": "weirdest",
+          "start": 9.2,
+          "end": 9.688,
+          "conf": 0.861
+        },
+        {
+          "w": "I've",
+          "start": 9.688,
+          "end": 9.917,
+          "conf": 0.412
+        },
+        {
+          "w": "seen",
+          "start": 9.917,
+          "end": 10.54,
+          "conf": 0.948
+        }
+      ]
+    },
+    {
+      "i": 2,
+      "text": "There's a thirty-second day in October",
+      "start": 10.54,
+      "end": 13.704,
+      "words": [
+        {
+          "w": "There's",
+          "start": 10.54,
+          "end": 10.795,
+          "conf": 0.795
+        },
+        {
+          "w": "a",
+          "start": 10.795,
+          "end": 10.895,
+          "conf": 0.774
+        },
+        {
+          "w": "thirty-second",
+          "start": 10.895,
+          "end": 11.9,
+          "conf": 0.809,
+          "syl": [
+            [
+              10.895,
+              11.339
+            ],
+            [
+              11.339,
+              11.9
+            ]
+          ]
+        },
+        {
+          "w": "day",
+          "start": 11.9,
+          "end": 12.3,
+          "conf": 0.905
+        },
+        {
+          "w": "in",
+          "start": 12.3,
+          "end": 12.54,
+          "conf": 0.719
+        },
+        {
+          "w": "October",
+          "start": 12.54,
+          "end": 13.704,
+          "conf": 0.786
+        }
+      ]
+    },
+    {
+      "i": 3,
+      "text": "So I crack my claws and read it all over",
+      "start": 13.704,
+      "end": 17.74,
+      "words": [
+        {
+          "w": "So",
+          "start": 13.704,
+          "end": 13.993,
+          "conf": 0.817
+        },
+        {
+          "w": "I",
+          "start": 13.993,
+          "end": 14.258,
+          "conf": 0.809
+        },
+        {
+          "w": "crack",
+          "start": 14.34,
+          "end": 14.577,
+          "conf": 0.945
+        },
+        {
+          "w": "my",
+          "start": 14.707,
+          "end": 15.046,
+          "conf": 0.768
+        },
+        {
+          "w": "claws",
+          "start": 15.2,
+          "end": 15.8,
+          "conf": 0.854
+        },
+        {
+          "w": "and",
+          "start": 15.8,
+          "end": 16.2,
+          "conf": 0.646
+        },
+        {
+          "w": "read",
+          "start": 16.2,
+          "end": 16.677,
+          "conf": 0.854
+        },
+        {
+          "w": "it",
+          "start": 16.677,
+          "end": 17.02,
+          "conf": 0.605
+        },
+        {
+          "w": "all",
+          "start": 17.02,
+          "end": 17.351,
+          "conf": 0.52
+        },
+        {
+          "w": "over",
+          "start": 17.351,
+          "end": 17.74,
+          "conf": 0.699
+        }
+      ]
+    },
+    {
+      "i": 4,
+      "text": "Read the code, write a plan, check, check, check",
+      "start": 17.74,
+      "end": 20.838,
+      "words": [
+        {
+          "w": "Read",
+          "start": 17.74,
+          "end": 17.98,
+          "conf": 0.71
+        },
+        {
+          "w": "the",
+          "start": 17.98,
+          "end": 18.059,
+          "conf": 0.799
+        },
+        {
+          "w": "code,",
+          "start": 18.16,
+          "end": 18.463,
+          "conf": 0.662
+        },
+        {
+          "w": "write",
+          "start": 18.663,
+          "end": 18.94,
+          "conf": 0.583
+        },
+        {
+          "w": "a",
+          "start": 18.94,
+          "end": 19.04,
+          "conf": 0.53
+        },
+        {
+          "w": "plan,",
+          "start": 19.04,
+          "end": 19.356,
+          "conf": 0.97
+        },
+        {
+          "w": "check,",
+          "start": 19.72,
+          "end": 19.94,
+          "conf": 0.38
+        },
+        {
+          "w": "check,",
+          "start": 20.18,
+          "end": 20.379,
+          "conf": 0.757
+        },
+        {
+          "w": "check",
+          "start": 20.62,
+          "end": 20.838,
+          "conf": 0.856
+        }
+      ]
+    },
+    {
+      "i": 5,
+      "text": "Claws on the keys and I'm not looking back",
+      "start": 21.08,
+      "end": 24.729,
+      "words": [
+        {
+          "w": "Claws",
+          "start": 21.08,
+          "end": 21.48,
+          "conf": 0.718
+        },
+        {
+          "w": "on",
+          "start": 21.48,
+          "end": 21.6,
+          "conf": 0.732
+        },
+        {
+          "w": "the",
+          "start": 21.6,
+          "end": 21.76,
+          "conf": 0.787
+        },
+        {
+          "w": "keys",
+          "start": 21.76,
+          "end": 22.3,
+          "conf": 0.789
+        },
+        {
+          "w": "and",
+          "start": 22.3,
+          "end": 22.52,
+          "conf": 0.739
+        },
+        {
+          "w": "I'm",
+          "start": 22.52,
+          "end": 22.7,
+          "conf": 0.533
+        },
+        {
+          "w": "not",
+          "start": 22.7,
+          "end": 22.958,
+          "conf": 0.631
+        },
+        {
+          "w": "looking",
+          "start": 23.098,
+          "end": 24.26,
+          "conf": 0.841
+        },
+        {
+          "w": "back",
+          "start": 24.26,
+          "end": 24.729,
+          "conf": 0.773
+        }
+      ]
+    },
+    {
+      "i": 6,
+      "text": "I need one more commit",
+      "start": 24.729,
+      "end": 27.198,
+      "words": [
+        {
+          "w": "I",
+          "start": 24.729,
+          "end": 24.94,
+          "conf": 0.552
+        },
+        {
+          "w": "need",
+          "start": 24.94,
+          "end": 25.46,
+          "conf": 0.472
+        },
+        {
+          "w": "one",
+          "start": 25.46,
+          "end": 25.836,
+          "conf": 0.47
+        },
+        {
+          "w": "more",
+          "start": 26.06,
+          "end": 26.335,
+          "conf": 0.481
+        },
+        {
+          "w": "commit",
+          "start": 26.48,
+          "end": 27.198,
+          "conf": 0.649,
+          "syl": [
+            [
+              26.48,
+              26.94
+            ],
+            [
+              26.94,
+              27.198
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "i": 7,
+      "text": "Every bracket's gonna fit",
+      "start": 28.106,
+      "end": 30.81,
+      "words": [
+        {
+          "w": "Every",
+          "start": 28.106,
+          "end": 28.74,
+          "conf": 0.806
+        },
+        {
+          "w": "bracket's",
+          "start": 28.74,
+          "end": 29.64,
+          "conf": 0.779
+        },
+        {
+          "w": "gonna",
+          "start": 29.64,
+          "end": 30.371,
+          "conf": 0.592
+        },
+        {
+          "w": "fit",
+          "start": 30.371,
+          "end": 30.81,
+          "conf": 0.65
+        }
+      ]
+    },
+    {
+      "i": 8,
+      "text": "Tap-tap-tapping, never quit",
+      "start": 31.214,
+      "end": 34.397,
+      "words": [
+        {
+          "w": "Tap-tap-tapping,",
+          "start": 31.214,
+          "end": 33.46,
+          "conf": 0.595,
+          "syl": [
+            [
+              31.214,
+              31.86
+            ],
+            [
+              31.86,
+              32.3
+            ],
+            [
+              32.3,
+              33.46
+            ]
+          ]
+        },
+        {
+          "w": "never",
+          "start": 33.46,
+          "end": 33.948,
+          "conf": 0.634
+        },
+        {
+          "w": "quit",
+          "start": 34.06,
+          "end": 34.397,
+          "conf": 0.778
+        }
+      ]
+    },
+    {
+      "i": 9,
+      "text": "I need one more commit",
+      "start": 35.19,
+      "end": 38.273,
+      "words": [
+        {
+          "w": "I",
+          "start": 35.19,
+          "end": 35.7,
+          "conf": 0.531
+        },
+        {
+          "w": "need",
+          "start": 35.7,
+          "end": 36.42,
+          "conf": 0.602
+        },
+        {
+          "w": "one",
+          "start": 36.42,
+          "end": 37.06,
+          "conf": 0.41
+        },
+        {
+          "w": "more",
+          "start": 37.06,
+          "end": 37.44,
+          "conf": 0.335
+        },
+        {
+          "w": "commit",
+          "start": 37.44,
+          "end": 38.273,
+          "conf": 0.506,
+          "syl": [
+            [
+              37.44,
+              37.68
+            ],
+            [
+              37.68,
+              38.273
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "i": 10,
+      "text": "'Cause it works on my machine",
+      "start": 38.6,
+      "end": 43.416,
+      "words": [
+        {
+          "w": "'Cause",
+          "start": 38.6,
+          "end": 39.136,
+          "conf": 0.611
+        },
+        {
+          "w": "it",
+          "start": 39.136,
+          "end": 39.351,
+          "conf": 0.732
+        },
+        {
+          "w": "works",
+          "start": 39.48,
+          "end": 40.273,
+          "conf": 0.867
+        },
+        {
+          "w": "on",
+          "start": 41.16,
+          "end": 41.48,
+          "conf": 0.359
+        },
+        {
+          "w": "my",
+          "start": 41.48,
+          "end": 42.84,
+          "conf": 0.477
+        },
+        {
+          "w": "machine",
+          "start": 42.84,
+          "end": 43.416,
+          "conf": 0.66
+        }
+      ]
+    },
+    {
+      "i": 11,
+      "text": "So I run the tests, I'm waiting for a pass",
+      "start": 45.631,
+      "end": 49.118,
+      "words": [
+        {
+          "w": "So",
+          "start": 45.631,
+          "end": 46.025,
+          "conf": 0.816
+        },
+        {
+          "w": "I",
+          "start": 46.025,
+          "end": 46.24,
+          "conf": 0.7
+        },
+        {
+          "w": "run",
+          "start": 46.24,
+          "end": 46.46,
+          "conf": 0.869
+        },
+        {
+          "w": "the",
+          "start": 46.46,
+          "end": 46.539,
+          "conf": 0.387
+        },
+        {
+          "w": "tests,",
+          "start": 46.62,
+          "end": 47.16,
+          "conf": 0.892
+        },
+        {
+          "w": "I'm",
+          "start": 47.16,
+          "end": 47.34,
+          "conf": 0.563
+        },
+        {
+          "w": "waiting",
+          "start": 47.34,
+          "end": 47.687,
+          "conf": 0.828
+        },
+        {
+          "w": "for",
+          "start": 47.687,
+          "end": 48.14,
+          "conf": 0.925
+        },
+        {
+          "w": "a",
+          "start": 48.14,
+          "end": 48.26,
+          "conf": 0.548
+        },
+        {
+          "w": "pass",
+          "start": 48.42,
+          "end": 49.118,
+          "conf": 0.872
+        }
+      ]
+    },
+    {
+      "i": 12,
+      "text": "Nineteen red, and they're shattering like glass",
+      "start": 49.36,
+      "end": 52.536,
+      "words": [
+        {
+          "w": "Nineteen",
+          "start": 49.36,
+          "end": 50.26,
+          "conf": 0.701
+        },
+        {
+          "w": "red,",
+          "start": 50.26,
+          "end": 50.72,
+          "conf": 0.648
+        },
+        {
+          "w": "and",
+          "start": 50.72,
+          "end": 50.8,
+          "conf": 0.881
+        },
+        {
+          "w": "they're",
+          "start": 50.8,
+          "end": 50.919,
+          "conf": 0.516
+        },
+        {
+          "w": "shattering",
+          "start": 50.919,
+          "end": 51.6,
+          "conf": 0.759
+        },
+        {
+          "w": "like",
+          "start": 51.6,
+          "end": 51.877,
+          "conf": 0.732
+        },
+        {
+          "w": "glass",
+          "start": 51.947,
+          "end": 52.536,
+          "conf": 0.919
+        }
+      ]
+    },
+    {
+      "i": 13,
+      "text": "Stack traces falling like rain from the sky",
+      "start": 52.536,
+      "end": 56.34,
+      "words": [
+        {
+          "w": "Stack",
+          "start": 52.536,
+          "end": 53.08,
+          "conf": 0.313
+        },
+        {
+          "w": "traces",
+          "start": 53.08,
+          "end": 53.957,
+          "conf": 0.827
+        },
+        {
+          "w": "falling",
+          "start": 53.957,
+          "end": 54.5,
+          "conf": 0.877
+        },
+        {
+          "w": "like",
+          "start": 54.5,
+          "end": 54.741,
+          "conf": 0.896
+        },
+        {
+          "w": "rain",
+          "start": 54.741,
+          "end": 55.14,
+          "conf": 0.956
+        },
+        {
+          "w": "from",
+          "start": 55.14,
+          "end": 55.38,
+          "conf": 0.878
+        },
+        {
+          "w": "the",
+          "start": 55.38,
+          "end": 55.479,
+          "conf": 0.755
+        },
+        {
+          "w": "sky",
+          "start": 55.479,
+          "end": 56.34,
+          "conf": 0.953
+        }
+      ]
+    },
+    {
+      "i": 14,
+      "text": "Undefined, undefined, and I don't know why",
+      "start": 56.34,
+      "end": 60.28,
+      "words": [
+        {
+          "w": "Undefined,",
+          "start": 56.34,
+          "end": 57.24,
+          "conf": 0.723
+        },
+        {
+          "w": "undefined,",
+          "start": 57.24,
+          "end": 58.24,
+          "conf": 0.722
+        },
+        {
+          "w": "and",
+          "start": 58.24,
+          "end": 58.44,
+          "conf": 0.624
+        },
+        {
+          "w": "I",
+          "start": 58.44,
+          "end": 58.562,
+          "conf": 0.734
+        },
+        {
+          "w": "don't",
+          "start": 58.562,
+          "end": 58.76,
+          "conf": 0.969
+        },
+        {
+          "w": "know",
+          "start": 58.76,
+          "end": 59.18,
+          "conf": 0.801
+        },
+        {
+          "w": "why",
+          "start": 59.18,
+          "end": 60.28,
+          "conf": 0.45
+        }
+      ]
+    },
+    {
+      "i": 15,
+      "text": "Run it again, run it again, again",
+      "start": 60.28,
+      "end": 63.161,
+      "words": [
+        {
+          "w": "Run",
+          "start": 60.28,
+          "end": 60.5,
+          "conf": 0.924
+        },
+        {
+          "w": "it",
+          "start": 60.5,
+          "end": 60.66,
+          "conf": 0.827
+        },
+        {
+          "w": "again,",
+          "start": 60.66,
+          "end": 61.12,
+          "conf": 0.762
+        },
+        {
+          "w": "run",
+          "start": 61.12,
+          "end": 61.56,
+          "conf": 0.422
+        },
+        {
+          "w": "it",
+          "start": 61.56,
+          "end": 61.72,
+          "conf": 0.57
+        },
+        {
+          "w": "again,",
+          "start": 61.72,
+          "end": 62.358,
+          "conf": 0.773
+        },
+        {
+          "w": "again",
+          "start": 62.358,
+          "end": 63.161,
+          "conf": 0.816
+        }
+      ]
+    },
+    {
+      "i": 16,
+      "text": "Clear the cache and count to ten",
+      "start": 63.845,
+      "end": 67.013,
+      "words": [
+        {
+          "w": "Clear",
+          "start": 63.845,
+          "end": 64.34,
+          "conf": 0.831
+        },
+        {
+          "w": "the",
+          "start": 64.34,
+          "end": 64.419,
+          "conf": 0.532
+        },
+        {
+          "w": "cache",
+          "start": 64.5,
+          "end": 65.04,
+          "conf": 0.644
+        },
+        {
+          "w": "and",
+          "start": 65.04,
+          "end": 65.4,
+          "conf": 0.501
+        },
+        {
+          "w": "count",
+          "start": 65.4,
+          "end": 65.82,
+          "conf": 0.678
+        },
+        {
+          "w": "to",
+          "start": 65.82,
+          "end": 65.97,
+          "conf": 0.582
+        },
+        {
+          "w": "ten",
+          "start": 66.04,
+          "end": 67.013,
+          "conf": 0.585
+        }
+      ]
+    },
+    {
+      "i": 17,
+      "text": "I need one more commit",
+      "start": 67.227,
+      "end": 70.101,
+      "words": [
+        {
+          "w": "I",
+          "start": 67.227,
+          "end": 67.66,
+          "conf": 0.564
+        },
+        {
+          "w": "need",
+          "start": 67.66,
+          "end": 68.54,
+          "conf": 0.684
+        },
+        {
+          "w": "one",
+          "start": 68.54,
+          "end": 68.98,
+          "conf": 0.427
+        },
+        {
+          "w": "more",
+          "start": 68.98,
+          "end": 69.42,
+          "conf": 0.508
+        },
+        {
+          "w": "commit",
+          "start": 69.42,
+          "end": 70.101,
+          "conf": 0.422,
+          "syl": [
+            [
+              69.42,
+              69.88
+            ],
+            [
+              69.88,
+              70.101
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "i": 18,
+      "text": "\"Fix,\" and \"fix,\" and \"fix a bit\"",
+      "start": 70.525,
+      "end": 74.351,
+      "words": [
+        {
+          "w": "\"Fix,\"",
+          "start": 70.525,
+          "end": 71.253,
+          "conf": 0.747
+        },
+        {
+          "w": "and",
+          "start": 71.253,
+          "end": 71.557,
+          "conf": 0.7
+        },
+        {
+          "w": "\"fix,\"",
+          "start": 71.557,
+          "end": 72.156,
+          "conf": 0.947
+        },
+        {
+          "w": "and",
+          "start": 72.156,
+          "end": 72.44,
+          "conf": 0.631
+        },
+        {
+          "w": "\"fix",
+          "start": 72.44,
+          "end": 73.054,
+          "conf": 0.97
+        },
+        {
+          "w": "a",
+          "start": 73.054,
+          "end": 73.44,
+          "conf": 0.496
+        },
+        {
+          "w": "bit\"",
+          "start": 73.44,
+          "end": 74.351,
+          "conf": 0.696
+        }
+      ]
+    },
+    {
+      "i": 19,
+      "text": "Every test is throwing fits",
+      "start": 74.351,
+      "end": 77.579,
+      "words": [
+        {
+          "w": "Every",
+          "start": 74.351,
+          "end": 75.049,
+          "conf": 0.765
+        },
+        {
+          "w": "test",
+          "start": 75.14,
+          "end": 75.698,
+          "conf": 0.563
+        },
+        {
+          "w": "is",
+          "start": 75.698,
+          "end": 76.177,
+          "conf": 0.497
+        },
+        {
+          "w": "throwing",
+          "start": 76.177,
+          "end": 76.825,
+          "conf": 0.812
+        },
+        {
+          "w": "fits",
+          "start": 76.825,
+          "end": 77.579,
+          "conf": 0.681
+        }
+      ]
+    },
+    {
+      "i": 20,
+      "text": "I need one more commit",
+      "start": 77.908,
+      "end": 81.21,
+      "words": [
+        {
+          "w": "I",
+          "start": 77.908,
+          "end": 78.34,
+          "conf": 0.599
+        },
+        {
+          "w": "need",
+          "start": 78.34,
+          "end": 78.56,
+          "conf": 0.705
+        },
+        {
+          "w": "one",
+          "start": 78.56,
+          "end": 78.82,
+          "conf": 0.34
+        },
+        {
+          "w": "more",
+          "start": 78.82,
+          "end": 79.64,
+          "conf": 0.059
+        },
+        {
+          "w": "commit",
+          "start": 79.64,
+          "end": 81.21,
+          "conf": 0.091,
+          "syl": [
+            [
+              79.64,
+              80.337
+            ],
+            [
+              80.337,
+              81.21
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "i": 21,
+      "text": "But it works on my machine!",
+      "start": 81.44,
+      "end": 86.154,
+      "words": [
+        {
+          "w": "But",
+          "start": 81.44,
+          "end": 82.06,
+          "conf": 0.662
+        },
+        {
+          "w": "it",
+          "start": 82.06,
+          "end": 82.138,
+          "conf": 0.636
+        },
+        {
+          "w": "works",
+          "start": 82.3,
+          "end": 84.02,
+          "conf": 0.821
+        },
+        {
+          "w": "on",
+          "start": 84.02,
+          "end": 84.3,
+          "conf": 0.418
+        },
+        {
+          "w": "my",
+          "start": 84.3,
+          "end": 85.64,
+          "conf": 0.317
+        },
+        {
+          "w": "machine!",
+          "start": 85.64,
+          "end": 86.154,
+          "conf": 0.671
+        }
+      ]
+    },
+    {
+      "i": 22,
+      "text": "Down the call stack, quiet down here",
+      "start": 88.688,
+      "end": 91.786,
+      "words": [
+        {
+          "w": "Down",
+          "start": 88.688,
+          "end": 89.1,
+          "conf": 0.391
+        },
+        {
+          "w": "the",
+          "start": 89.1,
+          "end": 89.18,
+          "conf": 0.653
+        },
+        {
+          "w": "call",
+          "start": 89.18,
+          "end": 89.417,
+          "conf": 0.402
+        },
+        {
+          "w": "stack,",
+          "start": 89.417,
+          "end": 89.936,
+          "conf": 0.743
+        },
+        {
+          "w": "quiet",
+          "start": 90.28,
+          "end": 90.988,
+          "conf": 0.633
+        },
+        {
+          "w": "down",
+          "start": 90.988,
+          "end": 91.397,
+          "conf": 0.816
+        },
+        {
+          "w": "here",
+          "start": 91.397,
+          "end": 91.786,
+          "conf": 0.57
+        }
+      ]
+    },
+    {
+      "i": 23,
+      "text": "Frame by frame, and the bug is near",
+      "start": 91.951,
+      "end": 95.428,
+      "words": [
+        {
+          "w": "Frame",
+          "start": 91.951,
+          "end": 92.52,
+          "conf": 0.8
+        },
+        {
+          "w": "by",
+          "start": 92.52,
+          "end": 92.799,
+          "conf": 0.767
+        },
+        {
+          "w": "frame,",
+          "start": 92.799,
+          "end": 93.78,
+          "conf": 0.822
+        },
+        {
+          "w": "and",
+          "start": 93.78,
+          "end": 93.86,
+          "conf": 0.599
+        },
+        {
+          "w": "the",
+          "start": 93.86,
+          "end": 94.04,
+          "conf": 0.389
+        },
+        {
+          "w": "bug",
+          "start": 94.04,
+          "end": 94.336,
+          "conf": 0.88
+        },
+        {
+          "w": "is",
+          "start": 94.336,
+          "end": 94.705,
+          "conf": 0.525
+        },
+        {
+          "w": "near",
+          "start": 94.705,
+          "end": 95.428,
+          "conf": 0.735
+        }
+      ]
+    },
+    {
+      "i": 24,
+      "text": "There it is, on line forty-two",
+      "start": 97.14,
+      "end": 99.634,
+      "words": [
+        {
+          "w": "There",
+          "start": 97.14,
+          "end": 97.54,
+          "conf": 0.754
+        },
+        {
+          "w": "it",
+          "start": 97.54,
+          "end": 97.648,
+          "conf": 0.657
+        },
+        {
+          "w": "is,",
+          "start": 97.648,
+          "end": 97.96,
+          "conf": 0.797
+        },
+        {
+          "w": "on",
+          "start": 97.96,
+          "end": 98.087,
+          "conf": 0.721
+        },
+        {
+          "w": "line",
+          "start": 98.24,
+          "end": 98.571,
+          "conf": 0.738
+        },
+        {
+          "w": "forty-two",
+          "start": 98.616,
+          "end": 99.634,
+          "conf": 0.575,
+          "syl": [
+            [
+              98.616,
+              99.36
+            ],
+            [
+              99.36,
+              99.634
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "i": 25,
+      "text": "\"Less than or equal\" — well, that won't do",
+      "start": 100.252,
+      "end": 103.21,
+      "words": [
+        {
+          "w": "\"Less",
+          "start": 100.252,
+          "end": 100.656,
+          "conf": 0.979
+        },
+        {
+          "w": "than",
+          "start": 100.656,
+          "end": 100.966,
+          "conf": 0.784
+        },
+        {
+          "w": "or",
+          "start": 100.966,
+          "end": 101.24,
+          "conf": 0.885
+        },
+        {
+          "w": "equal\"",
+          "start": 101.24,
+          "end": 101.56,
+          "conf": 0.765
+        },
+        {
+          "w": "well,",
+          "start": 101.56,
+          "end": 101.8,
+          "conf": 0.848
+        },
+        {
+          "w": "that",
+          "start": 101.8,
+          "end": 102.018,
+          "conf": 0.884
+        },
+        {
+          "w": "won't",
+          "start": 102.22,
+          "end": 102.547,
+          "conf": 0.897
+        },
+        {
+          "w": "do",
+          "start": 102.66,
+          "end": 103.21,
+          "conf": 0.957
+        }
+      ]
+    },
+    {
+      "i": 26,
+      "text": "Snip the extra line and set October free",
+      "start": 103.21,
+      "end": 107.127,
+      "words": [
+        {
+          "w": "Snip",
+          "start": 103.21,
+          "end": 103.5,
+          "conf": 0.738
+        },
+        {
+          "w": "the",
+          "start": 103.58,
+          "end": 104.039,
+          "conf": 0.813
+        },
+        {
+          "w": "extra",
+          "start": 104.039,
+          "end": 104.68,
+          "conf": 0.691
+        },
+        {
+          "w": "line",
+          "start": 104.68,
+          "end": 104.98,
+          "conf": 0.765
+        },
+        {
+          "w": "and",
+          "start": 104.98,
+          "end": 105.08,
+          "conf": 0.594
+        },
+        {
+          "w": "set",
+          "start": 105.08,
+          "end": 105.52,
+          "conf": 0.674
+        },
+        {
+          "w": "October",
+          "start": 105.52,
+          "end": 106.353,
+          "conf": 0.748
+        },
+        {
+          "w": "free",
+          "start": 106.353,
+          "end": 107.127,
+          "conf": 0.853
+        }
+      ]
+    },
+    {
+      "i": 27,
+      "text": "One goes green, and two, and three",
+      "start": 107.127,
+      "end": 110.843,
+      "words": [
+        {
+          "w": "One",
+          "start": 107.127,
+          "end": 107.54,
+          "conf": 0.543
+        },
+        {
+          "w": "goes",
+          "start": 107.54,
+          "end": 107.96,
+          "conf": 0.861
+        },
+        {
+          "w": "green,",
+          "start": 107.96,
+          "end": 108.58,
+          "conf": 0.76
+        },
+        {
+          "w": "and",
+          "start": 108.58,
+          "end": 108.84,
+          "conf": 0.612
+        },
+        {
+          "w": "two,",
+          "start": 108.84,
+          "end": 109.48,
+          "conf": 0.779
+        },
+        {
+          "w": "and",
+          "start": 109.48,
+          "end": 109.72,
+          "conf": 0.607
+        },
+        {
+          "w": "three",
+          "start": 109.72,
+          "end": 110.843,
+          "conf": 0.724
+        }
+      ]
+    },
+    {
+      "i": 28,
+      "text": "Green and green and green and green",
+      "start": 110.843,
+      "end": 112.54,
+      "words": [
+        {
+          "w": "Green",
+          "start": 110.843,
+          "end": 111.127,
+          "conf": 0.892
+        },
+        {
+          "w": "and",
+          "start": 111.127,
+          "end": 111.28,
+          "conf": 0.767
+        },
+        {
+          "w": "green",
+          "start": 111.28,
+          "end": 111.6,
+          "conf": 0.838
+        },
+        {
+          "w": "and",
+          "start": 111.6,
+          "end": 111.72,
+          "conf": 0.784
+        },
+        {
+          "w": "green",
+          "start": 111.72,
+          "end": 112.06,
+          "conf": 0.916
+        },
+        {
+          "w": "and",
+          "start": 112.06,
+          "end": 112.18,
+          "conf": 0.74
+        },
+        {
+          "w": "green",
+          "start": 112.18,
+          "end": 112.54,
+          "conf": 0.824
+        }
+      ]
+    },
+    {
+      "i": 29,
+      "text": "Nineteen green!",
+      "start": 112.54,
+      "end": 113.88,
+      "words": [
+        {
+          "w": "Nineteen",
+          "start": 112.54,
+          "end": 113.48,
+          "conf": 0.395
+        },
+        {
+          "w": "green!",
+          "start": 113.48,
+          "end": 113.88,
+          "conf": 0.57
+        }
+      ]
+    },
+    {
+      "i": 30,
+      "text": "I need one last commit",
+      "start": 113.88,
+      "end": 116.156,
+      "words": [
+        {
+          "w": "I",
+          "start": 113.88,
+          "end": 113.92,
+          "conf": 0.277
+        },
+        {
+          "w": "need",
+          "start": 113.92,
+          "end": 114.62,
+          "conf": 0.257
+        },
+        {
+          "w": "one",
+          "start": 114.62,
+          "end": 114.809,
+          "conf": 0.406
+        },
+        {
+          "w": "last",
+          "start": 114.879,
+          "end": 115.44,
+          "conf": 0.721
+        },
+        {
+          "w": "commit",
+          "start": 115.44,
+          "end": 116.156,
+          "conf": 0.774,
+          "syl": [
+            [
+              115.44,
+              115.88
+            ],
+            [
+              115.88,
+              116.156
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "i": 31,
+      "text": "Pull request, and that is it",
+      "start": 116.98,
+      "end": 119.883,
+      "words": [
+        {
+          "w": "Pull",
+          "start": 116.98,
+          "end": 117.38,
+          "conf": 0.728
+        },
+        {
+          "w": "request,",
+          "start": 117.38,
+          "end": 118.156,
+          "conf": 0.703
+        },
+        {
+          "w": "and",
+          "start": 118.156,
+          "end": 118.76,
+          "conf": 0.405
+        },
+        {
+          "w": "that",
+          "start": 118.76,
+          "end": 119.054,
+          "conf": 0.792
+        },
+        {
+          "w": "is",
+          "start": 119.054,
+          "end": 119.74,
+          "conf": 0.626
+        },
+        {
+          "w": "it",
+          "start": 119.74,
+          "end": 119.883,
+          "conf": 0.596
+        }
+      ]
+    },
+    {
+      "i": 32,
+      "text": "Then you wrote, \"Looks good to me\"",
+      "start": 120.047,
+      "end": 123.609,
+      "words": [
+        {
+          "w": "Then",
+          "start": 120.047,
+          "end": 120.5,
+          "conf": 0.827
+        },
+        {
+          "w": "you",
+          "start": 120.5,
+          "end": 120.74,
+          "conf": 0.841
+        },
+        {
+          "w": "wrote,",
+          "start": 120.74,
+          "end": 121.09,
+          "conf": 0.783
+        },
+        {
+          "w": "\"Looks",
+          "start": 121.8,
+          "end": 122.24,
+          "conf": 0.985
+        },
+        {
+          "w": "good",
+          "start": 122.24,
+          "end": 122.701,
+          "conf": 0.914
+        },
+        {
+          "w": "to",
+          "start": 122.701,
+          "end": 122.9,
+          "conf": 0.532
+        },
+        {
+          "w": "me\"",
+          "start": 122.9,
+          "end": 123.609,
+          "conf": 0.765
+        }
+      ]
+    },
+    {
+      "i": 33,
+      "text": "Merged to main, and now we're free",
+      "start": 123.76,
+      "end": 127.62,
+      "words": [
+        {
+          "w": "Merged",
+          "start": 123.76,
+          "end": 124.2,
+          "conf": 0.6
+        },
+        {
+          "w": "to",
+          "start": 124.2,
+          "end": 124.64,
+          "conf": 0.815
+        },
+        {
+          "w": "main,",
+          "start": 124.64,
+          "end": 125.151,
+          "conf": 0.773
+        },
+        {
+          "w": "and",
+          "start": 125.151,
+          "end": 125.52,
+          "conf": 0.365
+        },
+        {
+          "w": "now",
+          "start": 125.52,
+          "end": 125.94,
+          "conf": 0.555
+        },
+        {
+          "w": "we're",
+          "start": 125.94,
+          "end": 126.273,
+          "conf": 0.35
+        },
+        {
+          "w": "free",
+          "start": 126.273,
+          "end": 127.62,
+          "conf": 0.923
+        }
+      ]
+    },
+    {
+      "i": 34,
+      "text": "And it works on every machine",
+      "start": 127.62,
+      "end": 131.95,
+      "words": [
+        {
+          "w": "And",
+          "start": 127.62,
+          "end": 127.9,
+          "conf": 0.618
+        },
+        {
+          "w": "it",
+          "start": 127.9,
+          "end": 127.984,
+          "conf": 0.655
+        },
+        {
+          "w": "works",
+          "start": 128.14,
+          "end": 129.176,
+          "conf": 0.914
+        },
+        {
+          "w": "on",
+          "start": 129.78,
+          "end": 129.955,
+          "conf": 0.43
+        },
+        {
+          "w": "every",
+          "start": 129.955,
+          "end": 131.42,
+          "conf": 0.611
+        },
+        {
+          "w": "machine",
+          "start": 131.42,
+          "end": 131.95,
+          "conf": 0.691
+        }
+      ]
+    }
+  ],
+  "extras": [
+    {
+      "start": 130.15,
+      "end": 131.955,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 134.525,
+      "end": 135.6,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 137.185,
+      "end": 137.28,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 137.61,
+      "end": 137.74,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 138.02,
+      "end": 139.525,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 139.81,
+      "end": 139.945,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 140.26,
+      "end": 140.41,
+      "desc": "weak vocal-stem event near requested outro time; word identity unconfirmed"
+    },
+    {
+      "start": 141.13,
+      "end": 141.255,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    },
+    {
+      "start": 141.54,
+      "end": 159.79,
+      "desc": "unlisted vocal activity; -42 dBFS threshold"
+    }
+  ],
+  "notes": "Source audio timeline; per-song measured stem offset. MMS_FA + LV60K mono vocal CTC probability mixture, 20 ms frames, global Viterbi with garbage tokens between lines. Exact Whisper sequence matches constrain characters to word window +/-0.8 s. Signal-based starts and held-note ends; no manual song timestamps. conf is a heuristic score, not a calibrated probability. syl contains compound parts."
+}

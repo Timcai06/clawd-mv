@@ -47,7 +47,13 @@ def compute(name, chunk_s=20.0, ctx_s=3.0, device=None, source="vocals"):
     last = np.where(~np.isnan(out[:, 0]))[0].max()
     out[last + 1:] = out[last]
     tag = name if source == "vocals" else f"{name}_{source}"
-    np.save(common.WORK / f"emission_{tag}.npy", out)
+    if not np.isfinite(out).all():
+        raise ValueError(f'Incomplete CTC emissions: {tag}')
+    target = common.WORK / f"emission_{tag}.npy"
+    temporary = target.with_suffix('.tmp')
+    with temporary.open('wb') as f:
+        np.save(f, out)
+    temporary.replace(target)
     print(name, out.shape, "labels", len(bundle.get_labels()))
     return out
 

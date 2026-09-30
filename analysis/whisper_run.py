@@ -9,6 +9,8 @@ import soundfile as sf
 
 MODELS = {"turbo": "mlx-community/whisper-large-v3-turbo",
           "large": "mlx-community/whisper-large-v3-mlx"}
+if (common.CACHE / "models/whisper-large-v3-turbo/weights.safetensors").is_file():
+    MODELS["turbo"] = str(common.CACHE / "models/whisper-large-v3-turbo")
 
 
 def vocabulary_prompt():
@@ -68,7 +70,10 @@ def run(tag="turbo", model=None, prompt=None, force=False, context=False):
     if context:
         provenance["context"] = True
     if out.exists() and not force:
-        res = json.loads(out.read_text())
+        try:
+            res = json.loads(out.read_text())
+        except (ValueError, OSError):
+            res = {}
         if res.get("measurement", {}).get("provenance") == provenance:
             return res
     y, sr = common.load_stem("vocals", sr=16000)
@@ -102,7 +107,9 @@ def run(tag="turbo", model=None, prompt=None, force=False, context=False):
     revision = revision_file.read_text().strip() if revision_file.exists() else None
     res["measurement"] = dict(seconds=time.perf_counter() - start, vocal_rms_dbfs=rms_db,
                               skip_reason=reason, provenance=provenance, model_revision=revision)
-    out.write_text(json.dumps(res, indent=1, default=float) + "\n")
+    temporary = out.with_suffix('.json.tmp')
+    temporary.write_text(json.dumps(res, indent=1, default=float) + "\n")
+    temporary.replace(out)
     print(f"Whisper {tag}: {res.get('text', '')}", flush=True)
     return res
 
