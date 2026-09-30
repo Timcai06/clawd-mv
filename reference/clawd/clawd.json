@@ -1,0 +1,69 @@
+{
+ "source": "Claude Code 2.1.220 binary (/opt/homebrew/Caskroom/claude-code@latest/2.1.220/claude), extracted 2026-09-30",
+ "painter_frames": {
+  "note": "CLAWD_FRAMES from the artifact 'waiting' page: 16x14, two frames (pencil down/up). '.' transparent, 'b' = page accent at 55% alpha",
+  "frames": [
+   [
+    "................",
+    "................",
+    "................",
+    "..OOOOOOOO......",
+    "..OOOOOOOO......",
+    "..OODOODOO......",
+    "..OODOODOO......",
+    "..OOOOOOOOOEFPWG",
+    "..OOOOOOOO......",
+    "..OOOOOOOO......",
+    "...OO..OO......b",
+    "...OO..OO.......",
+    "................",
+    "................"
+   ],
+   [
+    "................",
+    "..............WG",
+    ".............P..",
+    "..OOOOOOOO..P...",
+    "..OOOOOOOO.F....",
+    "..OODOODOOE.....",
+    "..OODOODOOO.....",
+    "..OOOOOOOO......",
+    "..OOOOOOOO......",
+    "..OOOOOOOO......",
+    "...OO..OO.......",
+    "...OO..OO.......",
+    "................",
+    "................"
+   ]
+  ],
+  "palette": {
+   "O": "#d97757",
+   "D": "#2a1f1b",
+   "E": "#e98fa2",
+   "F": "#7d848a",
+   "P": "#e8b93c",
+   "W": "#d9a066",
+   "G": "#4a4a4a",
+   "b": "#d97706"
+  }
+ },
+ "terminal_welcome": {
+  "note": "Welcome-screen block art (clawd_body / clawd_background colours). Char rows as found; row 3 is a repeat of row 1 inferred, not confirmed. Pixel version: each cell = 1x2 px, the '▄' cells' upper half is background = eyes.",
+  "rows": [
+   " █████████ ",
+   "██▄█████▄██",
+   " █████████ ",
+   " █ █   █ █ "
+  ],
+  "pixels": [
+   ".OOOOOOOOO.",
+   ".OOOOOOOOO.",
+   "OODOOOOODOO",
+   "OOOOOOOOOOO",
+   ".OOOOOOOOO.",
+   ".OOOOOOOOO.",
+   ".O.O...O.O.",
+   ".O.O...O.O."
+  ]
+ }
+}
