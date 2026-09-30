@@ -5,6 +5,8 @@ strength (log-mel), high-band (>2 kHz, consonant) energy, and a 'vocal
 presence' mask.
 """
 import common
+if __name__ == "__main__":
+    common.configure_cli()
 import numpy as np
 import librosa
 

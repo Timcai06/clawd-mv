@@ -1,5 +1,7 @@
 """Quick high-res zoom plot of the vocal stem: python zoom.py t0 t1 [name]"""
 import common, sys, json
+if __name__ == "__main__":
+    common.configure_cli()
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -34,7 +36,8 @@ def zoom(t0, t1, name):
     ax[2].plot(tt, f["mid_db"][i0:i1] - 40, "tab:red", lw=0.8, label="mid-40")
     axb = ax[2].twinx(); axb.fill_between(tt, 0, f["onset"][i0:i1], color="tab:green", alpha=0.3)
     ax[2].legend(loc="upper left", fontsize=7); ax[2].set_ylim(-70, 5)
-    P, OFF = 60 / 132, 0.708
+    grid = json.loads((common.DATA / "audio.json").read_text())
+    P, OFF = grid["beat_period"], grid["beats"][0]
     for n in range(int((t0 - OFF) / P * 4) - 1, int((t1 - OFF) / P * 4) + 2):
         tb = OFF + n * P / 4
         if t0 <= tb <= t1:

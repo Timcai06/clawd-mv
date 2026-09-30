@@ -1,0 +1,129 @@
+{
+  "_doc": "Same schema as clawd.json. lyrics may be a JS array of [start,end,text]; measurement ignores its legacy times. Optional lyric_aliases expands orthographic forms into spoken words for timing anchors only, never for the strict match-rate metric. hook.spoken_form optionally specifies the spoken tokens; stressed_syllable is 1-based. Section names containing chorus select hook measurement. Nominal bars and BPM are priors, never reference timestamps. Final section extends to actual audio end. Bar indices in upstream documentation are zero-based.",
+  "song": "pdoom",
+  "bpm": 132,
+  "beats_per_bar": 4,
+  "lyrics": "reference/pdoom/lyrics/lyrics.src.js",
+  "hook": {
+    "word": "P(doom)",
+    "spoken_form": "pee doom",
+    "stressed_syllable": 2,
+    "land": "downbeat of section bar 2"
+  },
+  "lyric_aliases": {
+    "P(doom)": "pee doom",
+    "AGI": "a g i",
+    "ChatGPT": "chat g p t",
+    "MLP": "m l p",
+    "RLHF": "r l h f"
+  },
+  "sections": [
+    {
+      "name": "intro",
+      "bars": 1,
+      "first_line": null,
+      "expect": {}
+    },
+    {
+      "name": "verse1",
+      "bars": 8,
+      "first_line": "I see sparks of AGI in your eyes",
+      "expect": {
+        "drums": "absent"
+      }
+    },
+    {
+      "name": "pre1",
+      "bars": 3,
+      "first_line": "ChatGPT, please don't eat me alive",
+      "expect": {
+        "drums": "present"
+      }
+    },
+    {
+      "name": "chorus1",
+      "bars": 8,
+      "first_line": "I'm upping my P(doom)",
+      "expect": {
+        "bass": "stop_in_pickup_bar"
+      }
+    },
+    {
+      "name": "break1",
+      "bars": 1,
+      "first_line": null,
+      "expect": {}
+    },
+    {
+      "name": "verse2",
+      "bars": 8,
+      "first_line": "We had a stable training run,",
+      "expect": {
+        "drums": "present"
+      }
+    },
+    {
+      "name": "pre2",
+      "bars": 3,
+      "first_line": "Sydney, please let me free",
+      "expect": {
+        "bass": "absent"
+      }
+    },
+    {
+      "name": "chorus2",
+      "bars": 9,
+      "first_line": "I'm upping my P(doom)",
+      "expect": {
+        "bass": "stop_in_pickup_bar"
+      }
+    },
+    {
+      "name": "verse3",
+      "bars": 8,
+      "first_line": "Forward MLP, backward, repeat",
+      "expect": {
+        "drums": "present"
+      }
+    },
+    {
+      "name": "pre3",
+      "bars": 3,
+      "first_line": "Gato, please don't let me go",
+      "expect": {
+        "drums": "absent",
+        "bass": "absent"
+      }
+    },
+    {
+      "name": "chorus3",
+      "bars": 8,
+      "first_line": "I'm upping my P(doom),",
+      "expect": {
+        "drums": "present",
+        "bass": "absent"
+      }
+    },
+    {
+      "name": "bridge",
+      "bars": 8,
+      "first_line": "\u201cJust transformers all the way!\u201d",
+      "expect": {}
+    },
+    {
+      "name": "chorus4",
+      "bars": 9,
+      "first_line": "I'm upping my P(doom)",
+      "expect": {
+        "bass": "stop_in_pickup_bar",
+        "stop_bar": "last"
+      }
+    },
+    {
+      "name": "outro",
+      "bars": 7,
+      "first_line": null,
+      "expect": {}
+    }
+  ]
+}
