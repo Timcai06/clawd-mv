@@ -1,0 +1,424 @@
+{
+ "lines": [
+  {
+   "text": "hello from the placeholder",
+   "start": 3.8864,
+   "end": 5.6137,
+   "words": [
+    {
+     "w": "hello",
+     "start": 3.8864,
+     "end": 4.25
+    },
+    {
+     "w": "from",
+     "start": 4.3409,
+     "end": 4.7046
+    },
+    {
+     "w": "the",
+     "start": 4.7955,
+     "end": 5.1591
+    },
+    {
+     "w": "placeholder",
+     "start": 5.25,
+     "end": 5.6137
+    }
+   ]
+  },
+  {
+   "text": "clawd is writing code",
+   "start": 11.1591,
+   "end": 12.8864,
+   "words": [
+    {
+     "w": "clawd",
+     "start": 11.1591,
+     "end": 11.5227
+    },
+    {
+     "w": "is",
+     "start": 11.6136,
+     "end": 11.9773
+    },
+    {
+     "w": "writing",
+     "start": 12.0682,
+     "end": 12.4318
+    },
+    {
+     "w": "code",
+     "start": 12.5227,
+     "end": 12.8864
+    }
+   ]
+  },
+  {
+   "text": "tests are running now",
+   "start": 18.4318,
+   "end": 20.1591,
+   "words": [
+    {
+     "w": "tests",
+     "start": 18.4318,
+     "end": 18.7954
+    },
+    {
+     "w": "are",
+     "start": 18.8863,
+     "end": 19.25
+    },
+    {
+     "w": "running",
+     "start": 19.3409,
+     "end": 19.7045
+    },
+    {
+     "w": "now",
+     "start": 19.7954,
+     "end": 20.1591
+    }
+   ]
+  },
+  {
+   "text": "ship it on the beat",
+   "start": 25.7045,
+   "end": 27.8863,
+   "words": [
+    {
+     "w": "ship",
+     "start": 25.7045,
+     "end": 26.0681
+    },
+    {
+     "w": "it",
+     "start": 26.159,
+     "end": 26.5227
+    },
+    {
+     "w": "on",
+     "start": 26.6136,
+     "end": 26.9772
+    },
+    {
+     "w": "the",
+     "start": 27.0681,
+     "end": 27.4318
+    },
+    {
+     "w": "beat",
+     "start": 27.5227,
+     "end": 27.8863
+    }
+   ]
+  },
+  {
+   "text": "hello from the placeholder",
+   "start": 32.9773,
+   "end": 34.7046,
+   "words": [
+    {
+     "w": "hello",
+     "start": 32.9773,
+     "end": 33.3409
+    },
+    {
+     "w": "from",
+     "start": 33.4318,
+     "end": 33.7955
+    },
+    {
+     "w": "the",
+     "start": 33.8864,
+     "end": 34.25
+    },
+    {
+     "w": "placeholder",
+     "start": 34.3409,
+     "end": 34.7046
+    }
+   ]
+  },
+  {
+   "text": "clawd is writing code",
+   "start": 40.25,
+   "end": 41.9773,
+   "words": [
+    {
+     "w": "clawd",
+     "start": 40.25,
+     "end": 40.6136
+    },
+    {
+     "w": "is",
+     "start": 40.7045,
+     "end": 41.0682
+    },
+    {
+     "w": "writing",
+     "start": 41.1591,
+     "end": 41.5227
+    },
+    {
+     "w": "code",
+     "start": 41.6136,
+     "end": 41.9773
+    }
+   ]
+  },
+  {
+   "text": "tests are running now",
+   "start": 47.5227,
+   "end": 49.25,
+   "words": [
+    {
+     "w": "tests",
+     "start": 47.5227,
+     "end": 47.8863
+    },
+    {
+     "w": "are",
+     "start": 47.9772,
+     "end": 48.3409
+    },
+    {
+     "w": "running",
+     "start": 48.4318,
+     "end": 48.7954
+    },
+    {
+     "w": "now",
+     "start": 48.8863,
+     "end": 49.25
+    }
+   ]
+  },
+  {
+   "text": "ship it on the beat",
+   "start": 54.7955,
+   "end": 56.9773,
+   "words": [
+    {
+     "w": "ship",
+     "start": 54.7955,
+     "end": 55.1591
+    },
+    {
+     "w": "it",
+     "start": 55.25,
+     "end": 55.6137
+    },
+    {
+     "w": "on",
+     "start": 55.7046,
+     "end": 56.0682
+    },
+    {
+     "w": "the",
+     "start": 56.1591,
+     "end": 56.5228
+    },
+    {
+     "w": "beat",
+     "start": 56.6137,
+     "end": 56.9773
+    }
+   ]
+  },
+  {
+   "text": "hello from the placeholder",
+   "start": 62.0682,
+   "end": 63.7955,
+   "words": [
+    {
+     "w": "hello",
+     "start": 62.0682,
+     "end": 62.4318
+    },
+    {
+     "w": "from",
+     "start": 62.5227,
+     "end": 62.8864
+    },
+    {
+     "w": "the",
+     "start": 62.9773,
+     "end": 63.3409
+    },
+    {
+     "w": "placeholder",
+     "start": 63.4318,
+     "end": 63.7955
+    }
+   ]
+  },
+  {
+   "text": "clawd is writing code",
+   "start": 69.3409,
+   "end": 71.0682,
+   "words": [
+    {
+     "w": "clawd",
+     "start": 69.3409,
+     "end": 69.7045
+    },
+    {
+     "w": "is",
+     "start": 69.7954,
+     "end": 70.1591
+    },
+    {
+     "w": "writing",
+     "start": 70.25,
+     "end": 70.6136
+    },
+    {
+     "w": "code",
+     "start": 70.7045,
+     "end": 71.0682
+    }
+   ]
+  },
+  {
+   "text": "tests are running now",
+   "start": 76.6136,
+   "end": 78.3409,
+   "words": [
+    {
+     "w": "tests",
+     "start": 76.6136,
+     "end": 76.9772
+    },
+    {
+     "w": "are",
+     "start": 77.0681,
+     "end": 77.4318
+    },
+    {
+     "w": "running",
+     "start": 77.5227,
+     "end": 77.8863
+    },
+    {
+     "w": "now",
+     "start": 77.9772,
+     "end": 78.3409
+    }
+   ]
+  },
+  {
+   "text": "ship it on the beat",
+   "start": 83.8864,
+   "end": 86.0682,
+   "words": [
+    {
+     "w": "ship",
+     "start": 83.8864,
+     "end": 84.25
+    },
+    {
+     "w": "it",
+     "start": 84.3409,
+     "end": 84.7046
+    },
+    {
+     "w": "on",
+     "start": 84.7955,
+     "end": 85.1591
+    },
+    {
+     "w": "the",
+     "start": 85.25,
+     "end": 85.6137
+    },
+    {
+     "w": "beat",
+     "start": 85.7046,
+     "end": 86.0682
+    }
+   ]
+  },
+  {
+   "text": "hello from the placeholder",
+   "start": 91.1591,
+   "end": 92.8864,
+   "words": [
+    {
+     "w": "hello",
+     "start": 91.1591,
+     "end": 91.5227
+    },
+    {
+     "w": "from",
+     "start": 91.6136,
+     "end": 91.9773
+    },
+    {
+     "w": "the",
+     "start": 92.0682,
+     "end": 92.4318
+    },
+    {
+     "w": "placeholder",
+     "start": 92.5227,
+     "end": 92.8864
+    }
+   ]
+  },
+  {
+   "text": "clawd is writing code",
+   "start": 98.4318,
+   "end": 100.1591,
+   "words": [
+    {
+     "w": "clawd",
+     "start": 98.4318,
+     "end": 98.7954
+    },
+    {
+     "w": "is",
+     "start": 98.8863,
+     "end": 99.25
+    },
+    {
+     "w": "writing",
+     "start": 99.3409,
+     "end": 99.7045
+    },
+    {
+     "w": "code",
+     "start": 99.7954,
+     "end": 100.1591
+    }
+   ]
+  },
+  {
+   "text": "tests are running now",
+   "start": 105.7045,
+   "end": 107.4318,
+   "words": [
+    {
+     "w": "tests",
+     "start": 105.7045,
+     "end": 106.0681
+    },
+    {
+     "w": "are",
+     "start": 106.159,
+     "end": 106.5227
+    },
+    {
+     "w": "running",
+     "start": 106.6136,
+     "end": 106.9772
+    },
+    {
+     "w": "now",
+     "start": 107.0681,
+     "end": 107.4318
+    }
+   ]
+  }
+ ]
+}
