@@ -8,6 +8,7 @@ import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { Stage } from '../kit/stage';
 import * as Clawd from '../kit/clawd';
+import { beatsSince } from '../kit/time';
 import { beatHit, beatSpan, redwallState, resolveX9Times, type X9Times } from './s09-z-shared';
 import { GlassWall } from './parts/s10-glass';
 import { mono, sungLine } from './parts/s09-type';
@@ -43,7 +44,7 @@ export default class S10Redwall extends Scene {
     mono(p, 'CALENDAR / ASSERTIONS', 555, 327, 19, 'ink', 0.55);
     mono(p, 'EXPECTED 31 / RECEIVED 32', 555, 1330, 19, 'ink', 0.6);
     Clawd.draw(p, 588, 1110, Clawd.pose('A8', { beat: f.beat, beat0: au.beatAt(T.nineteen), p: s.fracture }), { px: 13 });
-    w.glass.update(s.rows, s.fracture, 2 * beatSpan(au, t, T.nineteen, 0.75));
+    w.glass.update(s.rows, s.fracture, 2 * Math.max(0, beatsSince(au, t, T.nineteen)) / 0.75);
     w.stage.view({ x: 1440, y: 810, zoom, yaw, pitch, roll: -1.5 * breakView });
     w.stage.render(out);
     w.layer.clear(); const c = w.layer.ctx;

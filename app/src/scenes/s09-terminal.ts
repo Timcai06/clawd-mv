@@ -70,7 +70,7 @@ export default class S09Terminal extends Scene {
       let previous = scopePoint(start);
       for (let b = start + 0.018; b <= end; b += 0.018) {
         const p = scopePoint(b);
-        line(...previous, ...p, echo ? 1.4 : 2.1, echo ? 0.1 / echo : 0.62, echo ? paper : clay);
+        line(...previous, ...p, echo ? 1.4 : 2.1, echo ? 0.1 / echo : 0.15 + 0.55 * Math.exp(-(scan - b) * 0.5), echo ? paper : clay);
         previous = p;
       }
     }

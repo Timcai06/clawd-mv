@@ -108,7 +108,7 @@ export class GlassWall {
       const id = row * G.pieces + piece, center = this.centers[id]!;
       const s = glassShardState(row, piece, fracture), tr = this.transform;
       const visible = row < rows;
-      const fly = visible ? (1 - ease.outExpo(Math.min(1, Math.max(0, entry - row / 24)))) * 580 : 580;
+      const fly = visible ? (1 - ease.outExpo(Math.min(1, Math.max(0, (entry - row / 9) / 0.45)))) * 580 : 580;
       tr.position.set(-310 + center[0] + s.x + fly, 370 - row * G.pitch - center[1] - s.y,
         40 + row * 1.4 + s.z);
       tr.rotation.set(s.rx, s.ry, s.rz); tr.scale.setScalar(visible ? 1 : 0);

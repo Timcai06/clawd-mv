@@ -73,6 +73,16 @@ export default class S12Rerun extends Scene {
           if (active) sungLine(c, this.ctx, t, 315, 850, 1250, 'ink', 26);
           c.restore();
         }
+        if (run === 2 && s.result) {
+          // The third copy is now a full-frame failed-test report, not a red ground.
+          c.fillStyle = css('fail'); c.fillRect(0, 0, 1920, 1080);
+          mono(c, 'TEST RUN / COPY 03 / calendar / month.test.ts', 120, 130, 23, 'paper');
+          mono(c, '$ npm test', 120, 240, 68, 'paper');
+          c.fillStyle = css('paper'); c.font = font(F.archivo(75, 900), 320);
+          c.fillText('19 FAILED', 105, 650);
+          mono(c, 'EXPECTED 31 / RECEIVED 32', 120, 755, 34, 'paper');
+          sungLine(c, this.ctx, t, 120, 950, 1680, 'paper', 33);
+        }
       } else {
         mono(c, '$ npm cache clean --force', 260, 262, 38);
         mono(c, 'CACHE / PURGE', 260, 340, 18, 'ink', 0.5);
