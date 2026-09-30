@@ -1,0 +1,60 @@
+[Intro | 2 bars, instrumental]
+
+[Verse 1 | sparse, bass and synths only]
+Nine o'clock, a ping on my screen
+Got a bug report, the weirdest I've seen
+There's a thirty-second day in October
+So I crack my claws and read it all over
+
+[Pre-Chorus | drums enter, energy lifts]
+Read the code, write a plan, check, check, check
+Claws on the keys and I'm not looking back
+
+[Chorus | half-bar stop, then full band]
+I need one more commit
+Every bracket's gonna fit
+Tap-tap-tapping, never quit
+I need one more commit
+'Cause it works on my machine
+
+[Verse 2 | full band]
+So I run the tests, I'm waiting for a pass
+Nineteen red, and they're shattering like glass
+Stack traces falling like rain from the sky
+Undefined, undefined, and I don't know why
+
+[Pre-Chorus | bass drops out, urgent]
+Run it again, run it again, again
+Clear the cash and count to ten
+
+[Chorus | bigger, doubled vocals]
+I need one more commit
+"Fix," and "fix," and "fix a bit"
+Every test is throwing fits
+I need one more commit
+But it works on my machine!
+
+[Breakdown | 3 bars, pads and voice only]
+Down the call stack, quiet down here
+Frame by frame, and the bug is near
+
+[Bridge | builds bar by bar]
+There it is, on line forty-two
+"Less than or equal" — well, that won't do
+Snip the extra line and set October free
+One goes green, and two, and three
+Green and green and green and green
+Nineteen green!
+
+[Final Chorus | biggest, doubled vocals]
+I need one last commit
+Pull request, and that is it
+Then you wrote, "Looks good to me"
+Merged to main, and now we're free
+And it works on every machine
+
+[Stop | 1 bar of silence]
+
+[Outro | instrumental, 4 bars, fade out]
+
+[End]

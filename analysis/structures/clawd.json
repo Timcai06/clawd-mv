@@ -1,0 +1,104 @@
+{
+ "_doc": "Song structure for analysis/measurement. Nominal bars at the nominal BPM; real songs drift, so sections are anchored to lyric lines (first_line) found by Whisper, not to these bar counts. A section whose first_line is null starts where the previous section's nominal length ends. For chorus-type sections the first bar is the stop/pickup bar and hook.word's stressed syllable should land on the downbeat of bar 2 of the section. expect = arrangement checks (advisory, measured from Demucs stems, never pass/fail gates).",
+ "song": "clawd",
+ "bpm": 132,
+ "beats_per_bar": 4,
+ "lyrics": "lyrics/song.suno.txt",
+ "hook": {
+  "word": "commit",
+  "stressed_syllable": 2,
+  "land": "downbeat of section bar 2"
+ },
+ "sections": [
+  {
+   "name": "intro",
+   "bars": 2,
+   "first_line": null,
+   "expect": {}
+  },
+  {
+   "name": "verse1",
+   "bars": 8,
+   "first_line": "Nine o'clock, a ping on my screen",
+   "expect": {
+    "drums": "absent"
+   }
+  },
+  {
+   "name": "pre1",
+   "bars": 3,
+   "first_line": "Read the code, write a plan, check, check, check",
+   "expect": {
+    "drums": "present"
+   }
+  },
+  {
+   "name": "chorus1",
+   "bars": 8,
+   "first_line": "I need one more commit",
+   "expect": {
+    "bass": "stop_in_pickup_bar"
+   }
+  },
+  {
+   "name": "fill",
+   "bars": 1,
+   "first_line": null,
+   "expect": {}
+  },
+  {
+   "name": "verse2",
+   "bars": 8,
+   "first_line": "So I run the tests, I'm waiting for a pass",
+   "expect": {
+    "drums": "present"
+   }
+  },
+  {
+   "name": "pre2",
+   "bars": 3,
+   "first_line": "Run it again, run it again, again",
+   "expect": {
+    "bass": "absent"
+   }
+  },
+  {
+   "name": "chorus2",
+   "bars": 8,
+   "first_line": "I need one more commit",
+   "expect": {
+    "bass": "stop_in_pickup_bar"
+   }
+  },
+  {
+   "name": "breakdown",
+   "bars": 3,
+   "first_line": "Down the call stack, quiet down here",
+   "expect": {
+    "drums": "absent",
+    "bass": "absent"
+   }
+  },
+  {
+   "name": "bridge",
+   "bars": 8,
+   "first_line": "There it is, on line forty-two",
+   "expect": {}
+  },
+  {
+   "name": "final_chorus",
+   "bars": 9,
+   "first_line": "I need one last commit",
+   "expect": {
+    "bass": "stop_in_pickup_bar",
+    "stop_bar": "last"
+   }
+  },
+  {
+   "name": "outro",
+   "bars": 5,
+   "first_line": null,
+   "expect": {}
+  }
+ ]
+}
