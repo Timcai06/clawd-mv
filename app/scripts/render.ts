@@ -111,7 +111,9 @@ async function video(page: Page, from: number, to: number, fps: number, out: str
   const audio = existsSync(wav) ? wav : path.join(ROOT, 'audio/song.mp3');
   if (!flag('noaudio')) console.log(`audio source: ${audio}`);
   const args = ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${OW}x${OH}`, '-r', String(fps), '-i', 'pipe:0'];
-  if (!flag('noaudio')) args.push('-ss', String(from), '-t', String(to - from), '-i', audio);
+  // Audio length = the exact frame span, so -shortest never trims the last video frame.
+  const span = (Math.round(to * fps) - Math.round(from * fps)) / fps;
+  if (!flag('noaudio')) args.push('-ss', String(Math.round(from * fps) / fps), '-t', String(span), '-i', audio);
   // Frames are sRGB (toSRGB in the final pass): convert with the BT.709 matrix and tag the stream,
   // otherwise ffmpeg converts with BT.601 while players and YouTube decode untagged HD as BT.709.
   // scale tags the matrix and range; primaries and transfer need setparams (the -color_* output flags don't reach the stream).
@@ -145,7 +147,12 @@ async function video(page: Page, from: number, to: number, fps: number, out: str
   let failure: unknown = null;
   const streaming = page.evaluate((o) => (window as any).__clawd.stream(o), { from, to, fps, ws: `ws://localhost:${server.port}`, samples: SAMPLES, shutter: +opt('shutter', '0.5')!, inflight: 4 })
     .catch((e) => { failure = e; return {} as Record<string, number>; });
-  while (frames < total && !failure) await Bun.sleep(20);
+  let settledAt = 0;
+  streaming.then(() => { settledAt = performance.now(); });
+  // Wait for every frame; if the page finished but frames are missing, give up after 5 s
+  // (the file is still finalized and the shortfall is reported) instead of hanging forever.
+  while (frames < total && !failure && !(settledAt && performance.now() - settledAt > 5000)) await Bun.sleep(20);
+  if (frames < total && !failure) console.error(`\nWARNING: received ${frames}/${total} frames`);
   ff.stdin.end();
   const exitCode = await ff.exited;
   server.stop();
