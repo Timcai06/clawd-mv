@@ -135,3 +135,27 @@ export const GIT_LOG_COMMITS: readonly Commit[] = [
   { hash: '60a9d2e', message: 'fix', detail: '09:55' },
   { hash: 'a1f3c9e', message: 'fix: calendar loop', detail: '10:42' },
 ];
+
+export const WELCOME_LINES = [
+  '✻ Welcome to Claude Code',
+  'cwd: ~/calendar',
+  'Issue #1031 · calendar',
+  'Ready for one more commit.',
+] as const;
+export const PR_DIFF = [
+  { kind: 'delete', line: 42, text: '- for (let d = 0; d <= days; d++) {' },
+  { kind: 'add', line: 42, text: '+ for (let d = 0; d < days; d++) {' },
+] as const;
+export const PR_COPY = { context: 'calendar / Issue #1031', stats: '+1 −1', review: '✓ LGTM', merge: 'Merge pull request' } as const;
+export const GIT_GRAPH_LABELS = { main: 'main', branch: 'fix/october-32' } as const;
+export const STACK_RAIN_LINES = CALL_STACK.map((frame) => `at ${frame.name} (${frame.path.split('/').at(-1)}:${frame.line})`);
+export const UNDEFINED_WORD = 'undefined';
+
+// ANSI alphanumeric layout, with widths measured in key units.
+export const KEYBOARD_ROWS = [
+  [['`', 1], ['1', 1], ['2', 1], ['3', 1], ['4', 1], ['5', 1], ['6', 1], ['7', 1], ['8', 1], ['9', 1], ['0', 1], ['-', 1], ['=', 1], ['Backspace', 2]],
+  [['Tab', 1.5], ['Q', 1], ['W', 1], ['E', 1], ['R', 1], ['T', 1], ['Y', 1], ['U', 1], ['I', 1], ['O', 1], ['P', 1], ['[', 1], [']', 1], ['\\', 1.5]],
+  [['Caps', 1.75], ['A', 1], ['S', 1], ['D', 1], ['F', 1], ['G', 1], ['H', 1], ['J', 1], ['K', 1], ['L', 1], [';', 1], ["'", 1], ['Enter', 2.25]],
+  [['Shift', 2.25], ['Z', 1], ['X', 1], ['C', 1], ['V', 1], ['B', 1], ['N', 1], ['M', 1], [',', 1], ['.', 1], ['/', 1], ['Shift', 2.75]],
+  [['Ctrl', 1.25], ['Meta', 1.25], ['Alt', 1.25], ['Space', 6.25], ['Alt', 1.25], ['Meta', 1.25], ['Menu', 1.25], ['Ctrl', 1.25]],
+] as const;
