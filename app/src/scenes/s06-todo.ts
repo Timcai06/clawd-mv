@@ -2,7 +2,7 @@
 // measured snares, then crosses each task out. PAPER has no glow or lit surfaces.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { FSPass, Layer2D, SCALE, scaleContext2D } from '../engine/gl';
+import { FSPass, Layer2D } from '../engine/gl';
 import { strokeText, drawStrokeText, writtenLength, type StrokeText } from '../engine/stroke';
 import { F, font, textPath2D } from '../engine/type';
 import { ease, frameIdx, hash, lerp } from '../engine/util';
@@ -49,27 +49,9 @@ void main() {
 interface View { x: number; y: number; zoom: number; angle: number }
 interface Pen { x: number; y: number; moving: boolean }
 
-// Chrome's GPU Canvas cache can change edge coverage after a transformed draw.
-// A CPU-backed plotter surface gives exact random-access rasterization. Keep this
-// local because the shared Layer2D constructor belongs to the integration lead.
-class PlotterLayer extends Layer2D {
-  constructor(w = 1920, h = 1080) {
-    super(w, h);
-    this.texture.dispose();
-    this.canvas = document.createElement('canvas');
-    this.canvas.width = w * SCALE; this.canvas.height = h * SCALE;
-    this.ctx = scaleContext2D(this.canvas.getContext('2d', { willReadFrequently: true })!, SCALE);
-    this.texture = new THREE.CanvasTexture(this.canvas);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.generateMipmaps = false;
-    this.texture.flipY = true;
-  }
-}
-
 class TodoWorld {
   users = 0;
-  layer = new PlotterLayer();
+  layer = new Layer2D();
   bg = new FSPass(PAPER, {
     paper: { value: new THREE.Vector3(...lin('paper')) }, ink: { value: new THREE.Vector3(...lin('ink')) },
     clay: { value: new THREE.Vector3(...lin('clay')) },
@@ -82,7 +64,7 @@ class TodoWorld {
   handoff: StrokeText;
   chars: [number, number][];
   handoffChars: [number, number][];
-  heading = new PlotterLayer(600, 240);
+  heading = new Layer2D(600, 240);
 
   constructor(ctx: SceneCtx) {
     this.times = resolveCTimes(ctx.audio, ctx.lyrics);
