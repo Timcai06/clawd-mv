@@ -79,7 +79,16 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
    - 关键帧：用选中的风格图当参考，生图出每个场景 1–2 张，给 T 看构图
    - **动态分镜**（真歌定稿后）：用引擎渲染整片灰盒版（色块、文字、Clawd 精灵，低采样 1080p），T 用它判断节奏。这是最便宜的改节奏阶段
 
-## ⏳ 阶段 5：通用组件（C 定接口，X 实现，C 审查；阶段 2 期间就开始）
+## 🔜 阶段 5：通用组件（C 定接口，X 实现，C 审查）
+进度（2026-09-30）：
+- ✅ 架构文档 `docs/ARCHITECTURE.md`；`theme.ts` 色板 token；`POSTER_POST` 后期预设。引擎新增 `shoulder` 参数，纸色和品牌色已校准到规范值。
+- ✅ `timeline.ts` 改为渐进替换：有 `scenes/sNN-*.ts` 就用真场景，否则用灰盒；`?gallery=名字` 是组件陈列页入口。
+- ✅ C：`kit/clawd.ts`（动作 A1–A13）、`kit/stage.ts`（海报 + 悬浮面板 + 投影 + 相机）；陈列页 `gallery-clawd`、`gallery-stage`。
+- ✅ X5：编辑器、终端、语法高亮、图标、故事内容（`kit/editor.ts` 等）。
+- 🔜 X6：测试列表、git log、待办、通知、issue 卡片、日历（Codex 在做）。
+- ⏳ 下一批：调用栈、PR / diff / git graph、设备框、键盘、文字粒子；`kit/time.ts`；景深。
+
+原计划：
 - C 先写 `docs/ARCHITECTURE.md`：组件接口、场景契约、调色板 token、时间线锚点规则。
 - ✅ X2 上游残留清理（2026-09-30 合并）：删掉 P(doom) 读数，`window.__pdoom` 改成 `window.__clawd`，`PDOOM_NO_HMR` 改成 `CLAWD_NO_HMR`；改动前后渲染的静帧逐像素一致。遗留：`render.ts` 的 `plates` 模式里还写死了上游的场景 ID，等有了我们的场景再改
 - X3 仿编辑器组件：标签页、行号、语法高亮、光标、终端、文件树、待办清单；打字节奏由歌词和拍点驱动
