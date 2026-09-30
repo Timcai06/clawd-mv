@@ -139,12 +139,18 @@ async function video(page: Page, from: number, to: number, fps: number, out: str
       },
     },
   });
-  const used: Record<string, number> = await page.evaluate((o) => (window as any).__clawd.stream(o), { from, to, fps, ws: `ws://localhost:${server.port}`, samples: SAMPLES, shutter: +opt('shutter', '0.5')!, inflight: 4 });
-  // wait for all frames to arrive
-  while (frames < total) await Bun.sleep(20);
+  // Do not wait for the page's promise before closing ffmpeg's input: once every frame has
+  // arrived the file must be finalized even if that promise never settles (seen twice: all
+  // frames delivered, evaluate() still pending, ffmpeg waiting on stdin forever).
+  let failure: unknown = null;
+  const streaming = page.evaluate((o) => (window as any).__clawd.stream(o), { from, to, fps, ws: `ws://localhost:${server.port}`, samples: SAMPLES, shutter: +opt('shutter', '0.5')!, inflight: 4 })
+    .catch((e) => { failure = e; return {} as Record<string, number>; });
+  while (frames < total && !failure) await Bun.sleep(20);
   ff.stdin.end();
   const exitCode = await ff.exited;
   server.stop();
+  if (failure) throw new Error(`frame streaming failed after ${frames}/${total} frames: ${failure}`);
+  const used: Record<string, number> = await Promise.race([streaming, Bun.sleep(5000).then(() => ({}))]);
   if (exitCode !== 0) throw new Error(`ffmpeg exited with code ${exitCode}`);
   console.log(`\nwrote ${out} (${frames} frames in ${((performance.now() - t0) / 1000).toFixed(1)}s)`);
   console.log(`sub-frames per frame (count:frames): ${hist(used)}`);
