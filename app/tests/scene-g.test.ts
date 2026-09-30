@@ -1,0 +1,106 @@
+import { describe, expect, test } from 'bun:test';
+import { AudioData } from '../src/engine/audio';
+import { Lyrics } from '../src/engine/lyrics';
+import { afterBeats } from '../src/kit/time';
+import { creditsState, CREDIT_LINES } from '../src/kit/credits';
+import { pose } from '../src/kit/clawd';
+import { resolveReleaseTimes, releaseState, tomorrowState, WALL_CELLS } from '../src/scenes/parts/s17-release-state';
+import audioJSON from '../../data/audio.json';
+import lyricsJSON from '../../data/lyrics.json';
+
+const audio = new AudioData(audioJSON), lyrics = new Lyrics(lyricsJSON);
+const T = resolveReleaseTimes(audio, lyrics), eps = 1e-6;
+
+describe('G editorial and musical timing', () => {
+  test('all nine release shots and seven outro shots are covered without a gap', () => {
+    expect(T.release.map(s => s.id)).toEqual(Array.from({ length: 9 }, (_, i) => `S17-${i + 1}`));
+    expect(T.tomorrow.map(s => s.id)).toEqual(Array.from({ length: 7 }, (_, i) => `S18-${i + 1}`));
+    const shots = [...T.release, ...T.tomorrow];
+    for (let i = 0; i < shots.length - 1; i++) expect(shots[i]!.end).toBe(shots[i + 1]!.start);
+    expect(T.end).toBe(audio.duration);
+  });
+
+  test('CLAY begins on the second commit syllable and ends exactly at the PR cut', () => {
+    const commit = lyrics.get('I need one last commit').words.at(-1)!;
+    expect(T.hit).toBe(commit.syl![1]![0]);
+    expect(T.hit).not.toBe(audio.nearestBeat(T.hit));
+    expect(releaseState(audio, T.hit - eps, T).ground).toBe('paper');
+    expect(releaseState(audio, T.hit, T)).toMatchObject({ ground: 'clay', impact: 1, shot: 1 });
+    expect(releaseState(audio, T.release[2]!.start, T).ground).toBe('paper');
+  });
+
+  test('a shifted alignment retimes the stressed syllable without retaining song seconds', () => {
+    const shifted = structuredClone(lyricsJSON);
+    const line = shifted.lines.find(l => l.text === 'I need one last commit')!;
+    line.start += 0.11; line.end += 0.11;
+    for (const word of line.words) {
+      word.start += 0.11; word.end += 0.11;
+      if ('syl' in word && word.syl) for (const syllable of word.syl) { syllable[0] += 0.11; syllable[1] += 0.11; }
+    }
+    expect(resolveReleaseTimes(audio, new Lyrics(shifted)).hit - T.hit).toBeCloseTo(0.11);
+  });
+
+  test('the merge is drawn over two measured beats and remains complete in the celebration', () => {
+    const at = T.release[5]!.start;
+    expect(releaseState(audio, at - eps, T).merge).toBe(0);
+    expect(releaseState(audio, at, T).merge).toBe(0);
+    expect(releaseState(audio, afterBeats(audio, at, 1), T).merge).toBeCloseTo(0.5);
+    expect(releaseState(audio, afterBeats(audio, at, 2), T).merge).toBe(1);
+    expect(releaseState(audio, T.release[6]!.start, T).merge).toBe(1);
+  });
+
+  test('the canonical wall completes before the final one-beat reveal and cranes during the preceding shot', () => {
+    expect(WALL_CELLS).toEqual(pose(null, { beat: 0, beat0: 0, p: 0 }).cells);
+    expect(WALL_CELLS.filter(cell => cell.k === 'D')).toHaveLength(2);
+    const at = T.release[7]!.start, final = T.release[8]!.start;
+    expect(releaseState(audio, at, T).wallLit).toBe(1);
+    expect(releaseState(audio, final, T).wallLit).toBe(WALL_CELLS.length);
+    expect(releaseState(audio, final, T).wallZoom).toBeLessThan(1.4);
+    expect(releaseState(audio, T.tomorrow[0]!.start - eps, T).wallZoom).toBeCloseTo(0.82);
+  });
+
+  test('dawn is a hard flip on a measured downbeat within the calendar shot', () => {
+    expect(audio.downbeats.some(t => Math.abs(t - T.dawn) < eps)).toBe(true);
+    expect(T.dawn).toBeGreaterThan(T.tomorrow[4]!.start);
+    expect(T.dawn).toBeLessThan(T.tomorrow[5]!.start);
+    expect(tomorrowState(audio, T.dawn - eps, T)).toMatchObject({ ground: 'ink', dawn: false });
+    expect(tomorrowState(audio, T.dawn, T)).toMatchObject({ ground: 'paper', dawn: true });
+    expect(tomorrowState(audio, T.dawn, T).calendarFlip).toBeCloseTo(0.5, 2);
+  });
+
+  test('devices switch off in the first outro shot and the star map survives until dawn', () => {
+    const at = T.tomorrow[0]!.start;
+    expect(tomorrowState(audio, at, T).wallLit).toBe(WALL_CELLS.length);
+    expect(tomorrowState(audio, afterBeats(audio, at, 3), T).wallLit).toBe(0);
+    expect(tomorrowState(audio, T.dawn - eps, T).starOpacity).toBeGreaterThan(0);
+    expect(tomorrowState(audio, T.dawn, T).starOpacity).toBe(0);
+  });
+
+  test('all credit rows finish before the fade and the last frame is fully faded', () => {
+    const at = T.tomorrow[6]!.start;
+    const beforeFade = afterBeats(audio, at, 13);
+    expect(creditsState(beforeFade, at).lines.every(row => row.progress === 1)).toBe(true);
+    expect(CREDIT_LINES.some(line => line.includes('Every frame drawn by code'))).toBe(true);
+    expect(tomorrowState(audio, beforeFade, T).creditsOpacity).toBe(1);
+    expect(tomorrowState(audio, T.end, T).creditsOpacity).toBe(0);
+  });
+
+  test('nominal BPM changes do not alter the measured-grid animation', () => {
+    const slow = new AudioData({ ...audioJSON, bpm: 40 });
+    const fast = new AudioData({ ...audioJSON, bpm: 240 });
+    for (const t of [T.hit, T.release[5]!.start + 0.3, T.dawn, T.end - 1]) {
+      expect(releaseState(slow, t, T)).toEqual(releaseState(fast, t, T));
+      expect(tomorrowState(slow, t, T)).toEqual(tomorrowState(fast, t, T));
+    }
+  });
+
+  test('state calculations remain unchanged under out-of-order seeks', () => {
+    for (const state of [releaseState, tomorrowState]) {
+      for (const t of [T.hit + 0.2, T.release[5]!.start + 0.4, T.dawn + 0.2]) {
+        const expected = state(audio, t, T);
+        state(audio, T.end, T); state(audio, 0, T);
+        expect(state(audio, t, T)).toEqual(expected);
+      }
+    }
+  });
+});
