@@ -2,9 +2,9 @@
 // measured snares, then crosses each task out. PAPER has no glow or lit surfaces.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { FSPass, Layer2D } from '../engine/gl';
+import { FSPass, Layer2D, SCALE, scaleContext2D } from '../engine/gl';
 import { strokeText, drawStrokeText, writtenLength, type StrokeText } from '../engine/stroke';
-import { F, font } from '../engine/type';
+import { F, font, textPath2D } from '../engine/type';
 import { ease, frameIdx, hash, lerp } from '../engine/util';
 import { css, lin, INK_SOFT } from '../theme';
 import { drawCursor, drawTrail, blink } from '../kit/cursor';
@@ -49,9 +49,27 @@ void main() {
 interface View { x: number; y: number; zoom: number; angle: number }
 interface Pen { x: number; y: number; moving: boolean }
 
+// Chrome's GPU Canvas cache can change edge coverage after a transformed draw.
+// A CPU-backed plotter surface gives exact random-access rasterization. Keep this
+// local because the shared Layer2D constructor belongs to the integration lead.
+class PlotterLayer extends Layer2D {
+  constructor(w = 1920, h = 1080) {
+    super(w, h);
+    this.texture.dispose();
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = w * SCALE; this.canvas.height = h * SCALE;
+    this.ctx = scaleContext2D(this.canvas.getContext('2d', { willReadFrequently: true })!, SCALE);
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.texture.generateMipmaps = false;
+    this.texture.flipY = true;
+  }
+}
+
 class TodoWorld {
   users = 0;
-  layer = new Layer2D();
+  layer = new PlotterLayer();
   bg = new FSPass(PAPER, {
     paper: { value: new THREE.Vector3(...lin('paper')) }, ink: { value: new THREE.Vector3(...lin('ink')) },
     clay: { value: new THREE.Vector3(...lin('clay')) },
@@ -64,6 +82,7 @@ class TodoWorld {
   handoff: StrokeText;
   chars: [number, number][];
   handoffChars: [number, number][];
+  heading = new PlotterLayer(600, 240);
 
   constructor(ctx: SceneCtx) {
     this.times = resolveCTimes(ctx.audio, ctx.lyrics);
@@ -72,9 +91,13 @@ class TodoWorld {
     this.handoff = strokeText(this.times.claws.text, 'readable', 42);
     this.chars = lyricCharTimes(this.times.plan);
     this.handoffChars = lyricCharTimes(this.times.claws);
+    // Rasterize the fixed heading once at output resolution. Canvas can reuse
+    // differently transformed path/glyph cache entries with different edge AA.
+    this.heading.ctx.fillStyle = css('ink');
+    this.heading.ctx.fill(textPath2D('PLAN', F.archivo(100, 800), 210, 0, 210));
   }
 
-  dispose() { this.bg.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.bg.mat.dispose(); this.layer.texture.dispose(); this.heading.texture.dispose(); }
 }
 
 let world: TodoWorld | undefined;
@@ -108,8 +131,7 @@ export default class S06Todo extends Scene {
     const T = this.w.times, au = this.ctx.audio, st = todoState(au, t, T);
     let pen: Pen = { x: BOX_X, y: ROW_Y[0]! - 18, moving: false };
 
-    c.fillStyle = css('ink'); c.font = font(F.archivo(100, 800), 210);
-    c.fillText('PLAN', 263, 268);
+    c.drawImage(this.w.heading.canvas, 263, 58, 600, 240);
     c.font = font(F.mono(500), 18); c.fillStyle = css('ink', INK_SOFT.strong);
     c.fillText('calendar / month.ts', 277, 112);
     c.fillText('01 — PREPARE', 1430, 112);

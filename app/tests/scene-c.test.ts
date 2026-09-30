@@ -3,6 +3,7 @@ import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { afterBeats } from '../src/kit/time';
 import { resolveCTimes, todoState, keyboardState, lyricCharTimes } from '../src/scenes/parts/s06-timing';
+import { TERRAIN_KEYS, ENTER, KEY_COUNT, keyHeight, terrainOpacity } from '../src/scenes/parts/s07-terrain';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 
@@ -70,8 +71,31 @@ describe('C group musical events', () => {
   });
 });
 
+describe('keyboard terrain', () => {
+  test('the instanced terrain retains the real row-major keyboard layout and one Enter', () => {
+    expect(TERRAIN_KEYS).toHaveLength(KEY_COUNT);
+    expect(TERRAIN_KEYS.filter((k) => k.enter)).toEqual([ENTER]);
+    expect(ENTER.width).toBeGreaterThan(2);
+    for (const key of TERRAIN_KEYS) expect(key.width * key.depth).toBeGreaterThan(0);
+  });
+  test('wave heights vary in space and time; Enter receives the isolated landing', () => {
+    const first = keyHeight(-5, 1, false, 44, 0, 0);
+    expect(keyHeight(-5, 1, false, 44.5, 0, 0)).not.toBe(first);
+    expect(keyHeight(5, 1, false, 44, 0, 0)).not.toBe(first);
+    expect(keyHeight(ENTER.x, ENTER.z, true, 44, 1, 1)).toBeCloseTo(0.28);
+    expect(keyHeight(ENTER.x, ENTER.z, true, 44, 1, 0)).toBeCloseTo(0.5);
+  });
+  test('terrain vanishes continuously before the chorus cursor hold', () => {
+    expect(terrainOpacity(0)).toBe(1);
+    expect(terrainOpacity(0.72)).toBe(1);
+    expect(terrainOpacity(0.85)).toBeCloseTo(0.5);
+    expect(terrainOpacity(0.98)).toBe(0);
+    expect(terrainOpacity(1)).toBe(0);
+  });
+});
+
 test('each C group scene has exactly one discoverable main module', () => {
   const files = [...new Bun.Glob('s*.ts').scanSync({ cwd: new URL('../src/scenes/', import.meta.url).pathname })];
   expect(files.filter((s) => s.startsWith('s06-'))).toEqual(['s06-todo.ts']);
-  // The keyboard module is added in the next scene commit.
+  expect(files.filter((s) => s.startsWith('s07-'))).toEqual(['s07-keyboard.ts']);
 });
