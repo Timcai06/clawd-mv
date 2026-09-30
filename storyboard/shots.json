@@ -51,7 +51,7 @@
   {"id": "S08-4", "scene": "S08", "t": 29.2, "anchor": {"line": "Every bracket's gonna fit", "occ": 1, "word": "fit", "snap": "beat"}, "clawd": "A3", "camera": "俯视", "visual": "函数块像俄罗斯方块一样落进代码的缝隙，严丝合缝，嵌进去的那一行闪一下。"},
   {"id": "S08-5", "scene": "S08", "t": 30.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "Tap", "snap": "beat"}, "clawd": "A4", "camera": "快切 ①：正面", "visual": "Clawd 敲键盘，正面。"},
   {"id": "S08-6", "scene": "S08", "t": 31.3, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "Tap", "sub": 2, "snap": "beat"}, "clawd": "A4", "camera": "快切 ②：侧面", "visual": "Clawd 敲键盘，侧面。"},
-  {"id": "S08-7", "scene": "S08", "t": 31.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "Tap", "sub": 3, "snap": "beat"}, "clawd": "A4", "camera": "快切 ③：顶视", "visual": "顶视：四条腿像钢琴锤一样起落。"},
+  {"id": "S08-7", "scene": "S08", "t": 31.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "tapping", "snap": "beat"}, "clawd": "A4", "camera": "快切 ③：顶视", "visual": "顶视：四条腿像钢琴锤一样起落。"},
   {"id": "S08-8", "scene": "S08", "t": 32.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "quit", "snap": "beat"}, "clawd": "A4", "camera": "拉远", "visual": "代码像倒流的瀑布一样往上滚。"},
   {"id": "S08-9", "scene": "S08", "t": 34.3, "anchor": {"line": "I need one more commit", "occ": 2, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "第二次刹车。"},
   {"id": "S08-10", "scene": "S08", "t": 36.0, "anchor": {"line": "I need one more commit", "occ": 2, "word": "commit", "snap": "downbeat"}, "clawd": "A6", "camera": "冲击", "visual": "落拍：哈希变成两行，叠起来。"},
@@ -70,7 +70,7 @@
   {"id": "S11-4", "scene": "S11", "t": 58.2, "anchor": {"line": "Undefined, undefined, and I don't know why", "occ": 1, "word": "why", "snap": "beat"}, "clawd": "A3", "camera": "拉到极远", "visual": "Clawd 在雨中孤零零的，很小。"},
 
   {"id": "S12-1", "scene": "S12", "t": 59.6, "anchor": {"line": "Run it again, run it again, again", "occ": 1, "word": "Run", "snap": "downbeat"}, "clawd": "A8", "camera": "中景", "visual": "终端第 1 次敲同一条命令：红。"},
-  {"id": "S12-2", "scene": "S12", "t": 60.6, "anchor": {"line": "Run it again, run it again, again", "occ": 1, "word": "run", "snap": "beat"}, "clawd": "A8", "camera": "更近", "visual": "第 2 次：更红。"},
+  {"id": "S12-2", "scene": "S12", "t": 60.6, "anchor": {"line": "Run it again, run it again, again", "occ": 1, "word": "run", "sub": 2, "snap": "beat"}, "clawd": "A8", "camera": "更近", "visual": "第 2 次：更红。"},
   {"id": "S12-3", "scene": "S12", "t": 61.7, "anchor": {"line": "Run it again, run it again, again", "occ": 1, "word": "again", "sub": 3, "snap": "beat"}, "clawd": "A8", "camera": "极近", "visual": "第 3 次：红色占满全屏。"},
   {"id": "S12-4", "scene": "S12", "t": 62.7, "anchor": {"line": "Clear the cache and count to ten", "occ": 1, "word": "Clear", "snap": "downbeat"}, "clawd": "A3", "camera": "中景", "visual": "缓存文件被一扫而空。"},
   {"id": "S12-5", "scene": "S12", "t": 64.4, "anchor": {"line": "Clear the cache and count to ten", "occ": 1, "word": "count", "snap": "beat"}, "clawd": "A9", "camera": "Clawd 特写", "visual": "Clawd 闭眼用腿数数，数字浮在头顶：1…10、11——「11」闪一下红（差一错误的伏笔，要让观众看清）。"},
