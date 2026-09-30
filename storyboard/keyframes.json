@@ -1,24 +1,96 @@
 {
- "_doc": "Storyboard keyframe prompts (one key shot per scene), rendered with the gpt-image-2 skill (Images via Codex) into out/storyboard/. Reference 1 = out/design/f1-fusion-commit.png (style), reference 2 = reference/clawd/clawd-canonical.png (Clawd). For communication only; never used as assets.",
- "style": "Storyboard keyframe for a music video, 16:9 (1920x1080). Match the visual system of reference image 1 exactly: a Swiss typographic poster world (off-white paper #F2EFE9, thin ink-blue #1B2A4A grid rules, giant cropped bold grotesk type, flat clay-orange #D77757 accents such as a big flat circle) with high-fidelity, palette-restricted UI panels floating above the paper in 3D perspective, casting soft shadows on the paper. No outlines, no stickers, no cartoon styling, no gradients, no glow, no dark background, no photorealistic lighting, no brand logos. Semantic red #C8453B and green #3F8F5F appear ONLY on test failure/pass marks and code diff lines. The mascot is exactly the flat 16x5 pixel sprite from reference image 2 (orange body, two dark square eyes, arms sticking out at both sides, four one-pixel legs), drawn with crisp square pixels, never 3D, never redesigned.",
+ "_doc": "Storyboard keyframes v2 (visual spec v2, 2026-10-01): one idiom per scene, PAPER/INK/CLAY grounds. Only reference image = reference/clawd/clawd-canonical.png (Clawd). Rendered into out/storyboard/v2/. For communication only; never used as assets.",
+ "style": "Storyboard keyframe for a music video, 16:9 (1920x1080). Shared grammar: a strict Swiss typographic system (Archivo-like bold grotesk that can be cropped by the frame, a mono font for machine text, thin hairline rules, asymmetric grid layouts, generous negative space); a strict palette of only three colours: warm paper #F2EFE9, deep ink blue #1B2A4A (never black) and clay orange #D77757, plus red #C8453B / green #3F8F5F ONLY for failing/passing test marks and code diff lines. Depth may come from fine engraving-style hatching lines and atmospheric haze, never from photorealistic lighting, reflections, lens flares or gradients. Only clay-orange elements may glow, and only on the ink-blue ground. The world is kinetic, precise, graphic and premium; not cartoon: no outlines, no stickers, no mascot-style world. The only character is exactly the flat 16x5 pixel sprite in the reference image (orange body, two dark square eyes, arms sticking out at both sides, four one-pixel legs), drawn with crisp square pixels, small in frame, never 3D, never redesigned. A small clay-orange block text cursor is a recurring motif.",
  "frames": [
-  {"id": "S01", "shot": "S01-2", "prompt": "Scene: cold start. Almost empty paper poster; a single blinking text cursor; a clean bordered welcome panel is printing line by line: '✻ Welcome to Claude Code' and 'cwd: ~/calendar'. Inside the panel the pixel mascot is assembling pixel by pixel, eyes closed (asleep). Giant cropped grotesk type '09:00' on the paper behind. Calm, lots of white space, camera slowly pushing in."},
-  {"id": "S02", "shot": "S02-1", "prompt": "Scene: the ping. An editor panel floats at a slight angle; in its bottom-right corner a notification card pops up reading 'Issue #1031 · calendar'. The pixel mascot sits in the editor's sidebar corner with ONE eye open. Giant cropped type 'PING' on the paper. Camera pushing toward the notification."},
-  {"id": "S03", "shot": "S03-2", "prompt": "Scene: the issue. A floating issue card panel with the title 'Calendar shows October 32', a clay 'bug' label stamped on it at an angle, and an attached thumbnail of a month calendar where an orange hand-drawn circle marks the extra cell '32'. The pixel mascot stands on top of the title. Giant cropped type 'BUG' behind."},
-  {"id": "S04", "shot": "S04-2", "prompt": "Scene: calendar world. A huge October calendar grid lies flat on the paper like a floor, seen from a high oblique camera angle; cells 1 to 31 form a lit path, and an extra cell '32' pops up out of the floor at the end. The pixel mascot stands in front of cell 32, looking at it. Giant type 'OCT 32' printed across the paper."},
-  {"id": "S05", "shot": "S05-3", "prompt": "Scene: reading the code. A file tree panel unfolds like a staircase of drawers (src / calendar / month.ts); lines of monospace code become horizontal platforms floating over the poster grid, some already highlighted as read. The pixel mascot crab-walks sideways along one code line. Side-scrolling composition."},
-  {"id": "S06", "shot": "S06-2", "prompt": "Scene: the plan. A todo list panel in a terminal-like style with three items: '☑ Read the code' (struck through), '☑ Write a plan' (struck through), '☐ Fix October' being checked right now. The pixel mascot is mid-hop next to the list. Giant cropped type 'CHECK CHECK CHECK' on the paper."},
-  {"id": "S07", "shot": "S07-1", "prompt": "Scene: claws on the keys. An oversized flat keyboard panel seen from directly above, keycaps rising and falling like a wave; the pixel mascot lands on the Enter key (drawn squashed by one pixel row). Strong diagonal composition suggesting the camera is about to rush toward a text cursor."},
-  {"id": "S08", "shot": "S08-2", "prompt": "Scene: the chorus hit 'I need one more COMMIT'. A floating editor panel; from its text cursor a large commit hash 'a1f3c9e · fix: calendar loop' bursts out; code brackets ( ) { } [ ] fly in from all sides and snap into pairs. Giant cropped type 'COMMIT' slams across the poster, the big clay circle behind. The pixel mascot jumps with arms raised. High energy, frozen at the moment of impact."},
-  {"id": "S09", "shot": "S09-2", "prompt": "Scene: running the tests. A terminal panel rises from the bottom of the frame; the command 'npm test' is typed and a row of progress dots advances one per beat. The pixel mascot stares at it, tense. Giant cropped type 'RUN' on the paper. Quiet, anticipating."},
-  {"id": "S10", "shot": "S10-2", "prompt": "Scene: nineteen red. A test list panel where all 19 rows are failing (small red crosses), the counter '19 failed' enlarged in red; the whole red wall is shattering into flat geometric shards falling across the poster grid. The pixel mascot jitters in panic. Giant cropped type '19 RED'."},
-  {"id": "S11", "shot": "S11-3", "prompt": "Scene: stack traces falling like rain. Hundreds of flat monospace lines like 'at daysIn (month.ts:42)' fall diagonally across the poster like rain; a giant word 'undefined' crashes down from above. The pixel mascot stands small in the rain with its arms raised as a shield. Wide shot, a lot of empty paper."},
-  {"id": "S12", "shot": "S12-5", "prompt": "Scene: run it again, and count to ten. Three stacked terminal panels show the same command repeated, each one closer and more red-marked. In the foreground a close-up of the pixel mascot with eyes closed counting on its legs; floating numbers 1 2 3 ... 10 11 above it, the '11' in red (the off-by-one hint)."},
-  {"id": "S13", "shot": "S13-7", "prompt": "Scene: 'but it works on my machine!'. Split screen: left panel 'local ✓ all passed' with green marks, right panel 'CI ✗ 19 failed' with red marks; the two panels are colliding in the middle. Behind them a git log panel overflows with commits 'fix', 'fix', 'fix a bit'. The pixel mascot is squeezed between the panels, being flung out."},
-  {"id": "S14", "shot": "S14-4", "prompt": "Scene: down the call stack. Horizontal stack-frame bars stacked vertically like floors of a building seen in a descending elevator: 'render()', 'buildMonth()', 'daysIn()', with floor numbers beside them. The pixel mascot sinks slowly down past them, eyes looking down. At the very bottom one code line glows as a solid clay-orange bar. Calm, sparse, fewer elements, quieter tone (still light paper, not dark)."},
-  {"id": "S15", "shot": "S15-5", "prompt": "Scene: the snip. Extreme close-up of the code line 42 'for (let d = 0; d <= days; d++)'; the '≤' symbol is enlarged to a monumental landscape filling the frame. The pixel mascot stands on it and snips away the lower bar with its extended arm, turning it into '<'. Precise, graphic, dramatic scale."},
-  {"id": "S16", "shot": "S16-4", "prompt": "Scene: green, green, green. A test list panel where rows turn from red crosses to green checks like falling dominoes, accelerating; the counter shows '19/19 passed' in green. The pixel mascot jumps in celebration. Giant cropped type 'GREEN' on the paper. Upward camera movement."},
-  {"id": "S17", "shot": "S17-9", "prompt": "Scene: it works on every machine. Pull way back: dozens of flat geometric devices (laptops, tablets, phones) are arranged in a 16x5 grid that together form the giant shape of the pixel mascot (each device is one pixel of the sprite; the eye pixels are dark screens). Every lit screen shows a clean 31-day October calendar. A small PR panel 'Fix October 32nd  +1 −1  ✓ LGTM' floats in a corner. Triumphant."},
-  {"id": "S18", "shot": "S18-6", "prompt": "Scene: the next day. Back to the opening composition: the welcome panel, a terminal line 'exit 0', a small calendar flipping from 'Oct 31' to 'Nov 1'. The pixel mascot is asleep (eyes closed); in the bottom-right a new notification slides in: 'Issue #1032'. Quiet, circular ending, lots of white space."}
+  {
+   "id": "S01",
+   "shot": "S01-2",
+   "prompt": "GROUND: deep ink blue. Near darkness; a faint drafting grid recedes in perspective with atmospheric haze; a single glowing clay-orange block cursor blinks in the middle. A bordered welcome box is being drawn in thin paper-coloured hairlines, stroke by stroke: '✻ Welcome to Claude Code' / 'cwd: ~/calendar'. Inside it the pixel sprite lights up pixel by pixel, eyes closed. Quiet, anticipation."
+  },
+  {
+   "id": "S02",
+   "shot": "S02-1",
+   "prompt": "GROUND: split moment of a hard flip from ink blue to paper. The left third is still ink blue, the rest has flipped to paper on the beat; a notification card 'Issue #1031 · calendar' snaps in; the word 'PING' as huge cropped grotesk type slams across the flip line. The sprite has one eye open."
+  },
+  {
+   "id": "S03",
+   "shot": "S03-2",
+   "prompt": "GROUND: paper. Bureaucratic paper idiom: the issue is an official form with typed fields, a form number, checkboxes and hairline boxes; title field 'Calendar shows October 32'; a big clay rubber stamp 'BUG' has just slammed onto it at an angle with rough ink texture; a small calendar thumbnail with a hand-drawn clay circle around '32'. Slight camera shake feel."
+  },
+  {
+   "id": "S04",
+   "shot": "S04-2",
+   "prompt": "GROUND: paper. A 3D city made of the October calendar: each day cell is extruded into a block building with fine engraving hatching on its sides, day numbers printed on the roofs; the camera flies low along the street of days 1 to 31; at the end, block '32' is rising out of the ground; the clay cursor draws a thin route line along the street. The sprite stands at the base of block 32."
+  },
+  {
+   "id": "S05",
+   "shot": "S05-3",
+   "prompt": "GROUND: ink blue. Side-scrolling platform idiom: lines of monospace code are platforms on three parallax depth layers, paper-coloured; a file tree unfolds as a paper-line blueprint (src / calendar / month.ts) in the background; the sprite crab-walks along a code line, lines it has read light up in clay."
+  },
+  {
+   "id": "S06",
+   "shot": "S06-2",
+   "prompt": "GROUND: paper. A checklist being drawn live by the clay cursor acting as a pen plotter with single-stroke lettering: '☑ Read the code' struck through, '☑ Write a plan' struck through, and a big check stroke being drawn on '☐ Fix October' right now; huge cropped grotesk 'CHECK' behind. The sprite hops."
+  },
+  {
+   "id": "S07",
+   "shot": "S07-1",
+   "prompt": "GROUND: ink blue. The keyboard is a 3D landscape of keycaps with engraving hatching, a wave rolling through it; the camera dives steeply toward the Enter key, which becomes a glowing clay cursor at the end of the dive (match cut). The sprite rides the wave."
+  },
+  {
+   "id": "S08",
+   "shot": "S08-2",
+   "prompt": "GROUND: CLAY flood. The hook impact: the entire frame has flooded clay orange on the sung accent; giant paper-coloured grotesk 'COMMIT' slams in, cropped by the frame; a commit hash 'a1f3c9e · fix: calendar loop' bursts in ink mono type; brackets ( ) { } [ ] snapping into pairs; the sprite mid-jump (drawn in ink so it reads on clay)."
+  },
+  {
+   "id": "S09",
+   "shot": "S09-2",
+   "prompt": "GROUND: ink blue. The test runner as an oscilloscope: a paper-coloured scan line traced by the glowing clay cursor with fading phosphor-like echoes, one dot per beat, a mono label 'npm test' and 'running 19 tests…'; drafting grid behind. The sprite watches, tense."
+  },
+  {
+   "id": "S10",
+   "shot": "S10-2",
+   "prompt": "GROUND: paper. Nineteen thin glass-like slabs standing in a row in 3D, each carrying a failing test name with a red cross; they are shattering into flat angular shards on the beat, shards drawn with hatching; counter '19 failed' in red mono. The sprite jitters in panic."
+  },
+  {
+   "id": "S11",
+   "shot": "S11-3",
+   "prompt": "GROUND: ink blue. A typographic storm with depth: thousands of paper-coloured monospace lines ('at daysIn (month.ts:42)') falling diagonally on three depth layers, the far ones hazy and soft, the near ones sharp; a giant word 'undefined' crashes down in grotesk type; the sprite is tiny below, arms up."
+  },
+  {
+   "id": "S12",
+   "shot": "S12-5",
+   "prompt": "GROUND: paper. The same terminal command 'npm test' repeated as a stack of photocopies, each copy more degraded (xerox noise, skew, toner streaks), the last one mostly red marks; in the foreground huge counting numerals 1 2 3 … 10 11 set in grotesk with varying widths, the '11' in clay; the sprite with eyes closed counting on its legs."
+  },
+  {
+   "id": "S13",
+   "shot": "S13-7",
+   "prompt": "GROUND: CLAY and ink split. Hook impact level 2: half of the frame is a clay flood with a giant 'COMMIT' slam, the other half an ink-blue git log waterfall of endless commits 'fix', 'fix', 'fix a bit' scrolling up; two panels 'local ✓' (green) and 'CI ✗' (red) colliding in the centre; the sprite flung out between them."
+  },
+  {
+   "id": "S14",
+   "shot": "S14-4",
+   "prompt": "GROUND: deep ink blue. An infinite vertical shaft of stacked call-stack frames seen from above, falling away into haze: 'render()', 'buildMonth()', 'daysIn()' as hairline technical drawings with floor numbers; parallax drafting grid and vertical motion streaks; the clay cursor falls like a plumb line with the tiny sprite; at the very bottom one line glows clay."
+  },
+  {
+   "id": "S15",
+   "shot": "S15-5",
+   "prompt": "GROUND: ink blue, about to flash to paper. The '≤' symbol as a monumental 3D engraved sculpture (dense engraving hatching, like a banknote vignette), filling the frame like a landscape; the tiny sprite stands on its lower bar and snips it off with an extended arm; a small caption 'line 42: for (let d = 0; d <= days; d++)'."
+  },
+  {
+   "id": "S16",
+   "shot": "S16-4",
+   "prompt": "GROUND: paper. Nineteen test slabs falling like dominoes in 3D with engraving hatching, each turning from red cross to green check as it falls, accelerating along a curve; counter '19/19 passed' in green; huge cropped grotesk 'GREEN'. The sprite jumps."
+  },
+  {
+   "id": "S17",
+   "shot": "S17-9",
+   "prompt": "GROUND: clay flood turning to paper. Hook impact level 3, the biggest: the one-character diff enormous: '- d <= days' in red and '+ d < days' in green, set huge; the clay cursor draws the merge line of a hairline git graph joining the main line; far behind, dozens of flat devices arranged in a 16x5 grid form the giant pixel sprite shape. Triumphant."
+  },
+  {
+   "id": "S18",
+   "shot": "S18-6",
+   "prompt": "GROUND: ink blue night fading to paper at the right edge. All of the day's commits are joined into a delicate hairline constellation of clay points across the dark sky; a small calendar flips 'Oct 31' to 'Nov 1'; at the dawn edge a notification slides in: 'Issue #1032'. The sprite asleep, eyes closed. Quiet, circular ending."
+  }
  ]
 }
