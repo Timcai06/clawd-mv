@@ -81,7 +81,7 @@
   {"id": "S13-4", "scene": "S13", "t": 73.7, "anchor": {"line": "Every test is throwing fits", "occ": 1, "word": "Every", "snap": "downbeat"}, "clawd": "A8", "camera": "轻微震屏", "visual": "测试列表里的条目一个个抽搐乱跳（抖动由 t 决定）。"},
   {"id": "S13-5", "scene": "S13", "t": 77.3, "anchor": {"line": "I need one more commit", "occ": 4, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "第四次刹车。"},
   {"id": "S13-6", "scene": "S13", "t": 79.2, "anchor": {"line": "I need one more commit", "occ": 4, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击", "visual": "git log 已经堆满屏幕，新的提交还在往里塞，把整屏挤出画面。"},
-  {"id": "S13-7", "scene": "S13", "t": 80.8, "anchor": {"line": "But it works on my machine!", "occ": 1, "word": "But", "snap": "downbeat"}, "clawd": "A8", "camera": "分屏", "visual": "分屏：左边本地一片绿 ✓，右边 CI 一片红 ✗。"},
+  {"id": "S13-7", "scene": "S13", "t": 80.8, "anchor": {"line": "But it works on my machine!", "occ": 1, "word": "works", "snap": "beat"}, "clawd": "A8", "camera": "分屏", "visual": "分屏：左边本地一片绿 ✓，右边 CI 一片红 ✗。"},
   {"id": "S13-8", "scene": "S13", "t": 83.3, "anchor": {"line": "But it works on my machine!", "occ": 1, "word": "machine", "snap": "beat"}, "clawd": "A6", "camera": "对撞", "visual": "两屏往中间对撞，Clawd 被夹在中间，弹飞出画面。"},
 
   {"id": "S14-1", "scene": "S14", "t": 86.1, "anchor": {"word": null, "snap": "downbeat"}, "clawd": "A3", "camera": "固定，慢", "visual": "间隙：所有东西淡出，只剩 Clawd 站在空白里，喘口气（呼吸变慢）。"},

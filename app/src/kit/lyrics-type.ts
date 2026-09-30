@@ -57,14 +57,16 @@ export function lyricsTypeState(lyrics: Lyrics, t: number, audio: AudioData): Ly
 }
 
 /** Small mono lyric, left aligned to the caller's grid intersection. No time or data reads. */
-export function drawLyricsLine(c: CanvasRenderingContext2D, box: Box, state: LyricsTypeState): void {
+/** `on`: the ground the text sits on (default paper); text flips to paper on INK / CLAY grounds. */
+export function drawLyricsLine(c: CanvasRenderingContext2D, box: Box, state: LyricsTypeState, on: 'paper' | 'ink' | 'clay' = 'paper'): void {
+  const fg = on === 'paper' ? 'ink' : 'paper';
   if (!state.visible || !(box.width > 0 && box.height > 0)) return;
   const family = F.mono(500), size = fitSize(state.text, family, box.width, Math.min(32, box.height * 0.55));
   const baseline = box.y + box.height / 2 + size * 0.35;
   c.save(); c.beginPath(); c.rect(box.x, box.y, box.width, box.height); c.clip();
   c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.font = font(family, size);
-  c.fillStyle = css('ink', INK_SOFT.mid); c.fillText(state.text, box.x, baseline);
-  c.fillStyle = css('ink');
+  c.fillStyle = css(fg, INK_SOFT.mid); c.fillText(state.text, box.x, baseline);
+  c.fillStyle = css(fg);
   state.words.forEach((word, i) => {
     if (word.progress <= 0) return;
     const left = glyphX(state.text, word.from, family, size);
@@ -77,19 +79,19 @@ export function drawLyricsLine(c: CanvasRenderingContext2D, box: Box, state: Lyr
 }
 
 /** Pickup words appear at their onsets; the clay word slams at the supplied stress state. */
-export function drawLyricsHook(c: CanvasRenderingContext2D, box: Box, state: LyricsTypeState): void {
+export function drawLyricsHook(c: CanvasRenderingContext2D, box: Box, state: LyricsTypeState, on: 'paper' | 'ink' | 'clay' = 'paper'): void {
   if (!state.visible || !state.impact || !(box.width > 0 && box.height > 0)) return;
   const s = Math.min(box.width / 1920, box.height / 660), family = F.archivo(100, 900);
   c.save(); c.beginPath(); c.rect(box.x, box.y, box.width, box.height); c.clip();
   c.translate(box.x, box.y); c.scale(s, s);
-  c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillStyle = css('ink'); c.font = font(family, 108);
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillStyle = css(on === 'paper' ? 'ink' : 'paper'); c.font = font(family, 108);
   const pickup = state.text.slice(0, state.words[state.impact.wordIndex].from).trimEnd();
   for (const word of state.words.slice(0, state.impact.wordIndex)) {
     if (word.revealed) c.fillText(word.text, 80 + glyphX(pickup, word.from, family, 108), 152);
   }
   if (state.impact.visible) {
     c.translate(48, 580 + state.impact.y); c.scale(state.impact.scale, state.impact.scale);
-    c.fillStyle = css('clay'); c.font = font(family, fitSize('COMMIT', family, 1920, 540));
+    c.fillStyle = css(on === 'clay' ? 'paper' : 'clay'); c.font = font(family, fitSize('COMMIT', family, 1920, 540));
     c.fillText('COMMIT', 0, 0);
   }
   c.restore();

@@ -3,15 +3,22 @@
 // not the bar line), brackets snapping on beats, three tap cuts, a second freeze/slam, then
 // "works on my machine" with a one-cell hint of the bug.
 //
+// Visual spec v2: PAPER ground (live halftone + drafting grid, kick-reactive), and a CLAY flood
+// on each sung accent (hook impact level 1); the clay cursor motif carries the freeze.
+//
 // All twelve shots share one world (module singleton): every moment is a pure function of t and
 // the aligned lyric times, so cuts between shots are continuous by construction.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { ease, frameIdx, hash, lerp } from '../engine/util';
 import { F, font } from '../engine/type';
-import { css, INK_SOFT, POSTER_POST } from '../theme';
+import { css, INK_SOFT } from '../theme';
 import { Stage, type Panel, type CameraView } from '../kit/stage';
-import { drawGrid, bigType, disc, caption, columns, frameOn } from '../kit/poster';
+import { bigType, disc, caption, columns, frameOn } from '../kit/poster';
+import { Ground, postFor, type GroundKind } from '../kit/ground';
+import { drawCursor, blink } from '../kit/cursor';
+import { lyricsTypeState, drawLyricsLine } from '../kit/lyrics-type';
+import { Layer2D } from '../engine/gl';
 import { drawEditor, type EditorState } from '../kit/editor';
 import { drawCommitHash } from '../kit/gitlog';
 import { drawKeyboard } from '../kit/keyboard';
@@ -32,12 +39,14 @@ interface Times {
 
 class World {
   stage: Stage;
+  ground = new Ground();
+  overlay = new Layer2D();
   editor: Panel; hash1: Panel; hash2: Panel; keys: Panel; preview: Panel; clawd: Panel;
   times!: Times;
   users = 0;
 
   constructor(ctx: SceneCtx) {
-    this.stage = new Stage(ctx.renderer);
+    this.stage = new Stage(ctx.renderer, undefined, undefined, true);
     this.editor = this.stage.addPanel(EW, EH, 1.5);
     this.hash1 = this.stage.addPanel(1000, 300, 1.5);
     this.hash2 = this.stage.addPanel(1000, 300, 1.5);
@@ -97,23 +106,31 @@ export default class S08Commit extends Scene {
     const tapIdx = inTaps ? (t < T.taps[1]! ? 0 : t < T.taps[2]! ? 1 : 2) : -1;
     const slam1 = hitAfter(t, T.hit1, 0.09), slam2 = hitAfter(t, T.hit2, 0.09);
     const slam = Math.max(slam1, slam2);
+    // CLAY flood from each sung accent to one beat later (hook impact level 1)
+    const flood = (t >= T.hit1 && t < afterBeats(au, T.hit1, 1)) || (t >= T.hit2 && t < afterBeats(au, T.hit2, 1));
+    const kind: GroundKind = flood ? 'clay' : 'paper';
+    const typeTok = flood ? 'paper' : 'ink';
 
     // ------------------------------------------------------------------ poster
     const c = stage.poster;
     stage.clearPoster();
-    drawGrid(c, pw, ph);
     // the clay circle breathes with each slam
     const circR = 420 * (1 + 0.08 * slam) * (t < T.hit1 ? 0.0 : ease.outBack(span(t, T.hit1, T.hit1 + 0.35)));
-    disc(c, fr.x + fr.w - 210, fr.y + fr.h - 40, circR);
+    if (!flood) disc(c, fr.x + fr.w - 210, fr.y + fr.h - 40, circR);
     if (t >= T.hit1) {
       // COMMIT slams at the sung accent: 1.35x -> 1 in ~0.2 s with a short overshoot
       const k = (hit: number) => 1 + 0.35 * Math.max(0, 1 - ease.outBack(span(t, hit, hit + 0.22)));
       const scale = t >= T.hit2 ? k(T.hit2) : k(T.hit1);
-      bigType(c, 'COMMIT', fr.x - 26, fr.y + fr.h - 70, { size: 400, width: 87.5, scale });
-      bigType(c, t >= T.hit2 ? 'ONE MORE' : 'ONE MORE', fr.x - 14, fr.y + fr.h - 470, { size: 200, width: 87.5, alpha: 1 });
+      // width stretches 125 -> 87.5 over the slam (Archivo width axis)
+      const hitT = t >= T.hit2 ? T.hit2 : T.hit1;
+      const wdt = lerp(125, 87.5, ease.outCubic(span(t, hitT, hitT + 0.35)));
+      bigType(c, 'COMMIT', fr.x - 26, fr.y + fr.h - 70, { size: 400, width: wdt, scale, color: typeTok });
+      bigType(c, 'ONE MORE', fr.x - 14, fr.y + fr.h - 470, { size: 200, width: 87.5, color: typeTok });
     } else if (!frozen1) {
       bigType(c, 'ONE MORE', fr.x - 14, fr.y + fr.h - 470, { size: 200, width: 87.5, alpha: INK_SOFT.faint });
     }
+    // the cursor motif: during the freezes a big clay cursor holds the frame, blinking on beats
+    if (frozen1 || frozen2) drawCursor(c, { x: fr.x + fr.w / 2 + 520 - 120, y: fr.y + fr.h / 2 + 40, h: 150, on: blink(f.beat) });
     // brackets fly in from both edges and snap into pairs, one pair per beat
     const pairs: [string, string][] = [['(', ')'], ['{', '}'], ['[', ']']];
     if (t >= T.brackets - 0.3 && t < T.quit) {
@@ -125,7 +142,7 @@ export default class S08Commit extends Scene {
         const p = ease.outCubic(span(t, land - 0.35, land));
         const cy = fr.y + 250 + i * 190, cx = g.x(8) + 40;
         const hit = hitAfter(t, land, 0.1);
-        c.fillStyle = css(hit > 0.5 ? 'clay' : 'ink');
+        c.fillStyle = css(hit > 0.5 ? 'clay' : typeTok);
         c.fillText(a, lerp(fr.x - 300, cx - 120, p), cy);
         c.fillText(b, lerp(fr.x + fr.w + 300, cx + 120, p), cy);
       });
@@ -135,9 +152,7 @@ export default class S08Commit extends Scene {
     const fitK = span(t, T.fit, T.fit + 0.25) * (1 - span(t, T.fit + 0.6, T.fit + 1.2));
     if (fitK > 0) { c.fillStyle = css('clay', 0.9 * fitK); c.fillRect(g.x(6), fr.y + 540 - 34, g.x(11) + g.colW - g.x(6), 68); }
     // lyric line (temporary until the lyric layer lands, X8)
-    const line = this.ctx.lyrics.lineAt(t) ?? this.ctx.lyrics.lastLine(t);
-    if (line && t < line.end + 0.6) caption(c, line.text, g.x(0), fr.y + 96 - 18, 22);
-    caption(c, 'S08 · CHORUS 1', g.x(9), fr.y + 96 - 18, 22, INK_SOFT.strong);
+    caption(c, 'S08 · CHORUS 1', g.x(9), fr.y + 96 - 18, 22, flood ? 1 : INK_SOFT.strong);
 
     // ------------------------------------------------------------------ editor
     const ex = pw / 2 + 300, ey = ph / 2 + 30;
@@ -201,7 +216,7 @@ export default class S08Commit extends Scene {
     if (frozen1 || frozen2) action = 'A3';
     cl.clear();
     const pose = Clawd.pose(frozen1 || frozen2 ? null : action, { beat: f.beat, beat0, p: 0, jumpBeats: 1 });
-    Clawd.draw(cl.ctx, 4 * CPX, 8 * CPX, pose, { px: CPX });
+    Clawd.draw(cl.ctx, 4 * CPX, 8 * CPX, pose, { px: CPX, body: flood ? css('paper') : undefined });
     cl.update({ x: where.x, y: where.y - (s.h + 10 * CPX) / 2 + 3 * CPX, z: where.z + 1, rz: inTaps ? 0 : -1.2 });
 
     // ------------------------------------------------------------------ camera
@@ -227,11 +242,21 @@ export default class S08Commit extends Scene {
     } else if (t >= T.quit && t < T.pick2) v = lerpView(wide, { ...wide, zoom: 0.86, yaw: 8, pitch: 6 }, ease.inOutCubic(span(t, T.quit, T.pick2)));
     else if (t >= T.works) v = lerpView(wide, { x: pvx - 80, y: pvy - 60, zoom: 1.35, yaw: 10, pitch: 8 }, ease.inOutCubic(span(t, T.works, T.works + 1.2)));
     stage.view(v);
+    this.w.ground.render(this.ctx.renderer, out, {
+      kind, t, camX: (v.x! - pw / 2) * 0.35, camY: (v.y! - ph / 2) * 0.35, zoom: v.zoom ?? 1, kick: f.a.kick,
+      halftone: kind === 'clay' ? 0.8 : 0.35 + 0.4 * slam, grid: frozen1 || frozen2 ? 0.4 : 1,
+    });
     stage.render(out);
+    // lyric line (skipped on the hook lines: the poster slam is the hook typography)
+    const lyr = lyricsTypeState(this.ctx.lyrics, t, au);
+    const ov = this.w.overlay;
+    ov.clear();
+    if (lyr.style === 'small') drawLyricsLine(ov.ctx, { x: 96, y: 960, width: 1100, height: 60 }, lyr, kind);
+    this.ctx.comp.draw(this.ctx.renderer, ov.upload(), out);
 
     // ------------------------------------------------------------------ post: shake on slams and on "machine"
     const shakeK = 16 * slam + 7 * hitAfter(t, T.machine, 0.1);
     const fi = frameIdx(t);
-    return { ...POSTER_POST, hud: 0, shake: [shakeK * (hash(fi, 1) - 0.5) * 2, shakeK * (hash(fi, 2) - 0.5) * 2] as [number, number] };
+    return { ...postFor(kind), hud: 0, shake: [shakeK * (hash(fi, 1) - 0.5) * 2, shakeK * (hash(fi, 2) - 0.5) * 2] as [number, number] };
   }
 }

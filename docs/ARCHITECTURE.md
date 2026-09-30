@@ -50,6 +50,12 @@ storyboard/shots.json ──► app/src/storyboard.ts（锚点 → 时间）─�
 - 景深：先用最便宜的办法，按面板到焦平面的距离给每块面板选一个预先模糊过的贴图版本。不够用再考虑全屏的景深后期。
 - 面板贴图的分辨率 = 面板在屏幕上最大时的像素尺寸 × `SCALE`。斜看时开各向异性过滤，防止小字糊掉。
 
+## 活背景、光标、逐底色后期（视觉规范 v2，2026-10-01）
+- `kit/ground.ts`：`Ground` 按 PAPER / INK / CLAY 画全屏活背景（视差网格、底鼓脉冲、纵深雾、运动条纹、半调网点、底色翻转）；`GlowLayer` 让 clay 元素在 INK 底上发光；`postFor(kind)` 是逐底色的后期预设。
+- 用法：先 `ground.render(...)`，再画舞台（`new Stage(renderer, pw, ph, true)` 为透明海报、不清屏），最后叠加歌词层和发光层。
+- `kit/cursor.ts`：clay 光标母题（`drawCursor`、`drawTrail`、`blink`）。
+- `kit/lyrics-type.ts` 的绘制函数接受 `on`（所在底色），在 INK / CLAY 底上把字翻成 paper 色。
+
 ## Clawd
 
 - 数据来自 `reference/clawd/clawd.json` 的 `terminal_welcome.pixels`（16×5）。
