@@ -7,6 +7,8 @@ export interface Anchor {
   occ?: number;
   word: string | null;
   sub?: number;
+  /** 1-based syllable of the word (uses the aligned `syl` spans), e.g. 2 = the stressed -MIT of com-MIT. */
+  syl?: number;
   snap: 'downbeat' | 'beat' | 'none';
   offset_beats?: number;
 }
@@ -49,11 +51,17 @@ export function normalizeAnchor(text: string): string {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function wordTimes(line: Line, query: string): number[] {
+function wordTimes(line: Line, query: string, syl?: number): number[] {
   const q = normalizeAnchor(query);
   return line.words.flatMap((word) => {
-    // Whole compounds remain addressable (e.g. forty-two).
-    if (normalizeAnchor(word.w) === q) return [word.start];
+    // Whole compounds remain addressable (e.g. forty-two). With `syl`, a word without that
+    // aligned syllable does not match (no guessing where a syllable starts).
+    if (normalizeAnchor(word.w) === q) {
+      if (!syl) return [word.start];
+      const s = word.syl?.[syl - 1];
+      return s ? [s[0]] : [];
+    }
+    if (syl) return [];
     const parts = word.w.split(/[-\u2010-\u2015\u2212]/u).filter((p) => normalizeAnchor(p));
     if (parts.length < 2) return [];
     return parts.flatMap((part, i) => normalizeAnchor(part) === q
@@ -92,7 +100,7 @@ export function resolveStoryboard(board: Storyboard, lyrics: Lyrics, audio: Audi
       const line = lines[occ - 1];
       if (!line) reason = `line occurrence ${occ} missing (${lines.length} exact normalized matches): ${a.line}`;
       else {
-        const times = wordTimes(line, a.word);
+        const times = wordTimes(line, a.word, a.syl);
         anchorTime = times[(a.sub ?? 1) - 1];
         if (anchorTime === undefined) reason = `word occurrence ${a.sub ?? 1} missing (${times.length} exact matches): ${a.word}`;
       }

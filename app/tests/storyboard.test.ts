@@ -34,6 +34,15 @@ describe('storyboard anchors', () => {
     expect(missing.source).toBe('fallback');
     expect(missing.reason).toContain('2 exact matches');
   });
+  test('syl picks an aligned syllable start and never guesses one', () => {
+    const hook = new Lyrics({ lines: [{ text: 'I need one more commit', start: 1, end: 3, words: [
+      { w: 'commit', start: 2, end: 2.8, syl: [[2, 2.4], [2.4, 2.8]] }, { w: 'more', start: 1.6, end: 1.9 }] }] });
+    const a: Anchor = { line: 'I need one more commit', word: 'commit', syl: 2, snap: 'none' };
+    expect(resolve(a, hook).start).toBeCloseTo(2.4);
+    expect(resolve({ ...a, syl: 1 }, hook).start).toBeCloseTo(2);
+    expect(resolve({ ...a, syl: 3 }, hook).source).toBe('fallback');
+    expect(resolve({ ...a, word: 'more' }, hook).source).toBe('fallback'); // no aligned syllables
+  });
   test('snaps first, then offsets using the variable beat grid', () => {
     expect(resolve({ ...anchor, word: "don't", snap: 'beat' }).start).toBe(1.6);
     expect(resolve({ ...anchor, word: "don't", snap: 'downbeat' }).start).toBe(2.2);

@@ -1,5 +1,5 @@
 {
- "_doc": "Storyboard v2 (source of truth). Shots are anchored to a sung word (anchor.word inside anchor.line, anchor.occ-th occurrence of that line in the song, 1-based), snapped to the beat grid (snap: downbeat|beat|none, plus offset_beats). 't' is the approximate time (s) measured by Whisper on the final WAV; it is only a fallback when the anchor cannot be resolved. anchor.word null = use 't' (instrumental passages). Each shot lasts until the next shot starts. clawd = action id from docs/STORYBOARD.md (A1-A13). Text fields are Chinese (for Tim); ids and anchors are machine-readable.",
+ "_doc": "Storyboard v2 (source of truth). Shots are anchored to a sung word (anchor.word inside anchor.line, anchor.occ-th occurrence of that line in the song, 1-based), snapped to the beat grid (snap: downbeat|beat|none, plus offset_beats). 't' is the approximate time (s) measured by Whisper on the final WAV; it is only a fallback when the anchor cannot be resolved. anchor.word null = use 't' (instrumental passages). anchor.syl (optional) picks the n-th aligned syllable of the word (data/lyrics.json 'syl'); hook landings use syl 2 with snap none, because the song sings the stressed -MIT about half a beat before the bar line and the visual hit must follow the heard accent (Tim, 2026-09-30). Each shot lasts until the next shot starts. clawd = action id from docs/STORYBOARD.md (A1-A13). Text fields are Chinese (for Tim); ids and anchors are machine-readable.",
  "version": 2,
  "song": {"file": "audio/song.wav", "duration": 160.6},
  "scenes": [
@@ -46,7 +46,7 @@
   {"id": "S07-2", "scene": "S07", "t": 22.8, "anchor": {"line": "Claws on the keys and I'm not looking back", "occ": 1, "word": "looking", "snap": "beat"}, "clawd": "A4", "camera": "急推向屏幕光标（为副歌蓄力）", "visual": "键帽跟着节奏像波浪一样起伏；镜头从键盘一路冲向屏幕上的光标。"},
 
   {"id": "S08-1", "scene": "S08", "t": 24.5, "anchor": {"line": "I need one more commit", "occ": 1, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "刹车：弱起的半小节，一切冻结，只有光标还在闪。"},
-  {"id": "S08-2", "scene": "S08", "t": 26.3, "anchor": {"line": "I need one more commit", "occ": 1, "word": "commit", "snap": "downbeat"}, "clawd": "A6", "camera": "冲击 + 震屏", "visual": "落拍：提交哈希 `a1f3c9e` 从光标弹出，巨大的 COMMIT 砸下来，整屏跟着鼓点跳。"},
+  {"id": "S08-2", "scene": "S08", "t": 26.3, "anchor": {"line": "I need one more commit", "occ": 1, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击 + 震屏", "visual": "落拍：提交哈希 `a1f3c9e` 从光标弹出，巨大的 COMMIT 砸下来，整屏跟着鼓点跳。"},
   {"id": "S08-3", "scene": "S08", "t": 27.0, "anchor": {"line": "Every bracket's gonna fit", "occ": 1, "word": "bracket's", "snap": "beat"}, "clawd": "A4", "camera": "中景", "visual": "( ) { } [ ] 从四面八方飞来，一拍扣上一对，最后拼成一个完整的函数块。"},
   {"id": "S08-4", "scene": "S08", "t": 29.2, "anchor": {"line": "Every bracket's gonna fit", "occ": 1, "word": "fit", "snap": "beat"}, "clawd": "A3", "camera": "俯视", "visual": "函数块像俄罗斯方块一样落进代码的缝隙，严丝合缝，嵌进去的那一行闪一下。"},
   {"id": "S08-5", "scene": "S08", "t": 30.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "Tap", "snap": "beat"}, "clawd": "A4", "camera": "快切 ①：正面", "visual": "Clawd 敲键盘，正面。"},
@@ -54,7 +54,7 @@
   {"id": "S08-7", "scene": "S08", "t": 31.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "tapping", "snap": "beat"}, "clawd": "A4", "camera": "快切 ③：顶视", "visual": "顶视：四条腿像钢琴锤一样起落。"},
   {"id": "S08-8", "scene": "S08", "t": 32.8, "anchor": {"line": "Tap-tap-tapping, never quit", "occ": 1, "word": "quit", "snap": "beat"}, "clawd": "A4", "camera": "拉远", "visual": "代码像倒流的瀑布一样往上滚。"},
   {"id": "S08-9", "scene": "S08", "t": 34.3, "anchor": {"line": "I need one more commit", "occ": 2, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "第二次刹车。"},
-  {"id": "S08-10", "scene": "S08", "t": 36.0, "anchor": {"line": "I need one more commit", "occ": 2, "word": "commit", "snap": "downbeat"}, "clawd": "A6", "camera": "冲击", "visual": "落拍：哈希变成两行，叠起来。"},
+  {"id": "S08-10", "scene": "S08", "t": 36.0, "anchor": {"line": "I need one more commit", "occ": 2, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击", "visual": "落拍：哈希变成两行，叠起来。"},
   {"id": "S08-11", "scene": "S08", "t": 38.0, "anchor": {"line": "'Cause it works on my machine", "occ": 1, "word": "works", "snap": "downbeat"}, "clawd": "A7", "camera": "拉远", "visual": "本地预览窗口弹出：日历回到 31 格。Clawd 对镜头竖起手臂。"},
   {"id": "S08-12", "scene": "S08", "t": 40.5, "anchor": {"line": "'Cause it works on my machine", "occ": 1, "word": "machine", "snap": "beat"}, "clawd": "A3", "camera": "轻微一抖", "visual": "唱到 machine 时画面抖一下，某个像素闪一下红（伏笔），然后慢慢淡出。"},
 
@@ -76,11 +76,11 @@
   {"id": "S12-5", "scene": "S12", "t": 64.4, "anchor": {"line": "Clear the cache and count to ten", "occ": 1, "word": "count", "snap": "beat"}, "clawd": "A9", "camera": "Clawd 特写", "visual": "Clawd 闭眼用腿数数，数字浮在头顶：1…10、11——「11」闪一下红（差一错误的伏笔，要让观众看清）。"},
 
   {"id": "S13-1", "scene": "S13", "t": 66.4, "anchor": {"line": "I need one more commit", "occ": 3, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "第三次刹车，这次冻结的画面带一点红色残影。"},
-  {"id": "S13-2", "scene": "S13", "t": 68.3, "anchor": {"line": "I need one more commit", "occ": 3, "word": "commit", "snap": "downbeat"}, "clawd": "A6", "camera": "冲击", "visual": "落拍弹出的是 git log 窗口。"},
+  {"id": "S13-2", "scene": "S13", "t": 68.3, "anchor": {"line": "I need one more commit", "occ": 3, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击", "visual": "落拍弹出的是 git log 窗口。"},
   {"id": "S13-3", "scene": "S13", "t": 70.0, "anchor": {"line": "\"Fix,\" and \"fix,\" and \"fix a bit\"", "occ": 1, "word": "Fix", "snap": "beat"}, "clawd": "A4", "camera": "中景", "visual": "提交信息一拍一条往上堆：`fix` / `fix` / `fix a bit`，每条的哈希都不一样。"},
   {"id": "S13-4", "scene": "S13", "t": 73.7, "anchor": {"line": "Every test is throwing fits", "occ": 1, "word": "Every", "snap": "downbeat"}, "clawd": "A8", "camera": "轻微震屏", "visual": "测试列表里的条目一个个抽搐乱跳（抖动由 t 决定）。"},
   {"id": "S13-5", "scene": "S13", "t": 77.3, "anchor": {"line": "I need one more commit", "occ": 4, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "第四次刹车。"},
-  {"id": "S13-6", "scene": "S13", "t": 79.2, "anchor": {"line": "I need one more commit", "occ": 4, "word": "commit", "snap": "downbeat"}, "clawd": "A6", "camera": "冲击", "visual": "git log 已经堆满屏幕，新的提交还在往里塞，把整屏挤出画面。"},
+  {"id": "S13-6", "scene": "S13", "t": 79.2, "anchor": {"line": "I need one more commit", "occ": 4, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击", "visual": "git log 已经堆满屏幕，新的提交还在往里塞，把整屏挤出画面。"},
   {"id": "S13-7", "scene": "S13", "t": 80.8, "anchor": {"line": "But it works on my machine!", "occ": 1, "word": "But", "snap": "downbeat"}, "clawd": "A8", "camera": "分屏", "visual": "分屏：左边本地一片绿 ✓，右边 CI 一片红 ✗。"},
   {"id": "S13-8", "scene": "S13", "t": 83.3, "anchor": {"line": "But it works on my machine!", "occ": 1, "word": "machine", "snap": "beat"}, "clawd": "A6", "camera": "对撞", "visual": "两屏往中间对撞，Clawd 被夹在中间，弹飞出画面。"},
 
@@ -104,7 +104,7 @@
   {"id": "S16-5", "scene": "S16", "t": 112.6, "anchor": {"line": "Nineteen green!", "occ": 1, "word": "Nineteen", "snap": "beat"}, "clawd": "A12", "camera": "冲击，闪白", "visual": "计数停在 19/19，整屏一亮；Clawd 定格在空中。"},
 
   {"id": "S17-1", "scene": "S17", "t": 114.2, "anchor": {"line": "I need one last commit", "occ": 1, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "最后一次刹车，全曲最长的一次停顿。"},
-  {"id": "S17-2", "scene": "S17", "t": 115.4, "anchor": {"line": "I need one last commit", "occ": 1, "word": "commit", "snap": "downbeat"}, "clawd": "A6", "camera": "冲击", "visual": "落拍：金色的哈希。"},
+  {"id": "S17-2", "scene": "S17", "t": 115.4, "anchor": {"line": "I need one last commit", "occ": 1, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击", "visual": "落拍：金色的哈希。"},
   {"id": "S17-3", "scene": "S17", "t": 116.1, "anchor": {"line": "Pull request, and that is it", "occ": 1, "word": "Pull", "snap": "beat"}, "clawd": "A3", "camera": "中景", "visual": "PR 页面展开：`Fix October 32nd`，改动统计 +1 −1。"},
   {"id": "S17-4", "scene": "S17", "t": 118.3, "anchor": {"line": "Pull request, and that is it", "occ": 1, "word": "it", "snap": "beat"}, "clawd": "A3", "camera": "推到 diff", "visual": "diff 特写：`- d <= days` 与 `+ d < days`，只差一个字符。"},
   {"id": "S17-5", "scene": "S17", "t": 119.9, "anchor": {"line": "Then you wrote, \"Looks good to me\"", "occ": 1, "word": "Looks", "snap": "beat"}, "clawd": "A12", "camera": "中景", "visual": "评审者（人类）的头像弹出，带一个 ✓ 和 LGTM。"},
