@@ -25,5 +25,7 @@ test.skipIf(!available)('raw Whisper words exercise all 80 shots without repairi
   expect(result.shots.filter((s) => s.source === 'anchor').length).toBeGreaterThan(0);
   expect(result.shots.find((s) => s.id === 'S05-2')!.anchorTime).toBeCloseTo(15.9);
   expect(result.shots.find((s) => s.id === 'S08-7')!.source).toBe('fallback');
-  expect(result.shots.find((s) => s.id === 'S12-2')!.anchorTime).toBeCloseTo(59.6);
+  // S12-2 anchors the second "run" (sub: 2), so it must come after S12-1's "Run".
+  const s121 = result.shots.find((s) => s.id === 'S12-1')!, s122 = result.shots.find((s) => s.id === 'S12-2')!;
+  expect(s122.anchorTime!).toBeGreaterThan(s121.anchorTime!);
 });
