@@ -105,3 +105,33 @@ export const CALL_STACK = [
   { name: 'buildMonth', path: MONTH_PATH, line: 22 },
   { name: 'daysIn', path: MONTH_PATH, line: 42 },
 ] as const;
+
+export const TODO_ITEMS = ['Read the code', 'Write a plan', 'Fix October'] as const;
+export const CALENDAR_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
+export const CALENDAR_MONTHS = {
+  october: { title: 'October', year: 2026, days: 31, firstWeekday: 4 },
+  november: { title: 'November', year: 2026, days: 30, firstWeekday: 0 },
+} as const;
+export const CALENDAR_ISSUE = { number: 1031, title: 'Calendar shows October 32', label: 'bug', project: 'calendar' } as const;
+export const NEXT_ISSUE = { number: 1032, project: 'calendar' } as const;
+export const PR_TITLE = 'Fix October 32nd';
+export const CALENDAR_ROLLOVER = { from: 'Oct 31', to: 'Nov 1', morning: ['09:00 / October 31', '09:00 / November 1'] } as const;
+
+// Oldest first: additions enter at the bottom of the animated log.
+// These fictional retries supplement COMMITS without changing its existing order.
+export const GIT_LOG_COMMITS: readonly Commit[] = [
+  { hash: '8c4e1f0', message: 'fix', detail: '09:41' },
+  { hash: 'c91d2a7', message: 'fix', detail: '09:43' },
+  { hash: '3f9a2c1', message: 'fix a bit', detail: '09:45' },
+  { hash: 'd42b901', message: 'fix', detail: '09:46' },
+  { hash: '7ac02d4', message: 'fix', detail: '09:47' },
+  { hash: 'e0c8b31', message: 'fix a bit', detail: '09:48' },
+  { hash: '19f0eac', message: 'fix', detail: '09:49' },
+  { hash: 'b32a170', message: 'fix', detail: '09:50' },
+  { hash: '5ed3c28', message: 'fix a bit', detail: '09:51' },
+  { hash: 'ab40e19', message: 'fix', detail: '09:52' },
+  { hash: '20d91c6', message: 'fix', detail: '09:53' },
+  { hash: 'f312a8b', message: 'fix a bit', detail: '09:54' },
+  { hash: '60a9d2e', message: 'fix', detail: '09:55' },
+  { hash: 'a1f3c9e', message: 'fix: calendar loop', detail: '10:42' },
+];
