@@ -16,6 +16,15 @@ export const THEME = {
 
 export type ThemeKey = keyof typeof THEME;
 
+/**
+ * Post-processing for the poster look; every scene returns (at least) these overrides.
+ * The upstream defaults (engine/post.ts) add bloom, halation, chromatic aberration and a
+ * vignette, all banned by the spec; paper (#F2EFE9, ~0.88 linear) would also exceed the
+ * bloom threshold and glow, and the highlight shoulder would darken it (and shift the brand
+ * colours). A little grain stays as paper texture.
+ */
+export const POSTER_POST = { bloom: 0, halation: 0, ca: 0, vignette: 0, grain: 0.03, shoulder: 0 } as const;
+
 /** Ink at the three spec'd strengths (secondary text, rules, separators and shadows). */
 export const INK_SOFT = { strong: 0.6, mid: 0.3, faint: 0.12 } as const;
 

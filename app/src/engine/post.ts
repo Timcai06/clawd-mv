@@ -33,6 +33,8 @@ export interface PostParams {
   shake: [number, number]; // frame offset in px
   zoom: number; // frame zoom (1 = none), for punch-ins on hits
   invert: number; // 0..1 invert (ink <-> bone), applied before grain
+  /** 0..1 how much of the highlight shoulder to apply (1 = upstream look; 0 = exact colours for flat graphics). */
+  shoulder: number;
 }
 
 export const DEFAULT_POST: PostParams = {
@@ -53,6 +55,7 @@ export const DEFAULT_POST: PostParams = {
   shake: [0, 0],
   zoom: 1,
   invert: 0,
+  shoulder: 1,
 };
 
 const MIPS = 7;
@@ -116,7 +119,7 @@ ${SCALE === 1 ? `        c += texture(src, vUv + texel * vec2(-1, -1)).rgb; c +=
       }`, { src: { value: null }, prev: { value: null }, texel: { value: new THREE.Vector2() }, radius: { value: 1 } });
     this.final = new FSPass(/* glsl */ `
       uniform sampler2D src; uniform sampler2D bloomTex; uniform sampler2D haloTex; uniform sampler2D hudTex;
-      uniform float exposure, bloom, halation, ca, grain, vignette, hud, fade, flash, time, zoom, invert;
+      uniform float exposure, bloom, halation, ca, grain, vignette, hud, fade, flash, time, zoom, invert, shoulderAmt;
       uniform vec2 shake; uniform vec2 res;
       ${SHOULDER_GLSL}
       void main() {
@@ -136,7 +139,7 @@ ${SCALE === 1 ? `        c += texture(src, vUv + texel * vec2(-1, -1)).rgb; c +=
         // HUD is composited in linear space before the shoulder so it gets grain & vignette too
         vec4 h = texture(hudTex, vUv);
         col = mix(col, h.rgb / max(h.a, 1e-4), h.a * hud);
-        col = shoulder(col);
+        col = mix(col, shoulder(col), shoulderAmt);
         col = mix(col, vec3(0.8515) - col * 0.84, invert); // ink<->bone in linear-ish space
         col += C_BONE * flash;
         // vignette
@@ -159,7 +162,7 @@ ${SCALE === 1 ? `        float g1 = hash12(gl_FragCoord.xy + fract(time * 13.37)
       src: { value: null }, bloomTex: { value: null }, haloTex: { value: null }, hudTex: { value: null },
       exposure: { value: 1 }, bloom: { value: 0.5 }, halation: { value: 0.2 }, ca: { value: 1 }, grain: { value: 0.05 },
       vignette: { value: 0.3 }, hud: { value: 1 }, fade: { value: 0 }, flash: { value: 0 }, time: { value: 0 },
-      zoom: { value: 1 }, invert: { value: 0 }, shake: { value: new THREE.Vector2() }, res: { value: new THREE.Vector2(W, H) },
+      zoom: { value: 1 }, invert: { value: 0 }, shoulderAmt: { value: 1 }, shake: { value: new THREE.Vector2() }, res: { value: new THREE.Vector2(W, H) },
     });
   }
 
@@ -205,6 +208,7 @@ ${SCALE === 1 ? `        float g1 = hash12(gl_FragCoord.xy + fract(time * 13.37)
     f.time!.value = time;
     f.zoom!.value = p.zoom;
     f.invert!.value = p.invert;
+    f.shoulderAmt!.value = p.shoulder;
     (f.shake!.value as THREE.Vector2).set(p.shake[0], p.shake[1]);
     this.final.render(renderer, out);
   }
