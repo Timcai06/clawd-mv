@@ -22,6 +22,9 @@
 - `docs/PLAN.md`：阶段计划和状态（先读这个）
 - `docs/TREATMENT.md`：故事、结构、歌词和画面对照、Suno 风格描述、视觉规范（阶段 1、4 的主文档）
 - `docs/ENGINE.md`：引擎和场景 API（写场景前必读）
+- `docs/STORYBOARD.md`：分镜表（场景、镜头、Clawd 动作库、组件清单）
+- `docs/tasks/`：交给 Codex 的任务说明
+- `reference/clawd/`：Clawd 官方形象（以终端欢迎界面为准）
 - `app/`：渲染器（bun + Vite + three.js）。`src/engine/` 是引擎，`src/scenes/` 放我们的场景，`src/timeline.ts` 是剪辑表
 - `analysis/`：上游的 Python 分析脚本（Demucs 分离、逐词对齐、拍点）。**里面有大量针对 pdoom 那首歌写死的参数**（`analyze.py` 的 `SECTION_BARS`、`align.py` 的手工锚点），阶段 3 要按我们的歌重写
 - `tools/make_placeholder.py`：生成占位用的节拍音轨和数据（真歌到位后删除）
