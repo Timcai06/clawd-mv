@@ -1,4 +1,4 @@
-// Group A landmarks: editorial cuts from the storyboard, impacts from the vocal.
+// Group A landmarks: resolved editorial cuts, including the bug downbeat.
 import type { AudioData } from '../../engine/audio';
 import { Lyrics } from '../../engine/lyrics';
 import { ease, lerp } from '../../engine/util';
@@ -17,7 +17,7 @@ export function openingTimes(audio: AudioData, lyrics: Lyrics): OpeningTimes {
   return {
     start: cut('S01-1'), welcome: cut('S01-2'), ping: cut('S02-1'),
     screen: cut('S02-2'), issue: cut('S03-1'), attachment: cut('S03-2'),
-    end: cut('S04-1'), bug: lyrics.findWords('bug')[0]?.start ?? cut('S03-1'),
+    end: cut('S04-1'), bug: cut('S03-1'),
   };
 }
 

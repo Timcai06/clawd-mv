@@ -17,7 +17,7 @@ describe('group A editorial and musical landmarks', () => {
     for (const [key, id] of [['start', 'S01-1'], ['welcome', 'S01-2'], ['ping', 'S02-1'],
       ['screen', 'S02-2'], ['issue', 'S03-1'], ['attachment', 'S03-2'], ['end', 'S04-1']] as const)
       expect(T[key]).toBe(cuts.find(s => s.id === id)!.start);
-    expect(T.bug).toBe(lyrics.findWords('bug')[0]!.start);
+    expect(T.bug).toBe(cuts.find(s => s.id === 'S03-1')!.start);
   });
   test('welcome rules, sprite and lines reveal on the measured beat grid', () => {
     expect(bootState(audio, T.welcome, T)).toMatchObject({ frame: 0, pixels: 0, rows: [0, 0, 0, 0] });
@@ -31,7 +31,7 @@ describe('group A editorial and musical landmarks', () => {
     expect(notifyState(audio, T.screen, T).pop).toBe(1);
     expect(notifyState(audio, T.issue, T)).toMatchObject({ document: 1, push: 1 });
   });
-  test('bug stamp follows the vocal and the ring completes before the attachment exit', () => {
+  test('bug stamp follows its downbeat anchor and the ring completes before the attachment exit', () => {
     expect(issueState(audio, T.bug - 1e-5, T).stamp).toBe(false);
     expect(issueState(audio, T.bug, T)).toMatchObject({ stamp: true, impact: 1 });
     expect(issueState(audio, T.attachment, T)).toMatchObject({ title: 1, circle: 0 });
