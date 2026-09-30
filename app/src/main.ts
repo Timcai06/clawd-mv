@@ -26,7 +26,7 @@ async function boot() {
   await engine.init(onlySet ? (e) => onlySet.has(e.id) : undefined);
   TIMELINE = engine.timeline;
   if (EXPORT) setupExport();
-  else setupPlayer();
+  else await setupPlayer();
 }
 
 // ------------------------------------------------------------------ export API
@@ -94,8 +94,10 @@ function setupExport() {
 }
 
 // ------------------------------------------------------------------ preview player
-function setupPlayer() {
-  const audio = new Audio('audio/song.mp3');
+async function setupPlayer() {
+  const wav = await fetch('audio/song.wav', { method: 'HEAD' }).catch(() => null);
+  const hasWav = wav?.ok && !(wav.headers.get('content-type') ?? '').includes('text/html');
+  const audio = new Audio(hasWav ? 'audio/song.wav' : 'audio/song.mp3');
   audio.preload = 'auto';
   const ui = document.getElementById('ui')!;
   const scrub = document.getElementById('scrub') as HTMLInputElement;
