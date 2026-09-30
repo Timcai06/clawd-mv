@@ -81,7 +81,7 @@ def load_lyrics_src():
 def tokens(text):
     """Lowercase, split hyphens, remove punctuation (keep contractions whole)."""
     text = re.sub(r"[-‐‑–—]", " ", text.lower())
-    return re.sub(r"[^\w\s]", "", text, flags=re.UNICODE).split()
+    return "".join(c for c in text if c.isalnum() or c.isspace()).split()
 
 
 def load_mix(sr=44100, mono=True):

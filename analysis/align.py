@@ -1,4 +1,4 @@
-"""Word-level lyric alignment -> data/lyrics.json
+"""Word-level lyric alignment -> work/<song_id>/data/lyrics.json
 
 Pipeline
   1. ctc_emissions.py  : frame-wise CTC log-probs of the (time-corrected) vocal
@@ -11,7 +11,7 @@ Pipeline
                          spots, then signal-based refinement of word starts/ends,
                          confidence scoring, QA plots.
 
-Run:  uv run python align.py [--plots]
+Run:  uv run python align.py --audio <mp3> --structure <json> [--plots]
 """
 import common
 if __name__ == "__main__":

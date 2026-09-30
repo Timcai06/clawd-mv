@@ -114,12 +114,13 @@ def hooks(evidence, vocals, sr):
                    delta_ms=None, delta_beats=None, confidence="unresolved")
         words = []
         if anchor and anchor["start"] is not None and anchor["end"] is not None:
-            words = [w for w in evidence["words"] if w["start"] >= anchor["start"]
+            words = [w for w in anchor.get("observed_words", evidence["words"]) if w["start"] >= anchor["start"]
                      and w["start"] <= anchor["end"] + .1
                      and w["token"] in {target_tokens[-1], *whole}]
         if words:
-            word = words[0]
-            separate_word = len(word.get("source_tokens", [word["token"]])) == 1
+            word = max(words, key=lambda w: (not w.get("expanded_alias") and len(w.get("source_tokens", [])) == 1,
+                                             w["probability"]))
+            separate_word = len(word.get("source_tokens", [word["token"]])) == 1 and not word.get("expanded_alias")
             syllable = 1 if len(target_tokens) > 1 and word["token"] == target_tokens[-1] and separate_word else config.get("stressed_syllable", 1)
             row.update(vocal_attack(vocals, sr, word, syllable))
             row["whisper_word"] = word

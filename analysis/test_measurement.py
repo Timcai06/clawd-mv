@@ -1,6 +1,5 @@
 """Regression tests for failure cases, without models or reference-song answers."""
 import common
-import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -10,6 +9,7 @@ import soundfile as sf
 from lyric_timing import align_lyrics, sections_from_lyrics, snap_section
 from measurement import activity, envelope_metric, vocal_attack
 from separate import measure_offset
+from rhythm import fit_grid, bar_phase
 
 
 class MeasurementTests(unittest.TestCase):
@@ -50,6 +50,15 @@ class MeasurementTests(unittest.TestCase):
         self.assertAlmostEqual(snap_section(1.6, .1, .5, 4), 2.1)
         self.assertAlmostEqual(snap_section(.8, .1, .5, 4), .1)
 
+    def test_non_increasing_asr_candidate_uses_independent_alternative(self):
+        config = dict(beats_per_bar=4, sections=[dict(name="intro", bars=1, first_line=None),
+            dict(name="verse", bars=8, first_line="Start here")])
+        anchors = [dict(text="Start here", start=.1, coverage=1., line_index=0,
+            timing_candidates=[dict(start=.1, coverage=1.), dict(start=2.2, coverage=.5)])]
+        with patch.object(common, "CONFIG", config, create=True):
+            rows = sections_from_lyrics(anchors, dict(beat_period=.5, first_downbeat=0.), 10.)
+        self.assertEqual(rows[1]["start"], 2.)
+
     def test_signed_delay(self):
         rng = np.random.default_rng(42)
         mix = rng.normal(0, .1, 16000).astype("float32")
@@ -78,6 +87,24 @@ class MeasurementTests(unittest.TestCase):
     def test_silent_hook_is_unresolved(self):
         result = vocal_attack(np.zeros(16000), 16000, dict(start=.2, end=.5, probability=1.), 2)
         self.assertIsNone(result["onset"])
+
+    def test_four_on_floor_grid_uses_measured_tempo(self):
+        sr, bpm, duration = 22050, 118., 30.
+        y = np.zeros(int(sr * duration), dtype=np.float32)
+        pulse_t = np.arange(int(.07 * sr)) / sr
+        pulse = np.sin(2 * np.pi * 90 * pulse_t) * np.exp(-pulse_t * 70)
+        for t in np.arange(.17, duration - .1, 60 / bpm):
+            i = int(t * sr)
+            y[i:i + len(pulse)] += pulse
+        grid = fit_grid(y, y, sr, 132.)
+        self.assertAlmostEqual(grid["bpm"], bpm, delta=.03)
+        self.assertLess(grid["stability"]["max_phase_deviation_ms"], 3.)
+        # Identical quarter-note kicks alone cannot establish the bar phase.
+        config = dict(beats_per_bar=4, sections=[])
+        stems = dict(drums=y, other=np.zeros_like(y), bass=np.zeros_like(y))
+        with patch.object(common, "CONFIG", config, create=True):
+            phase = bar_phase(stems, sr, grid, [])
+        self.assertEqual(phase["bar_phase"]["confidence"], "low")
 
 
 if __name__ == "__main__":

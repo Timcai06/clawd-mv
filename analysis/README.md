@@ -30,7 +30,7 @@ rtk proxy uv run --project analysis python -m unittest discover \
 
 - `stems/<model>/<song_id>/{vocals,drums,bass,other}.wav`：原始分轨。
 - `work/<song_id>/stem_offset.json`：五窗口互相关；正偏移裁前部，负偏移补零。
-- `work/<song_id>/whisper_turbo.json`：原始转写与词时间戳。
+- `work/<song_id>/whisper_turbo.json`：无提示转写，用于吻合率；`whisper_turbo_prompt.json`：分窗词表转写；`whisper_turbo_context.json`：连续上下文词表转写。两份辅助转写只用于定位，前者保留原有 CTC 交叉核对路径。
 - `work/<song_id>/analysis.json`：拍网格、相位候选、歌词定位证据。
 - `work/<song_id>/data/audio.json`：上游字段的拍点、分段、100 fps 包络；未定位段落含 null，尚不可直接交付前端。
 - `qa/<song_id>/measure.md`、`measure.json`：中文报告和完整结构化证据。
@@ -41,7 +41,7 @@ rtk proxy uv run --project analysis python -m unittest discover \
 
 `structures/clawd.json` 保持原样。`lyrics` 相对于仓库根目录，可以是普通文本（去掉 `[...]` 标签），或上游 JS `[start,end,text]` 数组；测量不使用 JS 中的旧时间。
 
-`sections` 顺序须与歌词一致，`first_line` 对应歌词完整一行。重复行按文件顺序消费。起点由 Whisper 首词定位到小节强拍；不足 2 拍的弱起留在上一段。没有首词证据时标未定位。`first_line: null` 接在前段**名义长度**之后，报告写为推算。末段使用实际音轨结束时间，可能包含渐弱和不完整小节。
+`sections` 顺序须与歌词一致，`first_line` 对应歌词完整一行。重复行按文件顺序消费。起点由 Whisper 首词定位到小节强拍；不足 2 拍的弱起留在上一段。同一首词有多路时间候选时，按覆盖率排序，并剔除会使段落倒序或零长度的候选；没有有效首词证据时标未定位。`first_line: null` 接在前段**名义长度**之后，报告写为推算。末段使用实际音轨结束时间，可能包含渐弱和不完整小节。
 
 仅 `pdoom.json` 增加扩展字段，并在 `_doc` 说明：
 
@@ -57,9 +57,9 @@ rtk proxy uv run --project analysis python -m unittest discover \
 
 小节相位综合每拍和声变化、贝斯起音能量、非副歌歌词起点，不要求军鼓在 2/4 拍，不规定两小节换和弦。分数差是启发式置信度，不是概率。主题词预期落点不参与相位推断。
 
-歌词用 `SequenceMatcher(autojunk=False)`：小写、去标点、连字符拆词，只计完全匹配；报告所有未匹配词并保留重复。Whisper 不注入歌词。人声 RMS 小于 -60 dBFS 时返回空转写；否则运行模型并使用静音、幻觉过滤。
+歌词用 `SequenceMatcher(autojunk=False)`：小写、去标点、连字符拆词，只计完全匹配；报告所有未匹配词并保留重复。用于评分的 Whisper 不注入提示。定位另运行分窗和连续上下文两遍，从歌词自动提取大写词、长词及 hook 词表（不包含手工时间）。分窗以 20 秒为核心、两侧各加 3 秒上下文，防止 initial_prompt 在后续窗口被重置；连续上下文补充重复主题句。逐行选择首词可定位且覆盖率最高的来源，主题词候选只取歌词序列已对应的词，优先独立音节词和较高识别概率。三路转写、提示和逐行来源都保留，不改变无提示评分；辅助转写可能出现重复或漏词，低置信度不能算听感验收。人声 RMS 小于 -60 dBFS 时返回空转写；否则运行模型并使用静音、幻觉过滤。
 
-主题词起音在人声和 Whisper 词窗口中找 spectral flux 峰；词内第 2 音节用平滑能量核之间的谷值估计。算法不看期望落点，也不能保证把每个振幅峰正确解释成音节。叠唱、连唱、漏词会降低置信度或返回 null，需后续精细语音对齐和听感验收。
+主题词起音在人声和 Whisper 词窗口中找 spectral flux 峰；词内第 2 音节用相邻平滑能量核之间谷值之后的 20% 上升点估计。算法不看期望落点，也不能保证把每个振幅峰正确解释成音节。叠唱、连唱、漏词会降低置信度或返回 null，需后续精细语音对齐和听感验收。
 
 编曲按原始分轨 RMS 除以该分轨全曲 95 分位 RMS：<0.05 缺席、>0.15 存在，中间不确定；绝对 RMS <-65 dBFS 也判缺席。窗口两端各去 40 ms。JSON 保留窗口、数值和状态。
 

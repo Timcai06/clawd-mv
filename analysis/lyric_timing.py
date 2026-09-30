@@ -5,15 +5,19 @@ import numpy as np
 import common
 
 
-def transcript_words(transcript):
+def transcript_words(transcript, aliases=None):
     words = []
     for seg in transcript.get("segments", []):
         # Retain only word-level evidence; never invent times from segment text.
         for w in seg.get("words", []):
-            for token in common.tokens(w["word"]):
+            original = common.tokens(w["word"])
+            replacement = next((common.tokens(dst) for src, dst in (aliases or {}).items()
+                                if common.tokens(src) == original), None)
+            for token in replacement if replacement is not None else original:
                 words.append(dict(token=token, start=float(w["start"]), end=float(w["end"]),
                                   probability=float(w.get("probability", 0)),
-                                  source_word=w["word"], source_tokens=common.tokens(w["word"])))
+                                  source_word=w["word"], source_tokens=original,
+                                  expanded_alias=replacement is not None))
     return words
 
 
@@ -34,6 +38,8 @@ def align_lyrics(transcript):
                   unmatched_words=unmatched, unmatched_transcript_words=extra,
                   normalization="lowercase; strip bracket labels/punctuation; hyphens split; no aliases")
     # Aliases help locate lines but do not change the strict match metric.
+    observed = transcript_words(transcript, common.CONFIG.get("lyric_aliases", {}))
+    heard = [w["token"] for w in observed]
     expanded, line_ids = [], []
     for li, text in enumerate(lines):
         for src, dst in common.CONFIG.get("lyric_aliases", {}).items():
@@ -101,12 +107,19 @@ def sections_from_lyrics(anchors, grid, duration):
                 start = base + out[-1]["nominal_bars"] * meter * P
             source = "nominal continuation (not lyric-measured)"
         elif anchor and anchor["start"] is not None:
-            start = max(0., snap_section(anchor["start"], off, P, meter))
-            source = "Whisper first word + bar grid"
+            candidates = anchor.get("timing_candidates", [anchor])
+            for candidate in candidates:
+                proposed = max(0., snap_section(candidate["start"], off, P, meter))
+                if proposed < duration and (not i or out[-1]["start"] is None or proposed > out[-1]["start"]):
+                    anchor.update(candidate)
+                    start = proposed
+                    source = "Whisper first word + bar grid (monotonic candidate)"
+                    break
         if start is not None and (start >= duration or (i and out[-1]["start"] is not None and start <= out[-1]["start"])):
             start, source = None, "unresolved: outside audio or non-increasing anchor"
         out.append(dict(name=section["name"], start=start, end=None, measured_bars=None,
                         nominal_bars=section["bars"], source=source,
+                        transcription_source=anchor.get("timing_source") if anchor else None,
                         lyric_start=anchor["start"] if anchor else None,
                         lyric_coverage=anchor["coverage"] if anchor else None))
     for i, section in enumerate(out):

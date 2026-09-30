@@ -13,7 +13,7 @@ from rhythm import fit_grid, bar_phase
 SR, FPS = 44100, 100
 
 
-def run(transcript):
+def run(transcript, anchor_transcript=None):
     start = time.perf_counter()
     mix, _ = common.load_mix(SR)
     duration = len(mix) / SR
@@ -22,6 +22,24 @@ def run(transcript):
         y, _ = common.load_stem(name, SR)
         stems[name] = np.pad(y[:len(mix)], (0, max(0, len(mix) - len(y))))
     lyric_match, anchors, words = align_lyrics(transcript)
+    tracks = [("unprompted", anchors, words)]
+    for guided in anchor_transcript or []:
+        _, ga, gw = align_lyrics(guided)
+        label = "context vocabulary" if guided["measurement"]["provenance"].get("context") else "window vocabulary"
+        tracks.append((label, ga, gw))
+    anchors = []
+    for i in range(len(tracks[0][1])):
+        alternatives = [(label, aa[i], ww) for label, aa, ww in tracks]
+        label, chosen, _ = max(alternatives, key=lambda x: (x[1]["start"] is not None, x[1]["coverage"]))
+        chosen = {**chosen, "timing_source": label}
+        chosen["timing_candidates"] = [dict(start=aa["start"], coverage=aa["coverage"], timing_source=label)
+            for label, aa, _ in sorted(alternatives, key=lambda x: x[1]["coverage"], reverse=True)
+            if aa["start"] is not None]
+        # Only lyric-sequence matched words are candidates; no expected beat is used.
+        chosen["observed_words"] = [{**ww[j], "transcription_source": label}
+            for label, aa, ww in alternatives for j in aa["word_indices"]]
+        chosen["end"] = max((aa["end"] for _, aa, _ in alternatives if aa["end"] is not None), default=None)
+        anchors.append(chosen)
     grid = fit_grid(stems["drums"], mix, SR, common.CONFIG["bpm"])
     grid.update(bar_phase(stems, SR, grid, anchors))
     sections = sections_from_lyrics(anchors, grid, duration)
@@ -55,7 +73,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     common.configure(args)
     from separate import run as separate
-    from whisper_run import run as whisper
+    from whisper_run import run_pair as whisper
     separate(args.device)
-    result, _, _ = run(whisper())
+    result, _, _ = run(*whisper())
     print(f"BPM {result['grid']['bpm']:.3f}; wrote {common.DATA / 'audio.json'}")

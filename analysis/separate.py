@@ -59,6 +59,8 @@ def run(device="cpu", force=False):
     staging = common.WORK / "input"
     staging.mkdir(exist_ok=True)
     source = staging / (common.SONG_ID + common.AUDIO.suffix)
+    if source.is_symlink() and source.resolve() != common.AUDIO:
+        source.unlink()
     if not source.exists():
         source.symlink_to(common.AUDIO)
     start = time.perf_counter()
