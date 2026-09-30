@@ -176,6 +176,8 @@ export default class S15Line42 extends Scene {
     const fi = frameIdx(t);
     return {
       ...postFor(kind), hud: 0, frame: 0, paper: state.paper ? 1 : 0,
+      // Keep the entire soft knee above PAPER; only the added clay layer can bloom.
+      bloomThreshold: 1.06, bloomKnee: 0.08,
       grain: state.paper ? 0.035 : 0.04, vignette: state.paper ? 0 : 0.09,
       flash, shake: [impact * (hash(fi, 42) - 0.5), impact * (hash(fi, 43) - 0.5)] as [number, number],
     };
