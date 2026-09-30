@@ -130,7 +130,7 @@ export default class S08Commit extends Scene {
       bigType(c, 'ONE MORE', fr.x - 14, fr.y + fr.h - 470, { size: 200, width: 87.5, alpha: INK_SOFT.faint });
     }
     // the cursor motif: during the freezes a big clay cursor holds the frame, blinking on beats
-    if (frozen1 || frozen2) drawCursor(c, { x: fr.x + fr.w / 2 + 520 - 120, y: fr.y + fr.h / 2 + 40, h: 150, on: blink(f.beat) });
+    if (frozen2) drawCursor(c, { x: fr.x + fr.w / 2 + 520 - 120, y: fr.y + fr.h / 2 + 40, h: 150, on: blink(f.beat) });
     // brackets fly in from both edges and snap into pairs, one pair per beat
     const pairs: [string, string][] = [['(', ')'], ['{', '}'], ['[', ']']];
     if (t >= T.brackets - 0.3 && t < T.quit) {
@@ -252,6 +252,12 @@ export default class S08Commit extends Scene {
     const ov = this.w.overlay;
     ov.clear();
     if (lyr.style === 'small') drawLyricsLine(ov.ctx, { x: 96, y: 960, width: 1100, height: 60 }, lyr, kind);
+    // matched cut from S07: its outgoing cursor sits at screen centre (960, 540), 72 px tall,
+    // baseline 576; the first freeze holds exactly that cursor, growing a little into the slam
+    if (frozen1) {
+      const h = lerp(72, 110, ease.inCubic(span(t, T.pick1, T.hit1)));
+      drawCursor(ov.ctx, { x: 960 - h * 0.275, y: 576 + (h - 72) / 2, h, on: blink(au.beatAt(t)) });
+    }
     this.ctx.comp.draw(this.ctx.renderer, ov.upload(), out);
 
     // ------------------------------------------------------------------ post: shake on slams and on "machine"
