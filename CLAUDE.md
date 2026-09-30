@@ -4,7 +4,7 @@
 
 画面全部由代码渲染：three.js 网页程序，每一帧只由歌曲时间 t 决定。底子是 [mexicat/pdoom-video](https://github.com/mexicat/pdoom-video)（MIT），我们用的上游 commit 记在 `reference/pdoom/UPSTREAM_COMMIT`。
 
-**当前进度和下一步看 `docs/PLAN.md`。** 每完成一个阶段，先更新 PLAN.md。
+**新会话先读 `docs/CONTEXT.md`（为什么这么做、已定的决策、Tim 的偏好、开放问题），再读 `docs/PLAN.md`（当前进度和下一步）。** 每完成一个阶段，先更新 PLAN.md；决策有变，更新 CONTEXT.md。
 
 ## 协作规矩（和 Tim 的全局约定一致，这里重复一遍）
 
