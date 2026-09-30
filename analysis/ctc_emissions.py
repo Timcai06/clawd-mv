@@ -7,6 +7,8 @@ Emissions are computed on overlapping chunks with context and stitched, then
 cached to work/emission_<name>.npy (shape [frames, vocab]).
 """
 import common
+if __name__ == "__main__":
+    common.configure_cli()
 import sys
 import numpy as np
 import torch

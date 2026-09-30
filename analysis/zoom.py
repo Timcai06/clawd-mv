@@ -1,5 +1,7 @@
 """Quick high-res zoom plot of the vocal stem: python zoom.py t0 t1 [name]"""
 import common, sys, json
+if __name__ == "__main__":
+    common.configure_cli()
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")

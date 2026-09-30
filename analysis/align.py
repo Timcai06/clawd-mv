@@ -14,6 +14,8 @@ Pipeline
 Run:  uv run python align.py [--plots]
 """
 import common
+if __name__ == "__main__":
+    common.configure_cli()
 import json
 import re
 import sys

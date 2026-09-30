@@ -48,5 +48,6 @@ def pron(token: str) -> list[str]:
 
 if __name__ == "__main__":
     import common
+    common.configure_cli()
     for _, _, t in common.load_lyrics_src():
         print(t, "->", " | ".join(" ".join(pron(w)) for w in t.split(" ")))
