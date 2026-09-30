@@ -62,6 +62,7 @@ def run(device="cpu", force=False):
     if not source.exists():
         source.symlink_to(common.AUDIO)
     start = time.perf_counter()
+    manifest.unlink(missing_ok=True)
     main(["-n", common.MODEL, "-d", device, "--float32", "--shifts", "1",
           "-o", str(common.ROOT / "stems"), str(source)])
     seconds = time.perf_counter() - start
