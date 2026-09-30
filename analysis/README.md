@@ -6,23 +6,23 @@
 cd /Users/tim/DEV/clawd-mv-x1
 export UV_CACHE_DIR="$PWD/analysis/.cache/uv"
 export UV_PYTHON_INSTALL_DIR="$PWD/analysis/.cache/python"
-rtk proxy uv sync --project analysis
+uv sync --project analysis
 
-rtk proxy uv run --project analysis python analysis/measure.py \
+uv run --project analysis python analysis/measure.py \
   --audio reference/pdoom/audio/pdoom.mp3 \
   --structure analysis/structures/pdoom.json \
   --reference-audio-json reference/pdoom/data/audio.json
 
-rtk proxy uv run --project analysis python analysis/measure.py \
+uv run --project analysis python analysis/measure.py \
   --audio audio/song.mp3 --structure analysis/structures/clawd.json \
   --song-id placeholder
 
 # Replace take-01.mp3 with an actual downloaded candidate.
-rtk proxy uv run --project analysis python analysis/measure.py \
+uv run --project analysis python analysis/measure.py \
   --audio audio/candidates/take-01.mp3 \
   --structure analysis/structures/clawd.json --song-id clawd-take-01
 
-rtk proxy uv run --project analysis python -m unittest discover \
+uv run --project analysis python -m unittest discover \
   -s analysis -p 'test_*.py' -v
 ```
 
@@ -70,11 +70,11 @@ rtk proxy uv run --project analysis python -m unittest discover \
 `align.py`、`ctc_emissions.py`、`vocal_feats.py`、`pron.py`、`zoom.py` 也接受 `--audio`、`--structure`、可选 `--song-id`、`--model`。例如：
 
 ```sh
-rtk proxy uv run --project analysis python analysis/vocal_feats.py \
+uv run --project analysis python analysis/vocal_feats.py \
   --audio reference/pdoom/audio/pdoom.mp3 --structure analysis/structures/pdoom.json
-rtk proxy uv run --project analysis python analysis/ctc_emissions.py \
+uv run --project analysis python analysis/ctc_emissions.py \
   --audio reference/pdoom/audio/pdoom.mp3 --structure analysis/structures/pdoom.json vocals vocL vocR
-rtk proxy uv run --project analysis python analysis/align.py \
+uv run --project analysis python analysis/align.py \
   --audio reference/pdoom/audio/pdoom.mp3 --structure analysis/structures/pdoom.json --plots
 ```
 
