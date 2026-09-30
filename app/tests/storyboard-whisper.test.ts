@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import path from 'node:path';
 import boardJSON from '../../storyboard/shots.json';
-import audioJSON from '../../data/audio.approx.json';
+import audioJSON from '../../data/audio.json';
 import { Lyrics } from '../src/engine/lyrics';
 import { AudioData } from '../src/engine/audio';
 import { resolveStoryboard, type Storyboard } from '../src/storyboard';
@@ -18,7 +18,7 @@ test.skipIf(!available)('raw Whisper words exercise all 80 shots without repairi
   })) });
   const board = boardJSON as Storyboard;
   const result = resolveStoryboard(board, lyrics, new AudioData(audioJSON));
-  console.log('Raw Whisper transcript + unchanged 120s placeholder beat grid (not X3 alignment):');
+  console.log('Raw Whisper transcript + the real beat grid (not the aligned lyrics):');
   printReport(result);
   expect(result.shots).toHaveLength(80);
   expect(result.shots.every((s) => Number.isFinite(s.start))).toBe(true);
