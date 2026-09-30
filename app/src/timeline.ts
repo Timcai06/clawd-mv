@@ -4,6 +4,8 @@ import type { TimelineEntry } from './engine/engine';
 import type { SceneClass } from './engine/scene';
 import type { Lyrics } from './engine/lyrics';
 import type { AudioData } from './engine/audio';
+import boardJSON from '../../storyboard/shots.json';
+import { resolveStoryboard, type Storyboard } from './storyboard';
 
 // Scene modules are discovered lazily so a missing/broken scene never breaks the build.
 const modules = import.meta.glob<{ default: SceneClass }>('./scenes/*.ts');
@@ -12,10 +14,12 @@ const scene = (name: string) => () => {
   return m ? m() : Promise.reject(new Error(`scene module not found: scenes/${name}.ts`));
 };
 
-export function makeTimeline(_ly: Lyrics, au: AudioData): TimelineEntry[] {
-  const E = (id: string, file: string, start: number, end: number, extra: Partial<TimelineEntry> = {}): TimelineEntry =>
-    ({ id, load: scene(file), start, end, ...extra });
-
-  // Stage 0: one placeholder entry over the whole song. Replace once the song and scene list exist.
-  return [E('placeholder', 'placeholder', 0, au.duration)];
+export function makeTimeline(ly: Lyrics, au: AudioData): TimelineEntry[] {
+  const board = boardJSON as Storyboard;
+  const result = resolveStoryboard(board, ly, au);
+  // Keep invalid cuts visible to the checker instead of silently rewriting the edit.
+  return result.shots.map((shot) => ({
+    id: shot.id, load: scene('animatic'), start: shot.start, end: shot.end,
+    params: { shot, scene: board.scenes.find((s) => s.id === shot.scene)!, sceneIndex: board.scenes.findIndex((s) => s.id === shot.scene) },
+  }));
 }

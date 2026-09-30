@@ -103,3 +103,20 @@ What this asks of scenes:
 ## Shared motifs (`app/src/scenes/_motifs.ts`)
 
 Use these so recurring motifs look identical across plates: `sparkHead(lineBatch, x, y, t, scale, intensity)` + `sparkParticles(lineBatch, t, headAt, opts)` (the spark, drawn with a 2D additive `LineBatch`), `sparkHead2D` (Canvas2D fallback), and the mask: `drawMask2D(ctx, x, y, R, rot)`, `MASK` geometry constants and `GLSL_MASK` (`sdMaskInk(p)` in mask units, y down). Read-only for scene agents; ask the lead for changes.
+
+## Storyboard-driven graybox animatic (X4)
+
+`storyboard/shots.json` is the read-only editorial source. `src/storyboard.ts` resolves each shot against `Lyrics` and `AudioData`: exact normalized line text, 1-based line occurrence (`occ`), then exact word occurrence (`sub`, default 1). Quotes, case, punctuation and dashes are normalized; a hyphenated token's parts share its duration equally. Whole compounds remain addressable. No stemming or ASR correction is performed (`tap` does not equal `tapping`). Successful anchors snap to the nearest measured beat/downbeat (ties choose the earlier point), then apply `offset_beats` using the variable beat grid. Missing anchors and instrumental shots use the already positioned `t`, snapped but not offset again; an empty grid leaves the time unchanged. Both count as fallback, with a separate instrumental count.
+
+`src/timeline.ts` creates one entry per shot ID, passing the resolved shot and scene metadata through `ctx.params` to `scenes/animatic.ts`. Windows end at the next resolved start; the last ends at `audio.duration`. The shared scene draws neutral gray, Chinese descriptions with system font fallback, canonical 16×5 Clawd pose diagrams, word-timed lyrics and counters. One Canvas2D texture serves all entries. Effects and dissolves are disabled; animation depends only on song time. Invalid cuts are reported, never silently reordered or retimed: zero/negative windows cannot play; any malformed overlapping windows hard-cut to the engine's last active entry. A render succeeding does not mean the edit is valid.
+
+From `app/`, run:
+
+```sh
+bun scripts/storyboard-check.ts
+bun test tests/storyboard.test.ts tests/storyboard-whisper.test.ts
+```
+
+The checker prefers `data/{audio,lyrics}.json`, then falls back to `.approx.json`, matching the engine. It prints all shot times, sources, durations, fallback reasons, sub-beat windows and non-increasing cuts; non-increasing cuts return exit code 1. The Whisper test reads `analysis/work/c1/whisper_turbo_quick.json` into memory without rewriting words or segment boundaries, prints all anchor successes/failures, and skips explicitly if the gitignored fixture is absent. Raw ASR is not aligned lyrics: a misrecognized repeated line can shift occurrence numbering even for anchors reported as resolved.
+
+Before X3 lands, the checked-in placeholder is only 120 seconds, whereas the storyboard is 160.6 seconds. Nearest-point snapping clamps late shots to the end of that short measured grid, producing reported collisions; the first downbeat is 0.25s, so the opening 0.25s has no active entry. The standard video command uses the engine/audio's 120-second duration and placeholder MP3. Stills at/after 120s have no active shot. Re-run the checker and full export after X3 provides the real full-length data and WAV routing; this preview cannot certify the 160.6-second song edit.
