@@ -65,10 +65,12 @@ class GitfallWorld {
       const scroll = s.scroll * lane.speed;
       const first = Math.floor(scroll);
       const off = scroll - first;
+      // Anchor the newest row inside the viewport even before enough history exists.
+      c.beginPath(); c.rect(0, n === 2 ? 110 : 0, lane.w, n === 2 ? 710 : 820); c.clip();
       for (let r = 0; r < lane.rows; r++) {
         const i = first - lane.rows + r + 1 + (s.second ? 24 : 0);
         if (i < 0 || i >= s.rowCount) continue;
-        const y = 136 + r * ROW - off * ROW;
+        const y = 792 + (r - lane.rows + 1) * ROW - off * ROW;
         const hot = i === s.rowCount - 1;
         const commit = GIT_LOG_COMMITS[i];
         const id = commit?.hash ?? commitId(i);
