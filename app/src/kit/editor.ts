@@ -1,6 +1,6 @@
 import { F, font } from '../engine/type';
 import { css, INK_SOFT } from '../theme';
-import { drawIcon, type Box, type IconName } from './icons';
+import { drawIcon, type Box } from './icons';
 import { syntaxRuns, syntaxStyle, tokenizeLines, typedText, type Emphasis } from './syntax';
 import { drawTerminal, visibleLineRange, type TerminalState } from './terminal';
 
@@ -187,7 +187,7 @@ export function drawEditor(c: CanvasRenderingContext2D, box: Box, state: EditorS
   if (state.terminal) drawTerminal(c, l.terminal, { ...state.terminal.state, scale: state.terminal.state.scale ?? 1 });
   const sy = l.h - l.statusHeight;
   c.fillStyle = css('ink', INK_SOFT.faint); c.fillRect(0, sy, l.w, l.statusHeight);
-  drawIcon(c, 'source' as IconName, { x: 15, y: sy + 7, width: 14, height: 14 });
+  drawIcon(c, 'source', { x: 15, y: sy + 7, width: 14, height: 14 });
   label(c, state.status?.branch ?? 'main', 37, sy + 14, 12);
   const status = state.status?.detail ?? `Ln ${state.cursor?.line ?? state.currentLine ?? 1}, Col ${(state.cursor?.column ?? 0) + 1}    UTF-8`;
   c.textAlign = 'right'; label(c, `${status}    ${state.status?.language ?? 'TypeScript'}`, l.w - 18, sy + 14, 12, 500, true);
