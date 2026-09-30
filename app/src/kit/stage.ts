@@ -143,12 +143,16 @@ export class Stage {
   private posterTex: THREE.CanvasTexture;
 
   /** `pw` x `ph`: size of the poster sheet in poster px (larger than the screen so the camera can move). */
-  constructor(public renderer: THREE.WebGLRenderer, public pw = W * 1.5, public ph = H * 1.5) {
+  /**
+   * `transparent`: the poster sheet has no paper of its own (clearPoster() clears to transparent)
+   * and render() keeps what is already in `out` — draw a live Ground first (kit/ground.ts).
+   */
+  constructor(public renderer: THREE.WebGLRenderer, public pw = W * 1.5, public ph = H * 1.5, public transparent = false) {
     const { cv, ctx } = canvas2D(pw, ph, SCALE);
     this.poster = ctx;
     this.posterTex = canvasTexture(cv, renderer, true);
     const sheet = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph),
-      new THREE.MeshBasicMaterial({ map: this.posterTex, toneMapped: false }));
+      new THREE.MeshBasicMaterial({ map: this.posterTex, toneMapped: false, transparent, depthWrite: !transparent }));
     sheet.renderOrder = 0;
     this.scene.add(sheet);
     this.cam = new THREE.PerspectiveCamera(30, W / H, 1, 100000);
@@ -171,8 +175,8 @@ export class Stage {
     const c = this.poster;
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.fillStyle = THEME.paper;
-    c.fillRect(0, 0, this.pw, this.ph);
+    if (this.transparent) c.clearRect(0, 0, this.pw * SCALE, this.ph * SCALE);
+    else { c.fillStyle = THEME.paper; c.fillRect(0, 0, this.pw, this.ph); }
     c.restore();
   }
 
@@ -199,8 +203,11 @@ export class Stage {
     this.posterTex.needsUpdate = true;
     const r = this.renderer;
     r.setRenderTarget(out);
-    r.setClearColor(new THREE.Color().setRGB(...lin('paper'), THREE.LinearSRGBColorSpace), 1);
-    r.clear(true, true, true);
+    if (this.transparent) r.clear(false, true, false);
+    else {
+      r.setClearColor(new THREE.Color().setRGB(...lin('paper'), THREE.LinearSRGBColorSpace), 1);
+      r.clear(true, true, true);
+    }
     r.render(this.scene, this.cam);
   }
 
