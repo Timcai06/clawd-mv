@@ -14,7 +14,7 @@ The video is a web app (`app/`, TypeScript + three.js, run with bun + Vite) that
 - Typecheck just your files: `bunx tsc --noEmit -p tsconfig.json 2>&1 | grep scenes/yourscene`.
 - The render script prints `SCENE ERRORS` and browser console errors — read them.
 - 4K: add `--scale 2` to any mode (`stills` then saves full-resolution 3840×2160 PNGs). Check your scene at both scales: downscaled, the 4K frame should look like the 1080p one, only sharper.
-- Renders while files are being edited: run a server without live reload (`PDOOM_NO_HMR=1 bunx vite --port 5190`) and pass `--url http://localhost:5190`; a live-reloading server reloads the page mid-render. The private server that `render.ts` starts when none is reachable already runs without it.
+- Renders while files are being edited: run a server without live reload (`CLAWD_NO_HMR=1 bunx vite --port 5190`) and pass `--url http://localhost:5190`; a live-reloading server reloads the page mid-render. The private server that `render.ts` starts when none is reachable already runs without it.
 
 ## Data
 
