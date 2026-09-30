@@ -65,7 +65,7 @@
   {"id": "S10-2", "scene": "S10", "t": 50.2, "anchor": {"line": "Nineteen red, and they're shattering like glass", "occ": 1, "word": "shattering", "snap": "beat"}, "clawd": "A8", "camera": "中景", "visual": "整面红墙碎成平面碎片落下。"},
 
   {"id": "S11-1", "scene": "S11", "t": 52.4, "anchor": {"line": "Stack traces falling like rain from the sky", "occ": 1, "word": "Stack", "snap": "downbeat"}, "clawd": "A7", "camera": "远景", "visual": "堆栈文字从天而降，像下雨；Clawd 举起手臂挡。"},
-  {"id": "S11-2", "scene": "S11", "t": 54.4, "anchor": {"line": "Stack traces falling like rain from the sky", "occ": 1, "word": "sky", "snap": "beat"}, "clawd": "A7", "camera": "仰视", "visual": "仰视雨幕：每一滴雨都是 `at daysIn (calendar.ts:42)` 这样的一行（42 号行的伏笔）。"},
+  {"id": "S11-2", "scene": "S11", "t": 54.4, "anchor": {"line": "Stack traces falling like rain from the sky", "occ": 1, "word": "sky", "snap": "beat"}, "clawd": "A7", "camera": "仰视", "visual": "仰视雨幕：每一滴雨都是 `at daysIn (month.ts:42)` 这样的一行（42 号行的伏笔）。"},
   {"id": "S11-3", "scene": "S11", "t": 56.0, "anchor": {"line": "Undefined, undefined, and I don't know why", "occ": 1, "word": "Undefined", "snap": "downbeat"}, "clawd": "A6", "camera": "中景", "visual": "两个巨大的 undefined 先后砸下，每砸一次 Clawd 被压扁一下。"},
   {"id": "S11-4", "scene": "S11", "t": 58.2, "anchor": {"line": "Undefined, undefined, and I don't know why", "occ": 1, "word": "why", "snap": "beat"}, "clawd": "A3", "camera": "拉到极远", "visual": "Clawd 在雨中孤零零的，很小。"},
 

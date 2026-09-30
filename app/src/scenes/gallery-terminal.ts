@@ -4,7 +4,7 @@ import { Scene, type Frame } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { prog } from '../engine/util';
-import { css, INK_SOFT } from '../theme';
+import { css, INK_SOFT, POSTER_POST } from '../theme';
 import { drawTerminal } from '../kit/terminal';
 import { testOutput } from '../kit/content';
 
@@ -38,7 +38,7 @@ export default class GalleryTerminal extends Scene {
     c.fillText('render → buildMonth → daysIn', 48, 676);
     c.fillText('October 2026', 48, 973);
     this.ctx.comp.draw(this.ctx.renderer, this.layer.upload(), out, { mode: 'replace' });
-    return { bloom: 0, halation: 0, ca: 0, grain: 0, vignette: 0, hud: 0 };
+    return { ...POSTER_POST, hud: 0 };
   }
 
   override dispose() { this.layer.texture.dispose(); }
