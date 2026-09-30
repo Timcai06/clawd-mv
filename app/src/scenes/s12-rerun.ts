@@ -1,102 +1,139 @@
-// S12-1..5: three escalating attempts, a cache wipe, and an off-by-one counting hint.
+// S12: repeated terminal commands become increasingly damaged photocopies.
+// Clear sweeps real cache entries away. Archivo counts eleven legs against an expected ten.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
+import { Layer2D, makeRT } from '../engine/gl';
 import { ease, frameIdx, hash, lerp } from '../engine/util';
 import { F, font } from '../engine/type';
-import { css, INK_SOFT, POSTER_POST } from '../theme';
-import { Stage, type Panel, type CameraView } from '../kit/stage';
-import { bigType, disc, drawGrid, frameOn } from '../kit/poster';
-import { drawTerminal, type TerminalLine } from '../kit/terminal';
-import { afterBeats, span } from '../kit/time';
+import { css } from '../theme';
+import { Ground, postFor } from '../kit/ground';
+import { drawCursor, blink } from '../kit/cursor';
+import { afterBeats, beatsSince } from '../kit/time';
 import * as Clawd from '../kit/clawd';
-import { beatHit, beatSpan, mixView, rerunState, resolveX9Times, X9Lyrics, type X9Times } from './s09-z-shared';
+import { beatHit, beatSpan, rerunState, resolveX9Times, type X9Times } from './s09-z-shared';
+import { CopyPass, copySettings } from './parts/s12-copy';
+import { mono, sungLine } from './parts/s09-type';
 
-const TW = 1460, TH = 860, PX = 14;
-const CACHE: TerminalLine[] = ['month.test.ts', 'month.ts', 'calendar.json', 'test-results.json'].map((file) => ({
-  kind: 'text', text: `node_modules/.cache/${file}`, muted: true,
-}));
-
+const CACHE = ['month.test.ts', 'month.ts', 'calendar.json', 'test-results.json'];
+export function countTypography(number: number, phase: number, extraAge: number) {
+  const p = number === 11 ? Math.min(1, Math.max(0, extraAge / 0.6)) : (phase * 10) % 1;
+  return { width: lerp(62, 125, ease.outExpo(p)), weight: lerp(300, 900, ease.outCubic(p)),
+    scale: 1 + 0.1 * Math.sin(Math.PI * p) };
+}
 class World {
-  stage: Stage; terminal: Panel; lyrics = new X9Lyrics(); times: X9Times; users = 0;
-  constructor(ctx: SceneCtx) {
-    this.stage = new Stage(ctx.renderer);
-    this.terminal = this.stage.addPanel(TW, TH, 1.5);
-    this.times = resolveX9Times(ctx);
+  ground = new Ground(); groundRT = makeRT(); copy = new CopyPass();
+  layer = new Layer2D(); clean = new Layer2D(); times: X9Times; users = 0;
+  constructor(ctx: SceneCtx) { this.times = resolveX9Times(ctx); }
+  dispose() {
+    this.ground.pass.mat.dispose(); this.groundRT.dispose(); this.copy.pass.mat.dispose();
+    this.layer.texture.dispose(); this.clean.texture.dispose();
   }
 }
 let world: World | undefined;
-
 export default class S12Rerun extends Scene {
   private w!: World;
   override init() { this.w = world ??= new World(this.ctx); this.w.users++; }
-  override dispose() {
-    if (--this.w.users === 0) { this.w.lyrics.dispose(); this.w.stage.dispose(); world = undefined; }
-  }
+  override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const { stage, terminal, times: T } = this.w, au = this.ctx.audio, t = f.t;
-    const s = rerunState(au, t, T), c = stage.poster, fr = frameOn(stage.pw, stage.ph);
-    const tx = stage.pw / 2 + 110, ty = stage.ph / 2 + 90;
-    const cx = fr.x + 470, cy = fr.y + 610;
-    stage.clearPoster(); drawGrid(c, stage.pw, stage.ph);
-    disc(c, fr.x + 1590, fr.y + 890, 315);
-    bigType(c, s.clearing ? 'CLEAR' : 'AGAIN', fr.x - 30, fr.y + 1060, { size: 390, alpha: INK_SOFT.faint });
-
-    terminal.clear();
-    const box = { x: 0, y: 100, width: TW, height: TH - 100 };
-    drawTerminal(terminal.ctx, box, { command: '', cursorVisible: s.clearing && s.clear === 1, fontSize: 24 });
-    // Wipe actual cache entries, leaving the clean terminal beneath the moving edge.
-    terminal.ctx.save(); terminal.ctx.beginPath();
-    terminal.ctx.rect(TW * s.clear, 100, TW * (1 - s.clear), TH - 100); terminal.ctx.clip();
-    const history: TerminalLine[] = T.runs.slice(0, Math.max(0, s.run)).flatMap(() => [
-      { kind: 'text', text: '$ npm test' }, { kind: 'summary', failed: 19, passed: 0, total: 19 },
-    ]);
-    drawTerminal(terminal.ctx, box, {
-      command: s.clearing ? 'npm cache clean --force' : 'npm test',
-      commandChars: s.clearing ? undefined : s.chars,
-      cursorVisible: !s.result && !s.clearing, fontSize: 24, lineHeight: 34,
-      lines: s.clearing ? CACHE : [...history, ...(s.result ? [{ kind: 'summary', failed: 19, passed: 0, total: 19 } as TerminalLine] : []), ...CACHE],
-    });
-    if (s.result) {
-      // Red belongs to this failed-test result surface; the paper and Clawd retain their tokens.
-      const c2 = terminal.ctx, w = lerp(550, TW, s.red), h = lerp(180, TH - 200, s.red);
-      c2.fillStyle = css('fail'); c2.fillRect((TW - w) / 2, 285, w, h);
-      c2.fillStyle = css('paper'); c2.textAlign = 'center'; c2.textBaseline = 'middle';
-      c2.font = font(F.archivo(75, 900), lerp(100, 215, s.red)); c2.fillText('19 FAILED', TW / 2, 285 + h / 2);
+    const w = this.w, T = w.times, au = this.ctx.audio, t = f.t, s = rerunState(au, t, T);
+    const run = Math.max(0, s.run), punch = ease.outExpo(beatSpan(au, t, T.runs[run], 0.4));
+    const zoom = s.clearing ? 1 : lerp(run === 0 ? 1 : [1.05, 1.48][run - 1]!, s.zoom, punch);
+    const count = ease.outExpo(beatSpan(au, t, T.count, 0.5));
+    w.ground.render(this.ctx.renderer, w.groundRT, { kind: 'paper', t, camX: run * 70 + s.clear * 260,
+      camY: 30 * beatsSince(au, t, T.runs[0]), zoom, kick: f.a.kick, grid: 0.25,
+      halftone: s.clearing ? 0.15 : 0.3 + run * 0.15, pitch: 12 });
+    w.layer.clear(); const c = w.layer.ctx;
+    if (t < T.count) {
+      if (!s.clearing) {
+        // Each old command is an actual printed sheet behind the next copy.
+        for (let i = 0; i <= run; i++) {
+          const active = i === run, localZoom = active ? zoom : 1 + i * 0.12;
+          c.save(); c.translate(960 + (i - run) * 75, 540 + (i - run) * 50);
+          c.rotate((i - run) * -0.035); c.scale(localZoom, localZoom); c.translate(-960, -540);
+          c.fillStyle = css('paper'); c.fillRect(260, 225, 1390, 665);
+          c.globalAlpha = active ? 1 : 0.33;
+          mono(c, `TEST RUN / COPY ${String(i + 1).padStart(2, '0')}`, 315, 282, 22);
+          mono(c, 'calendar / month.test.ts', 315, 330, 18, 'ink', 0.55);
+          const chars = active ? s.chars : 8;
+          c.font = font(F.mono(600), 58); c.fillStyle = css('ink');
+          const command = '$ ' + 'npm test'.slice(0, chars); c.fillText(command, 315, 440);
+          if (active && !s.result) drawCursor(c, { x: 330 + c.measureText(command).width,
+            y: 440, h: 48, on: blink(f.beat, chars < 8) });
+          const result = !active || s.result;
+          if (result) {
+            // Enlarging this failed-result surface is the only use of a red flood.
+            const red = active ? s.red : [0.12, 0.45, 1][i]!;
+            const rw = lerp(740, 1390, red), rh = lerp(180, 420, red);
+            c.fillStyle = css('fail'); c.fillRect(260, 477, rw, rh);
+            c.fillStyle = css('paper'); c.font = font(F.archivo(75, 900), lerp(104, 164, red));
+            c.fillText('19 FAILED', 315, 608 + red * 76);
+            mono(c, 'EXPECTED 31 / RECEIVED 32', 319, 655 + red * 110, 20, 'paper');
+          }
+          // The sung rerun line is printed on each generation, not an unrelated subtitle.
+          if (active) sungLine(c, this.ctx, t, 315, 850, 1250, 'ink', 26);
+          c.restore();
+        }
+        if (run === 2 && s.result) {
+          // The third copy is now a full-frame failed-test report, not a red ground.
+          c.fillStyle = css('fail'); c.fillRect(0, 0, 1920, 1080);
+          mono(c, 'TEST RUN / COPY 03 / calendar / month.test.ts', 120, 130, 23, 'paper');
+          mono(c, '$ npm test', 120, 240, 68, 'paper');
+          c.fillStyle = css('paper'); c.font = font(F.archivo(75, 900), 320);
+          c.fillText('19 FAILED', 105, 650);
+          mono(c, 'EXPECTED 31 / RECEIVED 32', 120, 755, 34, 'paper');
+          sungLine(c, this.ctx, t, 120, 950, 1680, 'paper', 33);
+        }
+      } else {
+        mono(c, '$ npm cache clean --force', 260, 262, 38);
+        mono(c, 'CACHE / PURGE', 260, 340, 18, 'ink', 0.5);
+        c.save(); c.beginPath(); c.rect(260 + 1390 * s.clear, 370, 1390 * (1 - s.clear), 425); c.clip();
+        for (const [i, file] of CACHE.entries()) {
+          const y = 418 + i * 82;
+          c.fillStyle = css('ink', 0.06); c.fillRect(260, y - 34, 1390, 65);
+          mono(c, `node_modules/.cache/${file}`, 300, y, 27);
+          mono(c, 'CACHED', 1430, y, 18, 'ink', 0.45);
+        }
+        c.restore();
+        c.fillStyle = css('clay'); c.fillRect(260 + 1390 * s.clear, 370, 4, 425);
+        drawCursor(c, { x: 260 + 1390 * s.clear - 10, y: 819, h: 35 });
+        if (s.clear === 1) mono(c, 'CACHE CLEARED / 0 ENTRIES', 260, 435, 23, 'ink', 0.55);
+        sungLine(c, this.ctx, t, 260, 930, 1390, 'ink', 29);
+      }
     }
-    terminal.ctx.restore();
-    const countReveal = ease.outCubic(beatSpan(au, t, T.count, 0.5));
-    terminal.update({ x: tx + 900 * countReveal, y: ty, z: 60, rz: 0,
-      alpha: 1 - countReveal, visible: countReveal < 1 });
-
+    const settings = copySettings(s.run, s.clearing), u = w.copy.pass.u;
+    u.ground!.value = w.groundRT.texture; u.copy!.value = w.layer.upload();
+    for (const [key, value] of Object.entries(settings)) u[key]!.value = value;
+    u.frame!.value = frameIdx(t); u.feed!.value = au.beatAt(t) * 0.04;
+    w.copy.pass.render(this.ctx.renderer, out);
+    w.clean.clear(); const cc = w.clean.ctx;
     if (s.number > 0) {
-      // A9 is driven by the same measured subdivision as the displayed count.
-      Clawd.draw(c, cx, cy, Clawd.pose('A9', { beat: s.number, beat0: 0, p: s.countPhase }), { px: PX });
-      c.save(); c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-      const extra = s.number === 11;
-      c.fillStyle = css(extra && t < afterBeats(au, T.eleven, 0.5) ? 'fail' : 'ink');
-      c.font = font(F.archivo(100, 900), 158); c.fillText(String(s.number), cx + Clawd.W * PX / 2, cy - 58);
-      // The fail flash is an explicit count assertion, consistent with the semantic-colour rule.
-      c.font = font(F.mono(500), 15); c.fillStyle = css(extra ? 'fail' : 'ink', extra ? 1 : INK_SOFT.strong);
-      c.fillText(extra ? 'COUNT ASSERTION: expected 10, received 11' : 'COUNT / EXPECTED 10', cx + Clawd.W * PX / 2, cy + 120);
-      c.restore();
+      const extraAge = beatsSince(au, t, T.eleven), type = countTypography(s.number, s.countPhase, extraAge);
+      const extra = s.number === 11, flash = extra && t < afterBeats(au, T.eleven, 0.5);
+      cc.save(); cc.translate(960, 495); cc.scale(type.scale * count, count);
+      cc.font = font(F.archivo(type.width, type.weight), 470);
+      cc.fillStyle = css(flash ? 'fail' : 'ink'); cc.textAlign = 'center'; cc.fillText(String(s.number), 0, 0);
+      cc.restore();
+      Clawd.draw(cc, 960 - Clawd.W * 19 / 2, 660, Clawd.pose('A9', {
+        beat: s.number, beat0: 0, p: s.countPhase,
+      }), { px: 19 });
+      // A9 remains the canonical sprite; closed eyes use the official sleep eye cells.
+      mono(cc, extra ? 'COUNT ASSERTION / EXPECTED 10 / RECEIVED 11' : 'COUNT / EXPECTED 10',
+        extra ? 540 : 750, 848, 22, extra ? 'fail' : 'ink', extra ? 1 : 0.5);
+      sungLine(cc, this.ctx, t, 420, 962, 1140, 'ink', 29);
+      cc.strokeStyle = css('ink', 0.25); cc.lineWidth = 1; cc.beginPath();
+      cc.moveTo(420, 892); cc.lineTo(1500, 892); cc.stroke();
+      for (let i = 0; i < 11; i++) {
+        cc.fillStyle = css(i === 10 && extra ? 'fail' : 'ink', i < s.number ? 0.8 : 0.12);
+        cc.fillRect(420 + i * 100, 895, 70, 3);
+      }
     } else {
-      Clawd.draw(c, fr.x + 170, fr.y + 700, Clawd.pose(s.clearing ? 'A3' : 'A8', {
+      Clawd.draw(cc, 125, 765, Clawd.pose(s.clearing ? 'A3' : 'A8', {
         beat: f.beat, beat0: au.beatAt(T.runs[0]), p: 0,
-      }), { px: PX });
+      }), { px: 11 });
     }
-
-    const medium = { x: stage.pw / 2, y: stage.ph / 2 + 40, zoom: 1 };
-    const target = { x: tx, y: ty + 80, zoom: s.zoom };
-    let view: CameraView = target;
-    if (s.run >= 0 && !s.clearing) {
-      const previous = { ...target, zoom: s.run ? [1.05, 1.48][s.run - 1] : 1 };
-      view = mixView(previous, target, ease.outCubic(beatSpan(au, t, T.runs[s.run], 0.5)));
-    }
-    if (s.clearing) view = mixView(target, medium, ease.outCubic(beatSpan(au, t, T.clear, 0.75)));
-    if (t >= T.count) view = mixView(medium, { x: cx + Clawd.W * PX / 2, y: cy - 30, zoom: 2.3 },
-      ease.outCubic(span(t, T.count, afterBeats(au, T.count, 0.6))));
-    stage.view(view); stage.render(out); this.w.lyrics.draw(this.ctx, t, out);
-    const k = s.clearing || s.run < 0 ? 0 : (5 + s.run * 4) * beatHit(au, t, T.runs[s.run]), fi = frameIdx(t);
-    return { ...POSTER_POST, hud: 0, shake: [k * (hash(fi, 31) * 2 - 1), k * (hash(fi, 32) * 2 - 1)] as [number, number] };
+    this.ctx.comp.draw(this.ctx.renderer, w.clean.upload(), out);
+    const k = s.clearing ? 0 : (5 + run * 4) * beatHit(au, t, T.runs[run]), fi = frameIdx(t);
+    return { ...postFor('paper'), hud: 0, grain: 0.035,
+      shake: [k * (hash(fi, 31) * 2 - 1), k * (hash(fi, 32) * 2 - 1)] as [number, number] };
   }
 }
