@@ -13,7 +13,7 @@ import { afterBeats, span } from '../kit/time';
 import * as Clawd from '../kit/clawd';
 import { openingTimes, notifyState } from './parts/s01-timing';
 import { mono, project, viewCanvas, WrittenLyric } from './parts/s01-drafting';
-import { drawForm } from './parts/s03-form';
+import { drawForm, prepareForm } from './parts/s03-form';
 
 const EDITOR = { x: 216, y: 118, w: 1488, h: 804 };
 const NOTIFY = { x: 1080, y: 668, width: 720, height: 200 };
@@ -27,6 +27,7 @@ class NotifyWorld {
   lyric;
   report;
   constructor(ctx: SceneCtx) {
+    prepareForm();
     this.T = openingTimes(ctx.audio, ctx.lyrics);
     this.lyric = new WrittenLyric(ctx.lyrics.get("Nine o'clock"));
     this.report = new WrittenLyric(ctx.lyrics.get('Got a bug report'), 32);

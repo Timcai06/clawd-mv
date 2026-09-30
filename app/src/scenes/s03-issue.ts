@@ -10,10 +10,11 @@ import { frameIdx, hash } from '../engine/util';
 import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
+import { CALENDAR_ISSUE } from '../kit/content';
 import * as Clawd from '../kit/clawd';
 import { openingTimes, issueState } from './parts/s01-timing';
 import { mono, project, rule, viewCanvas, WrittenLyric } from './parts/s01-drafting';
-import { drawForm, EXTRA, STAMP } from './parts/s03-form';
+import { drawForm, prepareForm, EXTRA, STAMP } from './parts/s03-form';
 
 const INK_FRAG = /* glsl */ `
 uniform sampler2D groundTex, formTex, stampTex;
@@ -52,29 +53,34 @@ class IssueWorld {
   ground = new Ground();
   groundRT = makeRT();
   form = new Layer2D();
-  stamp = new Layer2D(STAMP.w, STAMP.h);
+  stamps = [new Layer2D(STAMP.w, STAMP.h), new Layer2D(STAMP.w, STAMP.h), new Layer2D(STAMP.w, STAMP.h)];
   lines = new LineBatch(1500, { blend: 'normal' });
   paper = new FSPass(INK_FRAG, {
     groundTex: { value: this.groundRT.texture }, formTex: { value: this.form.texture },
-    stampTex: { value: this.stamp.texture }, clay: { value: new THREE.Vector3(...lin('clay')) },
+    stampTex: { value: this.stamps[2]!.texture }, clay: { value: new THREE.Vector3(...lin('clay')) },
     view: { value: new THREE.Vector4(960, 540, 1, 0) },
     stamp: { value: new THREE.Vector4(STAMP.x, STAMP.y, 1, 0) }, angle: { value: STAMP.angle },
   });
   T;
   lyric;
   constructor(ctx: SceneCtx) {
+    prepareForm();
     this.T = openingTimes(ctx.audio, ctx.lyrics);
     this.lyric = new WrittenLyric(ctx.lyrics.get('Got a bug report'), 36);
-    const c = this.stamp.ctx;
-    c.fillStyle = css('clay'); c.font = font(F.archivo(100, 900), 124);
-    c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('BUG', STAMP.w / 2, STAMP.h / 2 + 5);
-    this.stamp.upload();
+    // Compressed/light -> wide/heavy on the stamp's first half beat. All faces
+    // are prepared before playback; no font parsing or new canvas in render().
+    const faces = [[62, 300], [87.5, 500], [100, 900]] as const;
+    this.stamps.forEach((layer, i) => {
+      const c = layer.ctx, face = faces[i]!;
+      c.fillStyle = css('clay'); c.font = font(F.archivo(face[0], face[1]), 124);
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('BUG', STAMP.w / 2, STAMP.h / 2 + 5); layer.upload();
+    });
   }
   dispose() {
     this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose();
     this.paper.mat.dispose(); this.paper.mesh.geometry.dispose(); this.groundRT.dispose();
-    this.form.texture.dispose(); this.stamp.texture.dispose();
+    this.form.texture.dispose(); this.stamps.forEach(layer => layer.texture.dispose());
     this.lines.geo.dispose(); this.lines.mat.dispose();
   }
 }
@@ -99,7 +105,7 @@ export default class S03Issue extends Scene {
     Clawd.draw(c, 646, 195, p, { px: 12 });
     if (s.title < 1) {
       c.font = font(F.archivo(100, 700), 60);
-      const title = 'Calendar shows October 32'.slice(0, Math.floor(25 * s.title));
+      const title = CALENDAR_ISSUE.title.slice(0, Math.floor(CALENDAR_ISSUE.title.length * s.title));
       drawCursor(c, { x: 292 + c.measureText(title).width, y: 297, h: 48 });
     }
     // The incident number becomes a running acquisition index in the margin.
@@ -118,6 +124,7 @@ export default class S03Issue extends Scene {
     (w.paper.u.view!.value as THREE.Vector4).set(v.x, v.y, v.zoom, v.roll);
     (w.paper.u.stamp!.value as THREE.Vector4).set(STAMP.x, STAMP.y + s.stampLift, s.stampScale, s.stamp ? 1 : 0);
     w.paper.u.formTex!.value = w.form.upload();
+    w.paper.u.stampTex!.value = w.stamps[s.stampFace]!.texture;
     w.paper.render(this.ctx.renderer, out);
 
     if (s.circle > 0) {

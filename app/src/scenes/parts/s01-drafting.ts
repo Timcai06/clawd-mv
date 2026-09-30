@@ -53,6 +53,7 @@ export class WrittenLyric {
     const head = drawStrokeText(c, this.stroke, writtenLength(this.stroke, this.times, t));
     if (head && t < this.line.end) drawCursor(c, { x: head.x + 5, y: head.y + 10, h: 24 });
     c.restore();
+    return head && t < this.line.end ? { x: x + head.x + 5, y: y + head.y + 10, h: 24 } : null;
   }
 }
 

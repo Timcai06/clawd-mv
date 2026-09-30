@@ -55,6 +55,7 @@ export function issueState(audio: AudioData, t: number, T: OpeningTimes) {
   return {
     title: span(t, T.issue, afterBeats(audio, T.issue, 1.4)),
     stamp: t >= T.bug, stampScale: 1 + 1.6 * (1 - ease.outExpo(span(elapsed, 0, 0.5))),
+    stampFace: elapsed < 0.16 ? 0 : elapsed < 0.35 ? 1 : 2,
     stampLift: t >= T.bug ? 0 : -180,
     impact: t >= T.bug ? Math.pow(0.5, elapsed / 0.15) : 0,
     circle: ease.inOutCubic(span(t, T.attachment, afterBeats(audio, T.attachment, 1.3))),

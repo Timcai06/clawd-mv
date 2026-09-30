@@ -49,6 +49,7 @@ describe('group A editorial and musical landmarks', () => {
   });
   test('real scenes cannot be displaced by group A helpers during module discovery', () => {
     const files = [...new Bun.Glob('s0[123]-*.ts').scanSync({ cwd: new URL('../src/scenes/', import.meta.url).pathname })];
-    for (const id of ['s01', 's02', 's03']) expect(files.filter(file => file.startsWith(id + '-')).length).toBeLessThanOrEqual(1);
+    for (const [id, file] of [['s01', 's01-boot.ts'], ['s02', 's02-notify.ts'], ['s03', 's03-issue.ts']])
+      expect(files.filter(name => name.startsWith(id + '-'))).toEqual([file]);
   });
 });

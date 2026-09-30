@@ -97,7 +97,8 @@ export default class S01Boot extends Scene {
     c.restore(); g.restore();
     // The lyric pen leaves the welcome frame before the notification interrupts it.
     if (f.t >= w.lyric.line.start) {
-      w.lyric.draw(c, f.t, 260, 950, 'paper');
+      const pen = w.lyric.draw(c, f.t, 260, 950, 'paper');
+      if (pen) drawCursor(g, pen);
       mono(c, '09:00', 260, 875, 22, 'paper', 0.6);
     }
     w.lines.render(this.ctx.renderer, out);
