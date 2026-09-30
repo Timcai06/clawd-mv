@@ -48,22 +48,31 @@
   }
  },
  "terminal_welcome": {
-  "note": "Welcome-screen block art (clawd_body / clawd_background colours). Char rows as found; row 3 is a repeat of row 1 inferred, not confirmed. Pixel version: each cell = 1x2 px, the '▄' cells' upper half is background = eyes.",
+  "note": "CANONICAL (Tim, 2026-09-30). Captured from the live welcome screen of Claude Code 2.1.220 in a pty (cursor positions included). Quadrant block art, 1 char = 2x2 px. 'O' = clawd_body rgb(215,119,87); 'D' = clawd_background (terminal background, rgb(0,0,0) in the dark theme) showing through as the eyes.",
+  "chars": [
+   " ▐▛███▜▌",
+   "▝▜█████▛▘",
+   "  ▘▘ ▝▝"
+  ],
+  "pixels": [
+   "..OOOOOOOOOOOO..",
+   "..OODOOOOOODOO..",
+   "OOOOOOOOOOOOOOOO",
+   "..OOOOOOOOOOOO..",
+   "...O.O....O.O..."
+  ],
+  "palette": {
+   "O": "#d77757",
+   "D": "#000000"
+  }
+ },
+ "terminal_welcome_large_unverified": {
+  "note": "11-wide block variant found as strings in the binary (clawd_body/clawd_background); not what the welcome screen shows in 2.1.220; row order partly inferred.",
   "rows": [
    " █████████ ",
    "██▄█████▄██",
    " █████████ ",
    " █ █   █ █ "
-  ],
-  "pixels": [
-   ".OOOOOOOOO.",
-   ".OOOOOOOOO.",
-   "OODOOOOODOO",
-   "OOOOOOOOOOO",
-   ".OOOOOOOOO.",
-   ".OOOOOOOOO.",
-   ".O.O...O.O.",
-   ".O.O...O.O."
   ]
  }
 }
