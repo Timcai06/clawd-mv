@@ -17,3 +17,6 @@ analysis/qa/
 reference/pdoom/audio/
 # Suno downloads (candidates) — keep locally
 audio/candidates/
+
+# Final lossless master stays local.
+audio/song.wav

@@ -53,6 +53,8 @@ async function openPage(url: string) {
   const logs: string[] = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
+  page.on('response', (r) => { if (r.status() >= 400) logs.push(`[http ${r.status()}] ${r.url()}`); });
+  page.on('requestfailed', (r) => logs.push(`[requestfailed] ${r.url()} ${r.failure()?.errorText}`));
   const only = opt('only');
   await page.goto(`${url}/?export=1${only ? `&only=${only}` : ''}${SCALE !== 1 ? `&scale=${SCALE}` : ''}`);
   await page.waitForFunction(() => (window as any).__clawd?.ready || (window as any).__clawd?.error, null, { timeout: 120000 });
@@ -72,9 +74,8 @@ async function stills(page: Page, times: number[], outDir: string) {
     const k: number = await page.evaluate(([t, s, sh]) => (window as any).__clawd.still(t, s, sh), [t, SAMPLES, +opt('shutter', '0.5')!] as const);
     const f = path.join(outDir, `f_${t.toFixed(2).padStart(7, '0')}.png`);
     if (typeof SAMPLES !== 'number') console.log(`t=${t}: ${k} sub-frames`);
-    // at scale > 1 the canvas is shown downscaled on the page: save the full-res pixel buffer instead
-    if (SCALE !== 1) await Bun.write(f, Buffer.from(await page.evaluate(() => (window as any).__clawd.png()), 'base64'));
-    else await page.screenshot({ path: f, clip: { x: 0, y: 0, width: 1920, height: 1080 } });
+    // Save rendered pixels at every scale without taking a browser screenshot.
+    await Bun.write(f, Buffer.from(await page.evaluate(() => (window as any).__clawd.png()), 'base64'));
     files.push(f);
   }
   return files;
@@ -105,7 +106,9 @@ async function sheet(page: Page, times: number[], cols: number, out: string) {
 async function video(page: Page, from: number, to: number, fps: number, out: string) {
   mkdirSync(path.dirname(out), { recursive: true });
   const crf = opt('crf', '16')!;
-  const audio = path.join(ROOT, 'audio/song.mp3');
+  const wav = path.join(ROOT, 'audio/song.wav');
+  const audio = existsSync(wav) ? wav : path.join(ROOT, 'audio/song.mp3');
+  if (!flag('noaudio')) console.log(`audio source: ${audio}`);
   const args = ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${OW}x${OH}`, '-r', String(fps), '-i', 'pipe:0'];
   if (!flag('noaudio')) args.push('-ss', String(from), '-t', String(to - from), '-i', audio);
   // Frames are sRGB (toSRGB in the final pass): convert with the BT.709 matrix and tag the stream,
@@ -139,8 +142,9 @@ async function video(page: Page, from: number, to: number, fps: number, out: str
   // wait for all frames to arrive
   while (frames < total) await Bun.sleep(20);
   ff.stdin.end();
-  await ff.exited;
+  const exitCode = await ff.exited;
   server.stop();
+  if (exitCode !== 0) throw new Error(`ffmpeg exited with code ${exitCode}`);
   console.log(`\nwrote ${out} (${frames} frames in ${((performance.now() - t0) / 1000).toFixed(1)}s)`);
   console.log(`sub-frames per frame (count:frames): ${hist(used)}`);
 }
@@ -209,8 +213,8 @@ try {
     const dur: number = await page.evaluate(() => (window as any).__clawd.duration);
     await video(page, +opt('from', '0')!, +opt('to', String(dur))!, +opt('fps', '60')!, path.resolve(opt('out', path.join(ROOT, 'out/clawd.mp4'))!));
   }
-  if (logs.length) console.error('BROWSER LOG:\n' + logs.slice(0, 40).join('\n'));
 } finally {
+  if (logs.length) console.error('BROWSER LOG:\n' + logs.join('\n'));
   await browser.close();
   stop();
 }
