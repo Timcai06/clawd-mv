@@ -7,11 +7,7 @@
 - 用占位节拍音轨验证整条链路：132 BPM、120 秒，数据由 `tools/make_placeholder.py` 生成；场景是 `app/src/scenes/placeholder.ts`。
 - 结果：`tsc` 无错误；12 秒试渲染输出 1920×1080、60fps、H.264 + AAC，渲染速度约 37fps；像素统计显示逐词高亮在正确的时间出现。
 - 本机环境：bun 1.3.11、uv 0.11.6、ffmpeg 8.1（带 libx264）、Chrome、Python 3.14。
-- **遗留的上游痕迹**（不影响运行，以后顺手清理）：
-  - `engine/hud.ts` 里的 `PDoom` 类和 P(doom) 读数（默认关闭）
-  - `main.ts`、`render.ts` 里的 `window.__pdoom` 名字
-  - 环境变量 `PDOOM_NO_HMR`
-  - `palette.ts` 里 pdoom 的配色（阶段 4 会替换）
+- 遗留的上游痕迹：已由 X2 清理（见阶段 5）；`palette.ts` 的配色留到阶段 4 替换。
 
 ## 🔜 阶段 1：歌曲设计（C 写初稿，T 改和拍板，不花 Suno 积分）
 主文档是 `docs/TREATMENT.md`。**C 的初稿已完成（2026-09-30），等 T 拍板**，待定项在 TREATMENT 里用「⚑ 待定」标出。
@@ -25,7 +21,13 @@
 7. 修正了 TREATMENT 里关于 pdoom 的两处事实：主歌 1 是整段没鼓（不是「第 7 小节进鼓」）；弱起和贝斯停在副歌第 1 小节里，不在副歌之前。
 - **完成标准**：T 认可歌词和风格描述。
 
-## ⏳ 阶段 2：Suno 生成（T 操作，C 给数据）
+## ✅ 阶段 2：Suno 生成（T 操作，C 给数据）
+- **2026-09-30 定稿**：第一个候选「Works on My Machine」，Tim 满意。文件是 `audio/candidates/c1-works-on-my-machine.mp3`（gitignored）。
+- 已测：136 BPM，每 20 秒一段的速度都是 136.00；160.6 秒；-16.0 LUFS。
+- 完成标准的对照：时长 **没达标**（2:40，标准是 1:50–2:10），Tim 接受了；速度稳定 ✅；歌词吻合率和主题词落拍 **待测**（Whisper 模型还没下载下来）。
+- 下面是原计划，留作记录。
+
+### 原计划
 1. 用 Custom 模式，贴入歌词（TREATMENT 的「Suno 粘贴版」）、风格描述和 Exclude Styles。设置按 TREATMENT 的「阶段 2 的设置清单」：模型以 v6 为主，Variety 0，Duration 约 2:00。先生成 10–20 版。v6-wild 只少量试几次找点子（资料说它偏离提示词，坏片率高）。
 2. 同一段提示词至少听 3–5 个 take 再下结论（资料说 take 之间的差异可能大于改提示词的效果）。
 3. T 挑 3 个候选下载到 `audio/candidates/`（占 3 次下载额度，每月 20 次）。
@@ -65,7 +67,7 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 
 ## ⏳ 阶段 5：通用组件（C 定接口，X 实现，C 审查；阶段 2 期间就开始）
 - C 先写 `docs/ARCHITECTURE.md`：组件接口、场景契约、调色板 token、时间线锚点规则。
-- X2 上游残留清理（`PDoom` HUD、`window.__pdoom`、`PDOOM_NO_HMR`）
+- ✅ X2 上游残留清理（2026-09-30 合并）：删掉 P(doom) 读数，`window.__pdoom` 改成 `window.__clawd`，`PDOOM_NO_HMR` 改成 `CLAWD_NO_HMR`；改动前后渲染的静帧逐像素一致。遗留：`render.ts` 的 `plates` 模式里还写死了上游的场景 ID，等有了我们的场景再改
 - X3 仿编辑器组件：标签页、行号、语法高亮、光标、终端、文件树、待办清单；打字节奏由歌词和拍点驱动
 - X4 歌词排版层：沿用上游的逐词同步
 - Clawd 像素精灵渲染器，动作跟着拍点切换（C 做，它是形象核心）

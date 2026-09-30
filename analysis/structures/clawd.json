@@ -1,7 +1,7 @@
 {
  "_doc": "Song structure for analysis/measurement. Nominal bars at the nominal BPM; real songs drift, so sections are anchored to lyric lines (first_line) found by Whisper, not to these bar counts. A section whose first_line is null starts where the previous section's nominal length ends. For chorus-type sections the first bar is the stop/pickup bar and hook.word's stressed syllable should land on the downbeat of bar 2 of the section. expect = arrangement checks (advisory, measured from Demucs stems, never pass/fail gates).",
  "song": "clawd",
- "bpm": 132,
+ "bpm": 136,
  "beats_per_bar": 4,
  "lyrics": "lyrics/song.suno.txt",
  "hook": {
