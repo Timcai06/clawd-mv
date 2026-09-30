@@ -25,7 +25,7 @@
 | 主角 | 保留 Clawd，由 Claude 设计动作库 | 视频讲的就是 Claude Code，换角色会冲淡主题。像素造型适合用代码画 |
 | 技术路线 | 在 pdoom-video 引擎上改（MIT） | 删掉上游场景，保留引擎、时间线、分析、渲染 |
 | 分轨 | 用 Demucs 在本地分离 | 不必为了 Suno 的分轨导出去开 Premier |
-| **歌曲定稿** | `audio/candidates/c1-works-on-my-machine.mp3`，Suno 标题「Works on My Machine」，生成于 2026-09-30T12:36Z，Suno id `31dd315b-0eba-46bd-a8bd-45f06044f639`。Tim：「很满意，就用这个」（2026-09-30） | 实测：136 BPM，全程稳定；160.6 秒；48 kHz mp3，约 181 kbps；响度 -16.0 LUFS |
+| **歌曲定稿** | 母带是 `audio/candidates/c1-works-on-my-machine.wav`（48 kHz / 16 位，Tim 2026-09-30 下载），同一首歌的 mp3 版是 `c1-works-on-my-machine.mp3`，Suno 标题「Works on My Machine」，生成于 2026-09-30T12:36Z，Suno id `31dd315b-0eba-46bd-a8bd-45f06044f639`。Tim：「很满意，就用这个」（2026-09-30） | 实测：136 BPM，全程稳定；160.6 秒；响度 -16.0 LUFS；WAV 和 mp3 解码后逐采样对齐（偏移 0）。分析和成片都用 WAV。Tim：多出来的 40 秒无所谓，就用这个音频 |
 | 歌曲风格 | TREATMENT 的风格候选 A：明亮电子流行，女声（2026-09-30 Tim 定） | A 当基准；人声性别随 A 的默认，Tim 没单独提，想换男声可以用同一提示词对照 |
 | 主题句 | H1 `I need one more com- \| MIT`（2026-09-30 Tim 定） | commit 的重音本来就在第二个音节，英语自然会把它推到强拍上，不靠 Suno 听话 |
 | 演唱视角 | Clawd 用第一人称唱，「you」是人类开发者（2026-09-30 Tim 定） | |
