@@ -94,7 +94,9 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 - ✅ C：`kit/clawd.ts`（动作 A1–A13）、`kit/stage.ts`（海报 + 悬浮面板 + 投影 + 相机）；陈列页 `gallery-clawd`、`gallery-stage`。
 - ✅ X5：编辑器、终端、语法高亮、图标、故事内容（`kit/editor.ts` 等）。
 - ✅ X6：测试列表、git log、待办、通知、issue 卡片、日历（2026-09-30 合并；测试 46 项全部通过）。
-- ⏳ 下一批：调用栈、PR / diff / git graph、设备框、键盘、文字粒子；`kit/time.ts`；景深。
+- ✅ X7：欢迎框、调用栈、PR / diff、git graph、设备墙、键盘、文字雨（2026-09-30 合并；测试 64 项全部通过）。
+- ✅ `render.ts`：修掉了视频导出偶尔卡在收尾的问题。
+- ⏳ 还缺：`kit/time.ts`、歌词排版层、片尾字幕；景深（可选）。
 
 原计划：
 - C 先写 `docs/ARCHITECTURE.md`：组件接口、场景契约、调色板 token、时间线锚点规则。
