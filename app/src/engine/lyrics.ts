@@ -79,7 +79,7 @@ export class Lyrics {
     for (const w of this.words) if (w.start <= t) best = w;
     return best;
   }
-  /** Words whose normalized text matches (e.g. 'p(doom)'). */
+  /** Words whose normalized text matches (e.g. 'hello'). */
   findWords(s: string): Word[] {
     const q = norm(s);
     return this.words.filter((w) => norm(w.w) === q);
