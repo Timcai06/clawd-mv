@@ -6,8 +6,10 @@ import { F, font } from '../engine/type';
 import { hash } from '../engine/util';
 import { css, POSTER_POST } from '../theme';
 import { Voice, drawSet, setLine } from '../kit/lyric-moves';
-import { drawCredits } from '../kit/credits';
+import { drawCredits, drawSignature } from '../kit/credits';
 import * as Clawd from '../kit/clawd';
+import { blink, drawCursor } from '../kit/cursor';
+import { beatsSince } from '../kit/time';
 import { resolveOutroTimes, outroState, outroCredits, starState, S18_LAYOUT, CONSTELLATION_EDGES, type OutroTimes } from './parts/s18-score';
 import { S18_PAPER } from './parts/s18-print';
 
@@ -120,6 +122,23 @@ export default class S18Tomorrow extends Scene {
     }
   }
 
+  /**
+   * The author card (Tim 2026-10-01: everyone must see at a glance who made this): A FILM BY, then
+   * TIM · 蔡任天 dropped in glyph by glyph on eighth notes from the second beat of the last shot,
+   * the clay cursor typing after it, held through the fade.
+   */
+  private signature(c: CanvasRenderingContext2D, f: Frame) {
+    const au = this.ctx.audio, at = this.world.times.shots[6]!.start;
+    const b = beatsSince(au, f.t, at);
+    const label = Math.min(1, Math.max(0, b / 0.6));
+    if (label > 0) {
+      c.save(); c.globalAlpha = label; c.font = font(F.mono(500), 22); c.fillStyle = css('paper', 0.7);
+      c.fillText('A FILM BY  ·  作品', 100, 512); c.restore();
+    }
+    const right = drawSignature(c, 92, 708, 168, (i) => (b - 1 - i * 0.5) / 0.35, { color: 'paper' });
+    if (b > 1) drawCursor(c, { x: right + 6, y: 708, h: 168, on: b > 4 ? blink(f.beat) : 1 });
+  }
+
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.world, T = w.times, s = outroState(this.ctx.audio, f.t, T), c = w.layer.ctx;
     clearRT(this.ctx.renderer, out);
@@ -140,7 +159,8 @@ export default class S18Tomorrow extends Scene {
       c.fillText('exit 0'.slice(0, chars), 96, 870);
     }
     if (s.shot === 6) {
-      drawCredits(c, { x: 96, y: 578, width: 1700, height: 120 }, outroCredits(this.ctx.audio, f.t, T));
+      this.signature(c, f);
+      drawCredits(c, { x: 96, y: 742, width: 840, height: 170 }, { ...outroCredits(this.ctx.audio, f.t, T), columns: 1 });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     return { ...POSTER_POST, grain: 0.012, hud: 0, fade: s.fade };
