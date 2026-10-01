@@ -88,8 +88,11 @@ export const SOURCE_LEDGES = [
 
 export function platformLayout(audio: AudioData, t: number, T: PlatformTimes) {
   // Register the side scroll at the same 60% shot sample as scripts/compare.ts.
-  const anchor = T.scroll + (T.end - T.scroll) * 0.6;
-  const offset = (audio.beatAt(t) - audio.beatAt(anchor)) * 48;
+  // v4 motion: one continuous truck to the right across all three shots (slow in, accelerating
+  // through "read it all over"), so the strata parallax the whole time instead of three still lenses.
+  // It passes through the storyboard frame (offset 0) at the same 60 % sample scripts/compare.ts uses.
+  const pan = (u: number) => lerp(-260, 700, ease.inOutQuad(span(u, T.start, T.end))) + 140 * ease.inCubic(span(u, afterBeats(audio, T.end, -2), T.end));
+  const offset = pan(t) - pan(T.scroll + (T.end - T.scroll) * 0.6);
   const ledges = SOURCE_LEDGES.map(b => ({ ...b, x: b.x - offset * b.depth }));
   const px = 18.5;
   const incoming = handoffIn(t, audio, T);
