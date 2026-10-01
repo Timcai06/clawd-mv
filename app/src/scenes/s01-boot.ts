@@ -1,109 +1,62 @@
-// S01: the machine wakes as a drafting instrument. Paper rules never bloom;
-// only the clay pen and canonical Clawd sprite enter the glow layer.
+// S01: frontal welcome frame, partial paper rules, clay pixels and a perspective floor.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
-import { LineBatch } from '../engine/lines';
-import { ease, lerp } from '../engine/util';
 import { F, font } from '../engine/type';
 import { css } from '../theme';
 import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { drawCursor, blink } from '../kit/cursor';
-import { WELCOME_LINES } from '../kit/content';
-import { afterBeats, span } from '../kit/time';
+import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { varRun } from '../kit/vartype';
+import { afterBeats } from '../kit/time';
+import { cursorFromTop, printInBox } from './parts/s01-print';
 import * as Clawd from '../kit/clawd';
-import { openingTimes, bootState } from './parts/s01-timing';
-import { mono, plotPath, rule, viewCanvas, WrittenLyric } from './parts/s01-drafting';
-
+import { openingTimes, bootState, handoffOut, WELCOME_BOX, BOOT_CLAWD } from './parts/s01-timing';
+export const TYPE_LEVELS = { giant: null, lyric: 50.8, label: 20 }; // cap heights; Archivo 74 px = 50.764 cap px
 class BootWorld {
-  users = 0;
-  ground = new Ground();
-  text = new Layer2D();
-  glow = new GlowLayer();
-  lines = new LineBatch(1200, { blend: 'normal' });
-  T;
-  lyric;
-  constructor(ctx: SceneCtx) {
-    this.T = openingTimes(ctx.audio, ctx.lyrics);
-    this.lyric = new WrittenLyric(ctx.lyrics.get("Nine o'clock"));
-  }
-  dispose() {
-    this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose();
-    this.text.texture.dispose(); this.glow.layer.texture.dispose();
-    this.lines.geo.dispose(); this.lines.mat.dispose();
-  }
+  users = 0; ground = new Ground(); text = new Layer2D(); glow = new GlowLayer(); T; voice;
+  constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
+  dispose() { this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.text.texture.dispose(); this.glow.layer.texture.dispose(); }
 }
 let shared: BootWorld | undefined;
-
 export default class S01Boot extends Scene {
   private w!: BootWorld;
   override init() { this.w = shared ??= new BootWorld(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
-
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const w = this.w, T = w.T, au = this.ctx.audio, s = bootState(au, f.t, T);
-    const welcome = f.t >= T.welcome;
-    const v = s.view;
-    // Subtle depth drift is present even during the isolated-cursor hold.
-    w.ground.render(this.ctx.renderer, out, {
-      kind: 'ink', t: f.t, camX: v.x - 960 + f.beat * 3, camY: v.y - 540 + f.beat * 2,
-      zoom: v.zoom, grid: welcome ? lerp(0.15, 0.48, s.frame) : 0.12,
-      cell: 72, haze: 0.25 + 0.08 * Math.sin(f.beat * Math.PI / 2),
-      hazeY: 0.2, kick: f.a.kick, streaks: welcome ? 0.12 * (1 - s.frame) : 0,
-      travel: f.beat * 0.03,
-    });
-    w.text.clear(); w.glow.clear(); w.lines.clear();
-    const c = w.text.ctx, g = w.glow.ctx;
-    c.save(); g.save(); viewCanvas(c, v); viewCanvas(g, v);
-
-    if (!welcome) {
-      const cursor = { x: 943, y: 575, h: 66, on: blink(f.beat) };
-      drawCursor(c, cursor); drawCursor(g, cursor);
-    } else {
-      // The four sides are plotted in order, followed by the terminal divider.
-      const frame: [number, number][] = [[960, 224], [1536, 224], [1536, 784], [384, 784], [384, 224], [960, 224]];
-      const pen = plotPath(w.lines, v, frame, ease.inOutCubic(s.frame));
-      rule(w.lines, v, [812, 270], [812, 270 + 466 * s.frame], 0.3);
-      const cursor = { x: pen[0], y: pen[1] + 12, h: 28, on: s.frame < 1 ? 1 : 0 };
-      drawCursor(c, cursor); drawCursor(g, cursor);
-      // Corner ticks and a calibration ruler reveal with the welcome frame.
-      for (let i = 0; i < 24; i++) {
-        const k = span(s.frame, i / 30, (i + 1) / 30);
-        rule(w.lines, v, [400 + i * 48, 810], [400 + i * 48, 810 + (i % 4 ? 5 : 12) * k], 0.16 * k);
+    const w = this.w, au = this.ctx.audio, s = bootState(au, f.t, w.T);
+    w.ground.render(this.ctx.renderer, out, { kind: 'ink', t: f.t, grid: 0, haze: 0.24, hazeY: 0.25, kick: f.a.kick });
+    w.text.clear(); w.glow.clear(); const c = w.text.ctx, g = w.glow.ctx;
+    // Perspective rules only below the horizon; the welcome frame's surrounding space stays empty.
+    c.strokeStyle = css('paper', 0.13); c.lineWidth = 1; c.beginPath();
+    for (let x = -1920; x <= 3840; x += 340) { c.moveTo(960 + (x - 960) * 0.03, 775); c.lineTo(x, 1080); }
+    for (let i = 0; i < 12; i++) { const y = 775 + 305 * (i / 11) ** 2.5; c.moveTo(0, y); c.lineTo(1920, y); } c.stroke();
+    if (f.t >= w.T.welcome) {
+      const b = WELCOME_BOX, r = s.frame;
+      c.strokeStyle = css('paper', 0.8); c.lineWidth = 2;
+      c.beginPath(); c.moveTo(b.x, b.y + b.h * r); c.lineTo(b.x, b.y); c.lineTo(b.x + b.w * 0.88 * r, b.y);
+      c.moveTo(b.x, b.y + b.h); c.lineTo(b.x + b.w * 0.86 * r, b.y + b.h);
+      c.moveTo(b.x + b.w, b.y + b.h * 0.28); c.lineTo(b.x + b.w, b.y + b.h * 0.57 * r); c.stroke();
+      c.save(); c.setLineDash([2, 3]); c.strokeStyle = css('paper', 0.25); c.strokeRect(b.x, b.y, b.w, b.h); c.restore();
+      c.fillStyle = css('paper', 0.6);
+      printInBox(c,varRun('Welcome to Claude Code',74,{wdth:75,wght:700}),{x:582,y:255,w:660,h:50.8});
+      c.font = font(F.mono(), 20); c.fillText('cwd: ~/calendar', 582, 342);
+      const title = 'Works on My Machine', text = title.slice(0, Math.floor(title.length * s.rows[1]!));
+      c.fillText(text, 582, 376);
+      const p = Clawd.pose('A1', { beat: f.beat, beat0: au.beatAt(w.T.welcome), p: s.pixels });
+      for (const cell of p.cells) if (cell.k === 'O') {
+        c.strokeStyle = css('clay', 0.42); c.lineWidth = 0.8;
+        c.strokeRect(BOOT_CLAWD.x + cell.x * BOOT_CLAWD.px, BOOT_CLAWD.y + (cell.y + p.dy) * BOOT_CLAWD.px, BOOT_CLAWD.px, BOOT_CLAWD.px);
       }
-      const p = Clawd.pose('A1', { beat: f.beat, beat0: au.beatAt(T.welcome), p: s.pixels });
-      const revealed = { ...p, cells: p.cells.slice(0, Math.floor(p.cells.length * s.pixels)) };
-      Clawd.draw(c, 450, 431, revealed, { px: 18 });
-      Clawd.draw(g, 450, 431, { ...revealed, cells: revealed.cells.filter(cell => cell.k === 'O') }, { px: 18, alpha: 0.38 });
-      if (s.pixels > 0.5) mono(c, 'CLAWD / ONLINE', 450, 592, 18, 'paper', span(s.pixels, 0.5, 1) * 0.6);
-
-      WELCOME_LINES.forEach((text, i) => {
-        const display = text.replace(/^✻ /, '');
-        c.font = font(F.mono(i === 0 ? 600 : 400), i === 0 ? 28 : 23);
-        c.fillStyle = css('paper', i === 0 ? 1 : 0.6);
-        c.fillText(display.slice(0, Math.floor(display.length * s.rows[i]!)), 856, 367 + i * 83);
-        if (s.rows[i]! > 0 && s.rows[i]! < 1) {
-          const x = 856 + c.measureText(display.slice(0, Math.floor(display.length * s.rows[i]!))).width;
-          drawCursor(c, { x: x + 8, y: 372 + i * 83, h: 26 });
-          drawCursor(g, { x: x + 8, y: 372 + i * 83, h: 26 });
-        }
-      });
-      const ready = f.t >= afterBeats(au, T.welcome, 5);
-      if (ready) {
-        drawCursor(c, { x: 856, y: 720, h: 26, on: blink(f.beat) });
-        drawCursor(g, { x: 856, y: 720, h: 26, on: blink(f.beat) });
-      }
+      const reveal = { ...p, cells: p.cells.filter((cell, i) => cell.k === 'D' || i < Math.floor(p.cells.length * s.pixels)) };
+      Clawd.draw(c, BOOT_CLAWD.x, BOOT_CLAWD.y, reveal, { px: BOOT_CLAWD.px });
+      Clawd.draw(g, BOOT_CLAWD.x, BOOT_CLAWD.y, { ...reveal, cells: reveal.cells.filter(cell => cell.k === 'O') }, { px: BOOT_CLAWD.px, alpha: 0.25 });
     }
-    c.restore(); g.restore();
-    // The lyric pen leaves the welcome frame before the notification interrupts it.
-    if (f.t >= w.lyric.line.start) {
-      const pen = w.lyric.draw(c, f.t, 260, 950, 'paper');
-      if (pen) drawCursor(g, pen);
-      mono(c, '09:00', 260, 875, 22, 'paper', 0.6);
-    }
-    w.lines.render(this.ctx.renderer, out);
-    this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out);
-    w.glow.composite(this.ctx, out, 1.8);
-    return { ...postFor('ink'), hud: 0, grain: 0.025, bloomRadius: 0.65, vignette: 0.08 };
+    const cursor = { ...cursorFromTop(handoffOut(f.t, au, w.T)), on: blink(f.beat, f.t >= afterBeats(au,w.T.ping,-1)) };
+    drawCursor(c, cursor); drawCursor(g, cursor);
+    const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
+    drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink' });
+    this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.glow.composite(this.ctx, out, 1.4);
+    return { ...postFor('ink'), hud: 0, grain: 0.03, bloomRadius: 0.6, vignette: 0 };
   }
 }
