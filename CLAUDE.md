@@ -22,26 +22,32 @@
 - `docs/PLAN.md`：阶段计划和状态（先读这个）
 - `docs/TREATMENT.md`：故事、结构、歌词和画面对照、Suno 风格描述、视觉规范（阶段 1、4 的主文档）
 - `docs/ENGINE.md`：引擎和场景 API（写场景前必读）
+- `docs/ARCHITECTURE.md`：本项目在引擎之上的组织方式（分镜驱动的时间线、场景文件约定、公共部件）
 - `docs/STORYBOARD.md`：分镜表（场景、镜头、Clawd 动作库、组件清单）
 - `docs/tasks/`：交给 Codex 的任务说明
 - `reference/clawd/`：Clawd 官方形象（以终端欢迎界面为准）
-- `app/`：渲染器（bun + Vite + three.js）。`src/engine/` 是引擎，`src/scenes/` 放我们的场景，`src/timeline.ts` 是剪辑表
+- `app/`：渲染器（bun + Vite + three.js）。`src/engine/` 是引擎；`src/kit/` 是公共部件（活背景、光标、舞台、Clawd、各种界面组件、歌词层、时间工具）；`src/scenes/sNN-*.ts` 是 18 个正式场景（辅助代码在 `scenes/parts/`），`gallery-*.ts` 是组件陈列页（`--gallery 名字`）；`src/timeline.ts` 从分镜数据生成剪辑表；`src/theme.ts` 是色板 token
+- `storyboard/`：`shots.json`（分镜数据，剪辑的唯一来源）、`keyframes.json`（分镜图提示词）
+- `tools/`：`storyboard_md.py`（由分镜数据生成 STORYBOARD.md 的表格）、`render_keyframes.sh` 和 `keyframe_sheet.py`（生成分镜图和总览）、`merge_group.sh`（合并 Codex 组的分支）
+- `out/`（gitignored）：`preview/` 整片预览，`storyboard/v2/` 分镜图 v2，`wip/` 各种中间产物，`codex/` Codex 的日志和交付报告
 - `analysis/`：上游的 Python 分析脚本（Demucs 分离、逐词对齐、拍点）。**里面有大量针对 pdoom 那首歌写死的参数**（`analyze.py` 的 `SECTION_BARS`、`align.py` 的手工锚点），阶段 3 要按我们的歌重写
-- `tools/make_placeholder.py`：生成占位用的节拍音轨和数据（真歌到位后删除）
-- `audio/song.mp3`：当前是占位的节拍音轨。Suno 的候选版本放在 `audio/candidates/`（已 gitignore）
-- `data/*.approx.json`：占位数据。阶段 3 生成的 `data/audio.json`、`data/lyrics.json` 会优先加载
+- `audio/song.wav`：定稿歌的母带拷贝（gitignored；原件在 `audio/candidates/c1-works-on-my-machine.wav`）。`audio/song.mp3` 是占位音轨，只在没有母带时使用
+- `data/audio.json`、`data/lyrics.json`：定稿歌的逐拍网格和逐词对齐（已提交）
 - `reference/pdoom/`：上游的场景代码、分镜文档、时间线、原曲（原曲是别人的作品，已 gitignore，只供本地参考和分析）
 
 ## 常用命令
 
 ```sh
+cd app && bun test tests                  # 单元测试
+cd app && bun scripts/storyboard-check.ts   # 分镜锚点检查（0 过短、0 不递增）
+cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/x.mp4   # 整片预览，成片同画质
 cd app && bunx vite                      # 预览 http://localhost:5173 ，?t=23 从指定时间开始
 cd app && bunx tsc --noEmit -p tsconfig.json
 cd app && bun scripts/render.ts video --from 0 --to 12 --preset veryfast --out ../out/test.mp4
 cd app && bun scripts/render.ts stills --t 5,10 --out ../out/wip/x   # 给 Tim 看的静帧
 ```
 
-浏览器日志里会有一条 404：引擎先找 `data/audio.json` 找不到，再回退到 `.approx.json`，属于正常现象。
+浏览器日志里会有一条 404，是 `favicon.ico`，属于正常现象。
 
 ## Suno 的事实（2026-09-30 核实，会变）
 
