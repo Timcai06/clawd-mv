@@ -2,7 +2,8 @@
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
-import { hash } from '../engine/util';
+import { ease, hash, lerp } from '../engine/util';
+import { afterBeats, span } from '../kit/time';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { Voice, stamp, drawSet, setLine } from '../kit/lyric-moves';
@@ -70,8 +71,22 @@ export default class S12Rerun extends Scene {
     const w = this.w, t = f.t, T = w.times, v = w.voice, au = this.ctx.audio;
     w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0 });
     const entrance = enterBeat(au, t, T.rerunStart);
-    this.ctx.comp.draw(this.ctx.renderer, w.copies.texture, out, { opacity: entrance });
+    // v4 motion: every "run it again" is a rewind — the lens whips back from the right and lands one
+    // step closer (the copies degrade, we lean in); "clear the cache" wipes the copies off to the
+    // left; each counted number punches the frame. Identity by the last beat (S13 hand-off).
+    const run = T.runs.reduce((a, at, i) => (t >= at ? i : a), -1);
+    const at = run >= 0 ? T.runs[run]! : T.rerunStart;
+    const whip = run >= 0 ? 1 - ease.outExpo(span(t, at, at + 0.22)) : 0;
+    const clearK = ease.inCubic(span(t, T.clear, T.cache + 0.15));
+    const stepZoom = run < 0 ? 1 : [1.06, 1.14, 1.26][run]!;
+    const settle = ease.inOutCubic(span(t, T.clear, T.count));
+    const punch = t >= T.count ? Math.pow(0.5, ((f.beat * 2) % 1) / 0.12) * 0.035 * (1 - ease.inCubic(span(t, afterBeats(au, T.end, -1), T.end))) : 0;
+    const zoom = lerp(stepZoom, 1, settle) + punch;
+    const dx = 420 * whip - 2200 * clearK * (t < T.count ? 1 : 0);
+    const rot = run >= 0 && t < T.clear ? (run % 2 ? 0.012 : -0.012) * (1 - settle) : 0;
+    this.ctx.comp.draw(this.ctx.renderer, w.copies.texture, out, { opacity: entrance, scale: [1 / zoom, 1 / zoom], offset: [-dx / (1920 * zoom), 0] });
     w.layer.clear(); const c = w.layer.ctx;
+    c.save(); c.translate(960 + (t < T.clear ? dx : 0), 540); c.rotate(rot); c.scale(zoom, zoom); c.translate(-960, -540);
     if (entrance < 1) {
       const h = handoffIn(t, au, T);
       c.strokeStyle = css('ink', 1 - entrance); c.lineWidth = 4;
@@ -104,6 +119,7 @@ export default class S12Rerun extends Scene {
     if (s.number > 0) {
       const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     }
+    c.restore();
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     return { ...postFor('paper'), hud: 0, bloom: 0 };
   }

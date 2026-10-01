@@ -5,6 +5,8 @@ import { Layer2D } from '../engine/gl';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor, blink } from '../kit/cursor';
+import { afterBeats, span } from '../kit/time';
+import { clamp, ease, lerp } from '../engine/util';
 import { Voice } from '../kit/lyric-moves';
 import { varRun, fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
@@ -29,6 +31,15 @@ export default class S09Terminal extends Scene {
     const s = scopeState(au, t, T);
     w.ground.render(this.ctx.renderer, out, { kind: 'ink', t, grid: 0, haze: 0, streaks: 0 });
     w.layer.clear(); const c = w.layer.ctx;
+    // v4 motion: the scope is filmed close. The lens rides the scan head while we wait for a pass,
+    // pulses on every beat like the trace, and opens back to the full graticule on the last beat
+    // (the 19 counter is handed to S10 at its exact position).
+    const follow = ease.inOutCubic(span(t, T.terminal, afterBeats(au, T.terminal, 2)));
+    const exit = ease.inOutCubic(span(t, afterBeats(au, T.terminalEnd, -1), T.terminalEnd));
+    const beatPulse = Math.pow(0.5, (f.beat - Math.floor(f.beat)) / 0.12) * (t >= T.waiting ? 1 : 0);
+    const zoom = 1 + (0.14 * follow + 0.018 * beatPulse) * (1 - exit);
+    const fx = lerp(560, clamp(s.head * 0.5 + 300, 600, 1000), follow), fy = lerp(380, SCOPE.y - 60, follow);
+    c.save(); c.translate(lerp(fx, 960, 0.5), lerp(fy, 540, 0.5)); c.scale(zoom, zoom); c.rotate(-0.01 * follow * (1 - exit)); c.translate(-fx, -fy);
     const rule = (x0: number, y0: number, x1: number, y1: number, alpha: number) => {
       c.strokeStyle = css('paper', alpha); c.lineWidth = 1; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
     };
@@ -53,7 +64,7 @@ export default class S09Terminal extends Scene {
       c.fillStyle = css('clay'); c.beginPath(); c.arc(x, SCOPE.y, 9, 0, Math.PI * 2); c.fill();
     }
     c.fillStyle = css('clay'); c.fillRect(s.head - 16, SCOPE.y - 16, 32, 32);
-    const n = handoffOut(t, au, T); counter19(c, n.x, n.baseline, n.capH, 'paper');
+    const n = handoffOut(t, au, T);
     mono(c, 'npm test', 96, 290, TYPE_LEVELS.label, 'paper');
     mono(c, 'running 19 tests…', 96, 322, TYPE_LEVELS.label, 'paper');
     const v = w.voice, line = v.line("So I run the tests, I’m waiting for a pass");
@@ -73,6 +84,8 @@ export default class S09Terminal extends Scene {
     }
     carry(c, v, t, T.terminal, 96, 427, 'ink');
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
+    c.restore();
+    counter19(c, n.x, n.baseline, n.capH, 'paper');
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     return { ...postFor('ink'), bloom: 0, hud: 0 };
   }

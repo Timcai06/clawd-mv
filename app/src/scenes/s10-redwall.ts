@@ -3,7 +3,8 @@ import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
-import { hash } from '../engine/util';
+import { ease, hash, lerp } from '../engine/util';
+import { span } from '../kit/time';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { Voice, setLine, drawSet, odometer } from '../kit/lyric-moves';
@@ -42,6 +43,15 @@ export default class S10Redwall extends Scene {
     w.layer.clear(); const c = w.layer.ctx;
     const line = v.line('Nineteen red, and they’re shattering like glass');
     const set = setLine(v.forms(line, t).slice(1), 96, { space: 0.2 });
+    // v4 motion: "Nineteen red" sweeps the lens down the row of plates; "shattering" throws it back
+    // wide with a hit, then it drifts forward and rolls into the falling shards (the rain plate).
+    const sweep = ease.inOutCubic(span(t, T.nineteen, T.shatter));
+    const hit = t >= T.shatter ? Math.pow(0.5, (t - T.shatter) / 0.08) : 0;
+    const fall = ease.inQuad(span(t, T.shatter, T.wallEnd));
+    const zin = Math.sin(Math.PI * sweep);
+    const zoom = 1 + 0.28 * zin + 0.12 * hit + 0.14 * fall;
+    const fx = lerp(lerp(300, 1650, sweep), 960, t >= T.shatter ? 1 : 0), fy = 560 + 80 * fall;
+    c.save(); c.translate(fx, fy); c.rotate(0.03 * fall - 0.015 * hit); c.scale(zoom, zoom); c.translate(-fx, -fy);
     // Plates from back to front. Each printed surface is clipped to its projected face.
     for (const p of [...s.plates].reverse()) {
       const q = p.quad, thick = 9 / p.depth;
@@ -92,6 +102,7 @@ export default class S10Redwall extends Scene {
       // Torn letter portions move with the same shard as the toner that carried them.
       drawSet(c, set, 96 - x, 676 - y, { on: 'paper' }); c.restore();
     }
+    c.restore();
     const n = handoffIn(t, au, T), first = v.form(line.words[0]!, t);
     if (t < line.start) counter19(c, n.x, n.baseline, n.capH, 'fail');
     else if (first.born > 0) odometer(c, 19 * first.sung, n.x, n.baseline, 196,
@@ -99,7 +110,7 @@ export default class S10Redwall extends Scene {
     c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
     c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
     carry(c, v, t, T.wallStart, 96, 348, 'paper');
-    const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
+    const crab = s.clawd; Clawd.draw(c, crab.x, crab.y + 40 * fall, crab.pose, { px: crab.px });
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     return { ...postFor('paper'), hud: 0, bloom: 0 };
   }
