@@ -161,8 +161,9 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 **目标（T 2026-10-01）**：不再对齐 v2 分镜稿；**学习 pdoom 的设计，发挥 Claude 大胆、前沿的动态视觉设计，让观众看完感叹「这居然是 AI 做的」。不拘泥于任何限制，直观发挥自己的审美。**
 - 分镜图 v2、视觉规范 v2、歌词 v3 定稿、交接表都降为**参考和默认值**，不是约束。可以改镜头表、合并或拆分场景、换画法、引入新技术（光线步进、SDF 字形、粒子、反馈缓冲、实时 3D 字体……）。
 - 不变的只有：这首歌和它的时间数据；Clawd 的官方像素形象；画面只由时间 t 决定（确定性、可导出）；Tim 验收。
+- **T 最喜欢的参考：pdoom 约 10 秒起的「梯度下降」段**（`reference/pdoom/scenes/loss.ts`，歌词「There was a sudden drop in your training loss, / now I'm your servant and you're my boss」）。它的做法：火花在一张对数坐标的细线图表上画出带噪声的 loss 平台，歌词骑在曲线上走；唱到「drop」曲线从悬崖掉下去，镜头跟着掉出图表底部，落进一片用发光等高线雕出的 3D loss 地形（等高线的数值接着图表的坐标轴）；火花是画面里唯一的橙色，沿峡谷下降到尖锐的极小值；「servant / boss」做字号层级反转；唱到「boss」整个世界翻转 180° 冲进极小值，硬切下一场。**要学的是：一张图（数据）在一个连续的镜头里变成一个世界，歌词的含义直接变成几何，词就骑在那条几何上。** v4 的每一场都按这个标准来想。
 - 做法：
-  1. 先研读 pdoom 全部场景代码（`reference/pdoom/scenes/`，重点 stack、loss、loom、hook、dense、prompt、outro）和 Codex 的分析（`docs/reference/pdoom-analysis-codex-20261001.md`），写一份 v4 设计宣言（`docs/V4-DESIGN.md`）：全片的视觉语言、每场的核心机制、3–5 个「招牌时刻」、贯穿全片的连续性设计。
+  1. 先研读 pdoom 全部场景代码（**loss 第一**）（`reference/pdoom/scenes/`，重点 stack、loss、loom、hook、dense、prompt、outro）和 Codex 的分析（`docs/reference/pdoom-analysis-codex-20261001.md`），写一份 v4 设计宣言（`docs/V4-DESIGN.md`）：全片的视觉语言、每场的核心机制、3–5 个「招牌时刻」、贯穿全片的连续性设计。
   2. 先做招牌时刻的样片给 T 看，T 认可后逐场重做（S14 v4 已是这个水准的起点，也可以再升级）。
   3. 每场做完出短片给 T；全部做完出整片预览 v4。
 - C 可以看自己渲染的静帧和短片来做设计迭代（T 2026-10-01 授权「直观发挥自己的审美能力」）；最终好不好只由 T 判断。
