@@ -3,13 +3,14 @@ import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D, clearRT, W } from '../engine/gl';
 import { F, font } from '../engine/type';
-import { hash } from '../engine/util';
+import { ease, hash, lerp } from '../engine/util';
 import { css, POSTER_POST } from '../theme';
 import { Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { drawCredits, drawSignature } from '../kit/credits';
 import * as Clawd from '../kit/clawd';
 import { blink, drawCursor } from '../kit/cursor';
-import { beatsSince } from '../kit/time';
+import { afterBeats, beatsSince, span } from '../kit/time';
+import { Lens } from '../kit/lens';
 import { resolveOutroTimes, outroState, outroCredits, starState, S18_LAYOUT, CONSTELLATION_EDGES, type OutroTimes } from './parts/s18-score';
 import { S18_PAPER } from './parts/s18-print';
 
@@ -27,7 +28,8 @@ class TomorrowWorld {
     this.times = resolveOutroTimes(ctx.audio, ctx.lyrics);
     this.voice = new Voice(ctx.lyrics, ctx.audio);
   }
-  dispose() { this.layer.texture.dispose(); this.paper.mat.dispose(); }
+  lens = new Lens();
+  dispose() { this.lens.dispose(); this.layer.texture.dispose(); this.paper.mat.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, TomorrowWorld>();
 
@@ -139,7 +141,20 @@ export default class S18Tomorrow extends Scene {
     if (b > 1) drawCursor(c, { x: right + 6, y: 708, h: 168, on: b > 4 ? blink(f.beat) : 1 });
   }
 
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+  /**
+   * v4 motion: the night is not a still. A slow rise over the constellation and a drift toward the
+   * horizon while the stars are named; back to the full frame for the author card (last shot).
+   */
+  private view(t: number) {
+    const T = this.world.times, sig = T.shots[6]!.start;
+    const p = span(t, T.start, sig);
+    const back = ease.inOutCubic(span(t, afterBeats(this.ctx.audio, sig, -2), sig));
+    const zoom = lerp(1 + 0.1 * Math.sin(Math.PI * Math.min(1, p * 1.15)), 1, back);
+    return { zoom, fx: lerp(lerp(700, 1100, p), 960, back), fy: lerp(lerp(420, 640, p), 540, back), rot: 0 };
+  }
+
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.world.lens.rt;
     const w = this.world, T = w.times, s = outroState(this.ctx.audio, f.t, T), c = w.layer.ctx;
     clearRT(this.ctx.renderer, out);
     w.paper.u.dawn!.value = s.dawn;
@@ -163,6 +178,7 @@ export default class S18Tomorrow extends Scene {
       drawCredits(c, { x: 96, y: 742, width: 840, height: 170 }, { ...outroCredits(this.ctx.audio, f.t, T), columns: 1 });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
     return { ...POSTER_POST, grain: 0.012, hud: 0, fade: s.fade };
   }
 }

@@ -7,7 +7,9 @@ import { Ground, postFor } from '../kit/ground';
 import { Voice, gridSnap, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import { drawCursor } from '../kit/cursor';
-import { afterBeats, span } from '../kit/time';
+import { afterBeats, beatsSince, span } from '../kit/time';
+import { ease, lerp } from '../engine/util';
+import { Lens } from '../kit/lens';
 import * as Clawd from '../kit/clawd';
 import { openingTimes } from './parts/s01-timing';
 import { mono } from './parts/s01-drafting';
@@ -16,16 +18,28 @@ import { notifyLayout, handoffIn, PING_BOX, WAKE_CLAWD } from './parts/s02-layou
 import { drawReportLyrics } from './parts/s03-form';
 export const TYPE_LEVELS = { giant: 625, lyric: 50.8, label: 20 };
 class NotifyWorld {
-  users = 0; ground = new Ground(); layer = new Layer2D(); T; voice;
+  users = 0; ground = new Ground(); layer = new Layer2D(); lens = new Lens(); T; voice;
   constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.layer.texture.dispose(); }
 }
 let shared: NotifyWorld | undefined;
 export default class S02Notify extends Scene {
   private w!: NotifyWorld;
   override init() { this.w = shared ??= new NotifyWorld(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+  /** v4 motion: PING lands as a sprung hit with a roll; each word of "on my screen" nudges; identity on the S03 cut. */
+  private view(t: number) {
+    const au = this.ctx.audio, T = this.w.T;
+    const b = Math.max(0, beatsSince(au, t, T.ping));
+    let zoom = 1 + 0.14 * Math.exp(-b * 5) * Math.cos(b * 8), rot = t >= T.ping ? 0.03 * Math.exp(-b * 4) * Math.sin(b * 10) : 0;
+    const line = this.w.voice.line(0);
+    for (const wd of line.words.slice(4)) if (t >= wd.start) { const k = Math.pow(0.5, (t - wd.start) / 0.08); zoom += 0.02 * k; rot += (wd.index % 2 ? 0.006 : -0.006) * k; }
+    const settle = ease.inOutCubic(span(t, afterBeats(au, T.issue, -0.5), T.issue));
+    return { zoom: lerp(zoom, 1, settle), fx: 960, fy: 600, rot: rot * (1 - settle) };
+  }
+
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.w.lens.rt;
     const w = this.w, au = this.ctx.audio, t = f.t, s = notifyLayout(t, au, w.T), c = w.layer.ctx;
     // The paper wipe starts from the shared cursor, reaching the measured 1/3 split on the ping beat.
     w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, flipTo: 'ink', wipe: s.edge / 1920 * (1 - s.exit) });
@@ -61,6 +75,7 @@ export default class S02Notify extends Scene {
     // Got/a/bug can precede the bug-snapped S03 cut. Same TITLE positions on both sides.
     if (t >= w.voice.line(1).start) drawReportLyrics(c, w.voice, t);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.lens.film(this.ctx.renderer, finalOut, this.view(t));
     return { ...postFor('paper'), hud: 0, bloom: 0, grain: 0.03, vignette: 0 };
   }
 }

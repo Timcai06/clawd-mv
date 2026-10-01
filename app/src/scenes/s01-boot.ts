@@ -1,5 +1,6 @@
 // S01: frontal welcome frame, partial paper rules, clay pixels and a perspective floor.
 import type * as THREE from 'three';
+import { Lens } from '../kit/lens';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
@@ -8,22 +9,34 @@ import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { drawCursor, blink } from '../kit/cursor';
 import { Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
-import { afterBeats } from '../kit/time';
+import { afterBeats, span } from '../kit/time';
+import { ease, lerp } from '../engine/util';
 import { cursorFromTop, printInBox } from './parts/s01-print';
 import * as Clawd from '../kit/clawd';
 import { openingTimes, bootState, handoffOut, WELCOME_BOX, BOOT_CLAWD } from './parts/s01-timing';
 export const TYPE_LEVELS = { giant: null, lyric: 50.8, label: 20 }; // cap heights; Archivo 74 px = 50.764 cap px
-class BootWorld {
+class BootWorld { lens = new Lens();
   users = 0; ground = new Ground(); text = new Layer2D(); glow = new GlowLayer(); T; voice;
   constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.text.texture.dispose(); this.glow.layer.texture.dispose(); }
+  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.text.texture.dispose(); this.glow.layer.texture.dispose(); }
 }
 let shared: BootWorld | undefined;
 export default class S01Boot extends Scene {
   private w!: BootWorld;
   override init() { this.w = shared ??= new BootWorld(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+  /** v4 motion: tight on the lone cursor, a long pull-back as the welcome frame draws, a lean-in on the last beat. */
+  private view(t: number) {
+    const au = this.ctx.audio, T = this.w.T;
+    const cur = cursorFromTop(handoffOut(T.start, au, T));
+    const back = ease.inOutCubic(span(t, afterBeats(au, T.welcome, -1.5), afterBeats(au, T.welcome, 3)));
+    const lean = Math.sin(Math.PI * span(t, afterBeats(au, T.ping, -2), T.ping)) * 0.06;
+    const zoom = lerp(2.6, 1, back) + lean;
+    return { zoom, fx: lerp(cur.x + 10, 960, back), fy: lerp(cur.y - 20, 540, back), ax: 960, ay: 540, rot: 0.02 * (1 - back) };
+  }
+
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.w.lens.rt;
     const w = this.w, au = this.ctx.audio, s = bootState(au, f.t, w.T);
     w.ground.render(this.ctx.renderer, out, { kind: 'ink', t: f.t, grid: 0, haze: 0.24, hazeY: 0.25, kick: f.a.kick });
     w.text.clear(); w.glow.clear(); const c = w.text.ctx, g = w.glow.ctx;
@@ -57,6 +70,7 @@ export default class S01Boot extends Scene {
     const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
     drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink' });
     this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.glow.composite(this.ctx, out, 1.4);
+    this.w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
     return { ...postFor('ink'), hud: 0, grain: 0.03, bloomRadius: 0.6, vignette: 0 };
   }
 }
