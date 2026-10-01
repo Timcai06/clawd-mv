@@ -157,6 +157,8 @@ export class GlowLayer {
 
 /** Post-processing per ground. Glow only exists on INK (threshold above paper-on-ink text). */
 export function postFor(kind: GroundKind) {
-  if (kind === 'ink') return { ...POSTER_POST, bloom: 0.7, bloomThreshold: 0.95, bloomKnee: 0.3, bloomRadius: 0.8, vignette: 0.18, grain: 0.04, shoulder: 1 };
+  // knee 0.04: the soft knee starts at 0.91 linear, above paper (0.89), so paper type never blooms;
+  // only GlowLayer-boosted clay and the white-hot heat of a freshly sung word reach it.
+  if (kind === 'ink') return { ...POSTER_POST, bloom: 0.7, bloomThreshold: 0.95, bloomKnee: 0.04, bloomRadius: 0.8, vignette: 0.18, grain: 0.04, shoulder: 1 };
   return { ...POSTER_POST };
 }
