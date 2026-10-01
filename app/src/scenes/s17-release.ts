@@ -2,13 +2,14 @@
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
-import { lerp } from '../engine/util';
+import { ease, lerp } from '../engine/util';
+import { Lens } from '../kit/lens';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
 import { Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { fillRun, varRun } from '../kit/vartype';
-import { afterBeats, span } from '../kit/time';
+import { afterBeats, beatsSince, span } from '../kit/time';
 import * as Clawd from '../kit/clawd';
 import { PrintedDeviceWall } from './parts/s17-device-wall';
 import { resolveReleaseTimes, releaseState, type ReleaseTimes } from './parts/s17-release-state';
@@ -25,12 +26,13 @@ class World {
   users = 0;
   ground = new Ground();
   layer = new Layer2D();
+  lens = new Lens();
   wall = new PrintedDeviceWall();
   voice: Voice;
   times: ReleaseTimes;
   diff = ['- d <= days', '+ d < days'].map(text => varRun(text, 340, { wdth: 100, wght: 900 }));
   constructor(ctx: SceneCtx) { this.voice = new Voice(ctx.lyrics, ctx.audio); this.times = resolveReleaseTimes(ctx.audio, ctx.lyrics); }
-  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
+  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -80,7 +82,34 @@ export default class S17Release extends Scene {
     c.restore(); releaseLyric(c, v, line, t, 96, 960, 1728, 'paper', [3, 7]);
   }
 
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+  /**
+   * v4 motion (the chorus grammar, last time): creep and inhale into the final COMMIT, a sprung hit,
+   * a slow push into the diff with a nudge per word, a punch on "good", a push along the merge.
+   * The device-wall crane is the scene's own camera, so the lens rests at identity from there on.
+   */
+  private lensView(t: number, shot: number) {
+    const T = this.w.times, au = this.ctx.audio, R = T.release;
+    let zoom = 1, rot = 0, fx = 960, fy = 540;
+    if (shot === 0) {
+      zoom = 1 + 0.18 * ease.inQuad(span(t, R[0]!.start, T.hit)) - 0.09 * ease.inOutCubic(span(t, afterBeats(au, T.hit, -0.5), T.hit));
+    } else if (shot === 1) {
+      const b = Math.max(0, beatsSince(au, t, T.hit));
+      zoom = 1 + 0.18 * Math.exp(-b * 6) * Math.cos(b * 9); rot = 0.03 * Math.exp(-b * 5) * Math.sin(b * 11);
+    } else if (shot < 7) {
+      zoom = 1 + 0.06 * ease.inOutQuad(span(t, R[2]!.start, R[7]!.start)); fy = 620;
+      const line = this.ctx.lyrics.lastLine(t);
+      for (const wd of line?.words ?? []) if (t >= wd.start) {
+        const k = Math.pow(0.5, (t - wd.start) / 0.09), big = /good|merged/i.test(wd.w) ? 3 : 1;
+        zoom += 0.02 * big * k; rot += (wd.index % 2 ? 0.005 : -0.005) * big * k;
+      }
+      const settle = ease.inOutCubic(span(t, afterBeats(au, R[7]!.start, -1), R[7]!.start));
+      zoom = lerp(zoom, 1, settle); rot *= 1 - settle;
+    }
+    return { zoom, fx, fy, rot };
+  }
+
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.w.lens.rt;
     const w = this.w, T = w.times, v = w.voice, t = f.t;
     const state = releaseState(this.ctx.audio, t, T), s = releaseLayout(this.ctx.audio, this.ctx.lyrics, t, T);
     w.ground.render(this.ctx.renderer, out, { kind: state.ground, t, grid: 0, halftone: 0.12, pitch: 7, haze: 0 });
@@ -122,6 +151,7 @@ export default class S17Release extends Scene {
       }
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.lens.film(this.ctx.renderer, finalOut, this.lensView(t, state.shot));
     return { ...postFor(state.ground), hud: 0, frame: 0, grain: 0.035 };
   }
 }
