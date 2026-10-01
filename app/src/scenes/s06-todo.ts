@@ -7,6 +7,7 @@ import { css, lin } from '../theme';
 import { drawCursor, drawTrail } from '../kit/cursor';
 import { postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
+import { ease, lerp } from '../engine/util';
 import { Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
@@ -39,6 +40,19 @@ export default class S06Todo extends Scene {
   override render(f: Frame,out: THREE.WebGLRenderTarget) {
     const {w}=this,T=w.times,au=this.ctx.audio,c=w.layer.ctx,s=todoLayout(au,f.t,T);
     w.layer.clear();
+    // v4 motion: the sheet is filmed, not pinned. A slow push on the pen; a punch toward each box on
+    // its check (the third, stressed one hardest); the last beat dives into the pen tip, which S07
+    // receives as its first lit key.
+    const punch=T.checks.reduce((a,at,i)=>a+(f.t>=at?[0.05,0.07,0.13][i]!*Math.pow(0.5,(f.t-at)/0.1):0),0);
+    const tilt=T.checks.reduce((a,at,i)=>a+(f.t>=at?[0.012,-0.014,0.02][i]!*Math.pow(0.5,(f.t-at)/0.14):0),0);
+    const drift=ease.inOutQuad(span(f.t,T.todo,T.keyboard));
+    const dive=ease.inCubic(span(f.t,afterBeats(au,T.keyboard,-1),T.keyboard));
+    const entry=1-ease.outCubic(span(f.t,T.todo,afterBeats(au,T.todo,1.2)));
+    const zoom=1+0.14*drift+punch+0.25*entry+1.6*dive;
+    const fx=s.pen.x, fy=s.pen.y;
+    c.save();
+    c.translate(lerp(fx,960,0.2*drift+0.8*dive),lerp(fy,540,0.2*drift+0.8*dive)-30*entry);
+    c.rotate(tilt-0.015*entry); c.scale(zoom,zoom); c.translate(-fx,-fy);
     const head=checkHeadline(f.t,T),checks=T.plan.words.filter(x=>x.w.toLowerCase().startsWith('check'));
     if(head.born>0) {
       const active=checks.filter(x=>x.start<=f.t).at(-1)!;
@@ -94,6 +108,7 @@ export default class S06Todo extends Scene {
       c.save();c.translate(98,1060);c.scale(Math.min(1,1700/set.width),1);
       drawSet(c,set,0,0,{on:'paper'});c.restore();
     }
+    c.restore();
     w.bg.render(this.ctx.renderer,out);
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
     return {...postFor('paper'),hud:0,frame:0,bloom:0,grain:0.019};

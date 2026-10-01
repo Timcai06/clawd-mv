@@ -44,11 +44,19 @@ export const RIDER_KEY = KEY_FIELD[4*KEY_COUNT+9]!;
 
 export function cameraAt(audio: AudioData,t: number,T: CTimes) {
   const s=keyboardState(audio,t,T),d=s.dive;
-  // A low, rolled lens makes the near keys bleed and the eight modules converge.
-  const pos=new THREE.Vector3(lerp(3.66,ENTER.x,d),lerp(3.87,1.14,d),lerp(2.49,0.8,d));
-  const target=new THREE.Vector3(lerp(4.89,ENTER.x,d),lerp(0,0.5,d),lerp(-4.98,ENTER.z,d));
-  const cam=new THREE.PerspectiveCamera(lerp(57.28,30,d),1920/1080,0.035,180);
-  cam.position.copy(pos);cam.lookAt(target);cam.rotateZ(lerp(-Math.PI/12,0,d));
+  // v4 motion: drops in from S06's pen dive (high, over-rolled) and lands with a spring; while the
+  // keys are struck the lens dollies sideways (zero offset at the storyboard sample) and dips on
+  // every typed word like a key under a claw; then the dive to Enter.
+  const anchor=T.keyboard+(T.dive-T.keyboard)*0.6;
+  const drop=1-ease.outBack(span(t,T.keyboard,afterBeats(audio,T.keyboard,1.1)),1.6);
+  const dolly=(t-anchor)*0.22*(1-d);
+  let dip=0;
+  for(const w of T.claws.words) if(t>=w.start) dip+=0.09*Math.pow(0.5,(t-w.start)/0.07);
+  dip*=1-d;
+  const pos=new THREE.Vector3(lerp(3.66,ENTER.x,d)+dolly,lerp(3.87,1.14,d)+2.6*drop-dip,lerp(2.49,0.8,d)+1.2*drop);
+  const target=new THREE.Vector3(lerp(4.89,ENTER.x,d)+dolly*0.6,lerp(0,0.5,d)-dip*0.5,lerp(-4.98,ENTER.z,d));
+  const cam=new THREE.PerspectiveCamera(lerp(57.28,30,d)+6*drop,1920/1080,0.035,180);
+  cam.position.copy(pos);cam.lookAt(target);cam.rotateZ(lerp(-Math.PI/12,0,d)-0.12*drop);
   cam.updateMatrixWorld();return cam;
 }
 
