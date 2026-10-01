@@ -2,18 +2,17 @@ import { describe, expect, test } from 'bun:test';
 import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { resolveX9Times, rerunState } from '../src/scenes/s09-z-shared';
-import { scopePoint } from '../src/scenes/s09-terminal';
+import { scopeY } from '../src/scenes/parts/s09-scope';
 import { glassTriangles, glassShardState, GLASS } from '../src/scenes/parts/s10-glass';
-import { stormParticle, STORM } from '../src/scenes/parts/s11-storm';
-import { copySettings } from '../src/scenes/parts/s12-copy';
-import { countTypography } from '../src/scenes/s12-rerun';
+import { deepParticle, DEEP } from '../src/scenes/parts/s11-deep';
+import { xeroxSettings } from '../src/scenes/parts/s12-copy';
 import { afterBeats } from '../src/kit/time';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 
 const audio = new AudioData(audioJSON), T = resolveX9Times({ audio, lyrics: new Lyrics(lyricsJSON) });
 
-describe('D group v2 geometry and temporal contracts', () => {
+describe('D group source geometry and print materials', () => {
   test('all 19 triangulations partition one plate without holes or overlaps', () => {
     for (let row = 0; row < 19; row++) {
       const pieces = glassTriangles(row);
@@ -27,48 +26,37 @@ describe('D group v2 geometry and temporal contracts', () => {
       }
     }
   });
-  test('every shard is intact before fracture and falls clear at the end', () => {
+  test('every shard begins intact, releases deterministically, and remains for the reference debris cloud', () => {
     for (let row = 0; row < 19; row++) for (let piece = 0; piece < 8; piece++) {
       const intact = glassShardState(row, piece, 0);
       for (const key of ['x', 'y', 'z'] as const) expect(intact[key]).toBeCloseTo(0);
       expect(intact.alpha).toBe(1);
       const atEnd = glassShardState(row, piece, 1);
-      expect(atEnd.y).toBeGreaterThan(1800); expect(atEnd.alpha).toBeCloseTo(0);
+      expect(atEnd.release).toBeCloseTo(1); expect(atEnd.alpha).toBe(1);
+      expect(Number.isFinite(atEnd.y)).toBe(true);
       const original = glassShardState(row, piece, 0.4);
       glassShardState(row, piece, 1); glassShardState(row, piece, 0);
       expect(glassShardState(row, piece, 0.4)).toEqual(original);
     }
   });
-  test('scope sweep is periodic in measured beats, and its impulse is at every progress dot', () => {
-    for (const b of [0, 0.16, 1.4, 3.2, 7.8]) {
-      const a = scopePoint(b), c = scopePoint(b + 8);
-      expect(a[0]).toBeCloseTo(c[0]); expect(a[1]).toBeCloseTo(c[1]);
-    }
-    expect(scopePoint(0.16)[1]).toBeLessThan(scopePoint(0)[1] - 90);
+  test('the actual waveform repeats, with a spike and undershoot in each measured cycle', () => {
+    for (const phase of [0, 0.16, 1.4, 3.2, 7.8]) expect(scopeY(phase)).toBeCloseTo(scopeY(phase + 8));
+    expect(scopeY(0.83)).toBeLessThan(scopeY(0) - 90);
+    expect(scopeY(0.4)).toBeGreaterThan(scopeY(0) + 60);
   });
-  test('storm has separate depth, speed, blur rows, and the line-42 trace in every band', () => {
-    for (let layer = 0; layer < 3; layer++) {
-      const particles = Array.from({ length: STORM.perLayer }, (_, i) => stormParticle(layer * STORM.perLayer + i, 2));
-      expect(new Set(particles.map(p => p.line))).toEqual(new Set([0, 1, 2]));
-      expect(particles.every(p => p.layer === layer)).toBe(true);
-    }
-    const far = stormParticle(0, 0), near = stormParticle(84, 0);
-    expect(near.z).toBeGreaterThan(far.z); expect(near.width).toBeGreaterThan(far.width);
-    const ds = [0, 42, 84].map(i => Math.abs(stormParticle(i, 0.1).y - stormParticle(i, 0).y));
-    expect(ds[1]).toBeGreaterThan(ds[0]); expect(ds[2]).toBeGreaterThan(ds[1]);
-    const p = stormParticle(37, 5); stormParticle(37, 100); expect(stormParticle(37, 5)).toEqual(p);
+  test('the rendered deep field contains trace lines, clay bars and different depth scales', () => {
+    const particles = Array.from({ length: DEEP.count }, (_, id) => deepParticle(id, 0));
+    expect(new Set(particles.filter(p => !p.bar).map(p => p.line))).toEqual(new Set([0, 1, 2]));
+    expect(particles.some(p => p.bar)).toBe(true);
+    expect(Math.max(...particles.map(p => p.z)) - Math.min(...particles.map(p => p.z))).toBeGreaterThan(70);
+    const p = deepParticle(37, 5); deepParticle(37, 100); expect(deepParticle(37, 5)).toEqual(p);
   });
-  test('copy degradation increases per actual run and the cache wipe restores clean toner', () => {
-    const copies = [0, 1, 2].map(run => copySettings(run, false));
-    for (const key of ['drift', 'dropout', 'bands'] as const) {
-      expect(copies[1][key]).toBeGreaterThan(copies[0][key]);
-      expect(copies[2][key]).toBeGreaterThan(copies[1][key]);
-      expect(copySettings(2, true)[key]).toBe(0);
-    }
+  test('all six cached copies increase real toner dropout, feed drag, bands and grain', () => {
+    const copies = Array.from({ length: 6 }, (_, gen) => xeroxSettings(gen));
+    for (let i = 1; i < copies.length; i++) for (const key of ['drift', 'dropout', 'bands', 'grain'] as const)
+      expect(copies[i]![key]).toBeGreaterThan(copies[i - 1]![key]);
   });
-  test('eleven widens and holds; the assertion survives to the scene end', () => {
-    const early = countTypography(11, 1, 0), held = countTypography(11, 1, 1);
-    expect(early.width).toBe(62); expect(held.width).toBe(125); expect(held.weight).toBe(900);
+  test('the extra eleven holds through the scene end', () => {
     expect(rerunState(audio, afterBeats(audio, T.eleven, 1), T).number).toBe(11);
     expect(rerunState(audio, T.end - 1 / 60, T).number).toBe(11);
     expect(audio.beatAt(T.end) - audio.beatAt(T.eleven)).toBeGreaterThanOrEqual(1.5 - 1e-6);

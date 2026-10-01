@@ -20,7 +20,7 @@ export function deepParticle(id: number, d: number) {
   const depth = 12 - z; // distance from the camera plane
   const spanX = depth * 1.05, spanY = depth * 0.9 + 6;
   const bar = hash(id, 9) < 0.09;
-  const speed = 0.75 + 0.6 * hash(id, 3);
+  const speed = (14 - z) / (1080 / (2 * Math.tan(26 * Math.PI / 180))); // 1 unit of d = 1 screen px at the cut
   const cycle = spanY * 2;
   const y = spanY - ((((hash(id, 4) * cycle + d * speed) % cycle) + cycle) % cycle);
   return {
@@ -56,6 +56,13 @@ export class DeepStorm {
       }
       c.restore();
     }
+    // Static ink breakup across the atlas, including near/far copies; no per-frame allocations.
+    c.save(); c.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 14000; i++) {
+      c.globalAlpha = 0.3 + hash(i, 21) * 0.6;
+      c.fillRect(hash(i, 22) * cellW * levels, hash(i, 23) * cellH * ROWS, 0.7 + hash(i, 24) * 2, 1);
+    }
+    c.restore();
     this.texture = new THREE.CanvasTexture(cv);
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.generateMipmaps = true;

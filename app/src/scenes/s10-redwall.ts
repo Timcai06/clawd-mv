@@ -1,30 +1,34 @@
-// S10: 19 failed results arrive as glass plates, then release into actual 3D triangles.
+// S10: upright foreshortened glass reports, engraved thickness and beat-driven shards.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
-import { ease, frameIdx, hash, lerp } from '../engine/util';
 import { F, font } from '../engine/type';
+import { hash } from '../engine/util';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { Stage } from '../kit/stage';
+import { Voice, setLine, drawSet, odometer } from '../kit/lyric-moves';
 import * as Clawd from '../kit/clawd';
-import { beatsSince } from '../kit/time';
-import { beatHit, beatSpan, redwallState, resolveX9Times, type X9Times } from './s09-z-shared';
-import { GlassWall } from './parts/s10-glass';
-import { mono, sungLine } from './parts/s09-type';
-
+import { CALENDAR_TESTS } from '../kit/content';
+import { resolveX9Times, type X9Times } from './s09-z-shared';
+import { glassState, glassShardState, glassTriangles, handoffIn, handoffOut, fallTravel, type Point } from './parts/s10-glass';
+import { carry, mono, counter19, exitBeat } from './parts/s09-type';
+// Archivo levels are cap heights; Plex label=18 is its CSS font size.
+export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
+const polygon = (c: CanvasRenderingContext2D, pts: Point[]) => {
+  c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+};
 class World {
-  ground = new Ground(); layer = new Layer2D();
-  stage: Stage; glass: GlassWall; times: X9Times; users = 0;
+  ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
+  hatch: CanvasPattern;
   constructor(ctx: SceneCtx) {
-    this.stage = new Stage(ctx.renderer, 2880, 1620, true);
-    this.glass = new GlassWall(ctx.renderer); this.stage.scene.add(this.glass.mesh);
-    this.times = resolveX9Times(ctx);
+    this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
+    const tile = document.createElement('canvas'); tile.width = tile.height = 48;
+    const c = tile.getContext('2d')!; c.fillStyle = css('paper'); c.fillRect(0, 0, 48, 48);
+    c.strokeStyle = css('ink', 0.9); c.lineWidth = 1;
+    for (let i = -48; i < 96; i += 4) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + 48, 48); c.stroke(); }
+    this.hatch = this.layer.ctx.createPattern(tile, 'repeat')!;
   }
-  dispose() {
-    this.stage.scene.remove(this.glass.mesh); this.glass.dispose(); this.stage.dispose();
-    this.ground.pass.mat.dispose(); this.layer.texture.dispose();
-  }
+  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S10Redwall extends Scene {
@@ -32,36 +36,71 @@ export default class S10Redwall extends Scene {
   override init() { this.w = world ??= new World(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const w = this.w, T = w.times, au = this.ctx.audio, t = f.t, s = redwallState(au, t, T);
-    const breakView = ease.outExpo(beatSpan(au, t, T.shatter, 0.8));
-    const zoom = lerp(1.04 + s.impact * 0.055, 0.91, breakView);
-    const yaw = lerp(-5, 14, breakView), pitch = lerp(2, -9, breakView);
-    w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, camX: 48 * breakView,
-      camY: 120 * s.fracture, zoom, kick: f.a.kick, grid: 0.4,
-      halftone: 0.35 + 0.25 * s.fracture, pitch: 11, streaks: s.fracture * 0.25, travel: s.fracture * 1.7 });
-    w.stage.clearPoster();
-    const p = w.stage.poster;
-    mono(p, 'CALENDAR / ASSERTIONS', 555, 327, 19, 'ink', 0.55);
-    mono(p, 'EXPECTED 31 / RECEIVED 32', 555, 1330, 19, 'ink', 0.6);
-    Clawd.draw(p, 588, 1110, Clawd.pose('A8', { beat: f.beat, beat0: au.beatAt(T.nineteen), p: s.fracture }), { px: 13 });
-    w.glass.update(s.rows, s.fracture, 2 * Math.max(0, beatsSince(au, t, T.nineteen)) / 0.75);
-    w.stage.view({ x: 1440, y: 810, zoom, yaw, pitch, roll: -1.5 * breakView });
-    w.stage.render(out);
+    const w = this.w, T = w.times, au = this.ctx.audio, t = f.t, v = w.voice;
+    const s = glassState(au, t, T), hand = handoffOut(t, au, T), leaving = exitBeat(au, t, T.wallEnd);
+    w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0.12 });
     w.layer.clear(); const c = w.layer.ctx;
-    // The counter is a test result, hence fail is confined to its own ink and the plates.
-    c.save(); c.translate(155, 450); const k = 1 + 0.14 * s.impact; c.scale(k, k);
-    c.fillStyle = css('fail'); c.font = font(F.archivo(75, 900), 280);
-    c.fillText(String(s.rows).padStart(2, '0'), 0, 0);
-    c.font = font(F.mono(600), 35); c.fillText('FAILED', 12, 70); c.restore();
-    mono(c, 'TEST RUN / 01', 170, 200, 19, 'ink', 0.6);
-    mono(c, '19 ASSERTIONS', 170, 564, 17, 'ink', 0.45);
-    // The lyric is etched on the test report's baseline; shattering releases its words.
-    c.save(); c.translate(210 * s.fracture, 240 * s.fracture * s.fracture);
-    c.rotate(s.fracture * 0.08);
-    sungLine(c, this.ctx, t, 170, 970, 1600, 'ink', 30); c.restore();
+    const line = v.line('Nineteen red, and they’re shattering like glass');
+    const set = setLine(v.forms(line, t).slice(1), 96, { space: 0.2 });
+    // Plates from back to front. Each printed surface is clipped to its projected face.
+    for (const p of [...s.plates].reverse()) {
+      const q = p.quad, thick = 9 / p.depth;
+      polygon(c, [q[0]!, [q[0]![0] - thick, q[0]![1] + 4], [q[3]![0] - thick, q[3]![1] + 4], q[3]!]);
+      c.fillStyle = w.hatch; c.fill();
+      // Jagged voids grow from the lower edge while the upper test label remains on its face.
+      const face = () => {
+        polygon(c, q);
+        for (let j = 0; j < 2; j++) {
+          const cx = p.x + p.w * (0.3 + j * 0.45), bottom = q[3]![1];
+          const r = p.w * 0.22 * s.fracture, tip = p.y + p.h * (0.82 - 0.45 * s.fracture);
+          c.moveTo(cx - r, bottom + 5); c.lineTo(cx, tip); c.lineTo(cx + r, bottom + 5); c.closePath();
+        }
+      };
+      face(); c.fillStyle = css('paper'); c.fill('evenodd');
+      c.strokeStyle = css('ink', 0.65); c.lineWidth = 1.4; c.stroke();
+      c.save(); face(); c.clip('evenodd');
+      // Low-density face engraving, distinct from densely engraved sides and shards.
+      c.strokeStyle = css('ink', 0.13); c.lineWidth = 0.8;
+      for (let i = -p.h; i < p.w; i += 6) {
+        c.beginPath(); c.moveTo(p.x + i, p.y); c.lineTo(p.x + i + p.h, p.y + p.h); c.stroke();
+      }
+      const cx = p.x + p.w * 0.55, cy = p.y + 85 / p.depth, r = 21 / Math.sqrt(p.depth);
+      c.strokeStyle = css('fail', 0.6); c.lineWidth = 7 / Math.sqrt(p.depth);
+      c.beginPath(); c.moveTo(cx - r, cy - r); c.lineTo(cx + r, cy + r);
+      c.moveTo(cx + r, cy - r); c.lineTo(cx - r, cy + r); c.stroke();
+      c.save(); c.translate(p.x + 24 / p.depth, p.y + 142 / p.depth); c.rotate(0.12);
+      c.scale(1 / Math.sqrt(p.depth), 1 / Math.sqrt(p.depth));
+      mono(c, CALENDAR_TESTS[p.row]!, 0, 0, 18); c.restore();
+      // The lyric is a single engraved strip crossing the plate faces; the gaps cut the words.
+      drawSet(c, set, 96, 676, { on: 'paper' }); c.restore();
+    }
+    // Sharp triangular fragments from the bottom of each face, with solid engraved edge thickness.
+    for (const p of s.plates) for (let piece = 0; piece < 8; piece++) {
+      const id = p.row * 8 + piece, sh = glassShardState(p.row, piece, s.fracture);
+      const travel = fallTravel(t, au, T), roll = hand.roll;
+      const x = p.x + hash(id, 31) * p.w + sh.x + Math.sin(roll) * travel;
+      const y = p.y + p.h * (0.3 + hash(id, 32) * 0.7) + sh.y + Math.cos(roll) * travel;
+      const r = (18 + hash(id, 33) * 85) / Math.sqrt(p.depth) * s.fracture;
+      c.save(); c.translate(x, y); c.rotate(sh.rz + roll * leaving);
+      const source = glassTriangles(p.row)[piece]!;
+      const cx = source.reduce((n, v) => n + v[0], 0) / 3, cy = source.reduce((n, v) => n + v[1], 0) / 3;
+      const pts: Point[] = source.map(([x, y]) => [(x - cx) / 170 * r * 2, (y - cy) / 620 * r * 2]);
+      polygon(c, pts.map(([x, y]) => [x + 4, y + 4])); c.fillStyle = css('ink'); c.fill();
+      polygon(c, pts); c.fillStyle = w.hatch; c.fill();
+      c.strokeStyle = css('ink', 0.8); c.lineWidth = 1; c.stroke();
+      c.clip();
+      // Torn letter portions move with the same shard as the toner that carried them.
+      drawSet(c, set, 96 - x, 676 - y, { on: 'paper' }); c.restore();
+    }
+    const n = handoffIn(t, au, T), first = v.form(line.words[0]!, t);
+    if (t < line.start) counter19(c, n.x, n.baseline, n.capH, 'fail');
+    else if (first.born > 0) odometer(c, 19 * first.sung, n.x, n.baseline, 196,
+      { digits: 2, color: first.stress ? 'clay' : 'fail', axes: first.axes, pitch: 98 });
+    c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
+    c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
+    carry(c, v, t, T.wallStart, 96, 348, 'paper');
+    const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    const hit = 15 * s.impact + 9 * beatHit(au, t, T.shatter), fi = frameIdx(t);
-    return { ...postFor('paper'), hud: 0, grain: 0.045,
-      shake: [hit * (hash(fi, 10) * 2 - 1), hit * (hash(fi, 11) * 2 - 1)] as [number, number] };
+    return { ...postFor('paper'), hud: 0, bloom: 0 };
   }
 }

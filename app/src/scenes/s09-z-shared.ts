@@ -1,14 +1,11 @@
-// Shared X9 timing and lyric overlay. The z suffix keeps this helper after s09-terminal
+// Shared D-group timing. The z suffix keeps this helper after s09-terminal
 // in timeline.ts's scene-module lookup; it is not a timeline entry.
-import type * as THREE from 'three';
 import boardJSON from '../../../storyboard/shots.json';
 import type { AudioData } from '../engine/audio';
 import type { SceneCtx } from '../engine/scene';
-import { Layer2D } from '../engine/gl';
 import { ease, lerp } from '../engine/util';
 import { normalizeAnchor, resolveStoryboard, type Storyboard } from '../storyboard';
 import { afterBeats, beatsSince, hitAfter, onBeats, span, typed, wordTime } from '../kit/time';
-import { drawLyricsLine, lyricsTypeState } from '../kit/lyrics-type';
 import type { CameraView } from '../kit/stage';
 
 const board = boardJSON as Storyboard;
@@ -29,6 +26,8 @@ export function resolveX9Times(ctx: TimingCtx) {
   // Count on measured subdivisions, then reserve at least 1.5 beats for the extra digit.
   const eleven = Math.min(afterBeats(ctx.audio, ten, 0.75), afterBeats(ctx.audio, end, -1.5));
   return {
+    scopeKey: shot('S09-2').start + shot('S09-2').duration * 0.6,
+    wallStart: shot('S10-1').start, rainStart: shot('S11-1').start, rerunStart: shot('S12-1').start,
     terminal: shot('S09-1').start, waiting: word('S09-2'), terminalEnd: shot('S09-2').end,
     nineteen: word('S10-1'), shatter: word('S10-2'), wallEnd: shot('S10-2').end,
     stack: word('S11-1'), sky: word('S11-2'),
@@ -94,15 +93,4 @@ export function rerunState(audio: AudioData, t: number, T: X9Times) {
 export function mixView(a: CameraView, b: CameraView, p: number): CameraView {
   return { x: lerp(a.x!, b.x!, p), y: lerp(a.y!, b.y!, p), zoom: lerp(a.zoom ?? 1, b.zoom ?? 1, p),
     yaw: lerp(a.yaw ?? 0, b.yaw ?? 0, p), pitch: lerp(a.pitch ?? 0, b.pitch ?? 0, p) };
-}
-
-/** Keep the official small lyric on the screen grid during extreme camera moves. */
-export class X9Lyrics {
-  private layer = new Layer2D(1920, 112);
-  draw(ctx: SceneCtx, t: number, out: THREE.WebGLRenderTarget) {
-    this.layer.clear();
-    drawLyricsLine(this.layer.ctx, { x: 80, y: 32, width: 1760, height: 64 }, lyricsTypeState(ctx.lyrics, t, ctx.audio));
-    ctx.comp.draw(ctx.renderer, this.layer.upload(), out, { scale: [1, 1080 / 112], offset: [0, -(1080 / 112 - 1) / 2] });
-  }
-  dispose() { this.layer.texture.dispose(); }
 }
