@@ -2,14 +2,17 @@ import { describe, expect, test } from 'bun:test';
 import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { afterBeats } from '../src/kit/time';
-import { creditsState, CREDIT_LINES } from '../src/kit/credits';
+import { CREDIT_LINES } from '../src/kit/credits';
 import { pose } from '../src/kit/clawd';
-import { resolveReleaseTimes, releaseState, tomorrowState, WALL_CELLS } from '../src/scenes/parts/s17-release-state';
+import { resolveReleaseTimes, releaseState, WALL_CELLS } from '../src/scenes/parts/s17-release-state';
+import { resolveOutroTimes, outroState, outroCredits, starState } from '../src/scenes/parts/s18-score';
+import { Voice } from '../src/kit/lyric-moves';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 
 const audio = new AudioData(audioJSON), lyrics = new Lyrics(lyricsJSON);
 const T = resolveReleaseTimes(audio, lyrics), eps = 1e-6;
+const O = resolveOutroTimes(audio, lyrics), voice = new Voice(lyrics, audio);
 
 describe('G editorial and musical timing', () => {
   test('all nine release shots and seven outro shots are covered without a gap', () => {
@@ -59,30 +62,29 @@ describe('G editorial and musical timing', () => {
     expect(releaseState(audio, T.tomorrow[0]!.start - eps, T).wallZoom).toBeCloseTo(0.82);
   });
 
-  test('dawn is a hard flip on a measured downbeat within the calendar shot', () => {
+  test('dawn coverage and calendar turn use the measured downbeat within the calendar shot', () => {
     expect(audio.downbeats.some(t => Math.abs(t - T.dawn) < eps)).toBe(true);
     expect(T.dawn).toBeGreaterThan(T.tomorrow[4]!.start);
     expect(T.dawn).toBeLessThan(T.tomorrow[5]!.start);
-    expect(tomorrowState(audio, T.dawn - eps, T)).toMatchObject({ ground: 'ink', dawn: false });
-    expect(tomorrowState(audio, T.dawn, T)).toMatchObject({ ground: 'paper', dawn: true });
-    expect(tomorrowState(audio, T.dawn, T).calendarFlip).toBeCloseTo(0.5, 2);
+    expect(outroState(audio, afterBeats(audio, O.dawn, -4), O).dawn).toBe(0);
+    expect(outroState(audio, O.dawn, O).dawn).toBeCloseTo(0.5);
+    expect(outroState(audio, O.dawn, O).flip).toBeCloseTo(0.5);
+    expect(outroState(audio, afterBeats(audio, O.dawn, 4), O).dawn).toBe(1);
   });
 
-  test('devices switch off in the first outro shot and the star map survives until dawn', () => {
-    const at = T.tomorrow[0]!.start;
-    expect(tomorrowState(audio, at, T).wallLit).toBe(WALL_CELLS.length);
-    expect(tomorrowState(audio, afterBeats(audio, at, 3), T).wallLit).toBe(0);
-    expect(tomorrowState(audio, T.dawn - eps, T).starOpacity).toBeGreaterThan(0);
-    expect(tomorrowState(audio, T.dawn, T).starOpacity).toBe(0);
+  test('the printed star map remains on the night side through the dawn shot', () => {
+    expect(starState(audio, voice, O.start, O).slice(0, 6).every(p => p.alpha === 1)).toBe(true);
+    expect(starState(audio, voice, O.dawn, O).every(p => p.alpha === 1)).toBe(true);
+    expect(starState(audio, voice, O.shots[5]!.start, O).every(p => p.alpha === 1)).toBe(true);
   });
 
   test('all credit rows finish before the fade and the last frame is fully faded', () => {
     const at = T.tomorrow[6]!.start;
     const beforeFade = afterBeats(audio, at, 13);
-    expect(creditsState(beforeFade, at).lines.every(row => row.progress === 1)).toBe(true);
+    expect(outroCredits(audio, beforeFade, O).lines.every(row => row.progress === 1)).toBe(true);
     expect(CREDIT_LINES.some(line => line.includes('Every frame drawn by code'))).toBe(true);
-    expect(tomorrowState(audio, beforeFade, T).creditsOpacity).toBe(1);
-    expect(tomorrowState(audio, T.end, T).creditsOpacity).toBe(0);
+    expect(outroState(audio, beforeFade, O).fade).toBe(0);
+    expect(outroState(audio, O.end, O).fade).toBe(1);
   });
 
   test('nominal BPM changes do not alter the measured-grid animation', () => {
@@ -90,12 +92,12 @@ describe('G editorial and musical timing', () => {
     const fast = new AudioData({ ...audioJSON, bpm: 240 });
     for (const t of [T.hit, T.release[5]!.start + 0.3, T.dawn, T.end - 1]) {
       expect(releaseState(slow, t, T)).toEqual(releaseState(fast, t, T));
-      expect(tomorrowState(slow, t, T)).toEqual(tomorrowState(fast, t, T));
+      expect(outroState(slow, t, O)).toEqual(outroState(fast, t, O));
     }
   });
 
   test('state calculations remain unchanged under out-of-order seeks', () => {
-    for (const state of [releaseState, tomorrowState]) {
+    for (const state of [releaseState]) {
       for (const t of [T.hit + 0.2, T.release[5]!.start + 0.4, T.dawn + 0.2]) {
         const expected = state(audio, t, T);
         state(audio, T.end, T); state(audio, 0, T);
