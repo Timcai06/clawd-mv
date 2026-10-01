@@ -5,6 +5,72 @@ import { F, font } from '../../engine/type';
 import { css, lin } from '../../theme';
 import { drawDevice } from '../../kit/devices';
 import { WALL_CELLS } from './s17-release-state';
+import { hash } from '../../engine/util';
+import { Voice, setLine } from '../../kit/lyric-moves';
+import { fillRun } from '../../kit/vartype';
+import { wallCells } from './s17-release-layout';
+
+// S17's front-on engraved device stencil. DeviceWall below retains the S18 API.
+// All non-vocal material is baked once; sung words are drawn on every occupied screen.
+export class PrintedDeviceWall {
+  layer = new Layer2D(W, 600);
+  cells = wallCells();
+  constructor() {
+    const c = this.layer.ctx;
+    this.layer.clear();
+    for (const cell of this.cells) {
+      c.save(); c.beginPath(); c.rect(cell.x, cell.y, cell.w, cell.h); c.clip();
+      c.fillStyle = css(cell.k === 'D' ? 'ink' : 'clay'); c.fillRect(cell.x, cell.y, cell.w, cell.h);
+      if (cell.k !== 'D') {
+        c.fillStyle = css('paper', 0.42);
+        for (let j = 0; j < 180; j++) c.fillRect(cell.x + hash(cell.i, j, 1) * cell.w,
+          cell.y + hash(cell.i, j, 2) * cell.h, 0.7 + hash(cell.i, j, 3), 1);
+        if (cell.i % 3 === 0) {
+          c.strokeStyle = css('paper', 0.55); c.lineWidth = 1;
+          for (let x = cell.x - cell.h; x < cell.x + cell.w; x += 4) {
+            c.beginPath(); c.moveTo(x, cell.y + cell.h); c.lineTo(x + cell.h, cell.y); c.stroke();
+          }
+        } else if (cell.i % 3 === 1) {
+          c.fillStyle = css('paper', 0.55);
+          for (let y = cell.y + 3; y < cell.y + cell.h; y += 5)
+            for (let x = cell.x + 3; x < cell.x + cell.w; x += 5) {
+              c.beginPath(); c.arc(x, y, 0.8, 0, Math.PI * 2); c.fill();
+            }
+        }
+      }
+      // Short bezel registration ticks preserve the screen shape of each grid cell.
+      c.fillStyle = css('paper', 0.6); c.fillRect(cell.x + 6, cell.y + 6, 12, 1);
+      c.fillRect(cell.x + cell.w - 7, cell.y + cell.h - 18, 1, 12); c.restore();
+    }
+    // Sparse neighbouring impressions in the print; no extra devices or grid labels.
+    for (const [col, row] of [[1, 0], [14, 0], [1, 1], [14, 1], [1, 3], [14, 3], [2, 4], [13, 4]]) {
+      c.fillStyle = css('clay', 0.35);
+      for (let j = 0; j < 110; j++) c.fillRect(30 + col! * 116.25 + hash(col!, row!, j) * 112,
+        36 + row! * 96 + hash(row!, col!, j) * 92, 1.5, 1.5);
+    }
+  }
+
+  draw(c: CanvasRenderingContext2D, v: Voice, t: number, opacity: number) {
+    c.save(); c.globalAlpha = opacity;
+    c.drawImage(this.layer.canvas, 0, 0, W, 600);
+    const line = v.line('And it works on every machine'), forms = v.forms(line, t).slice(-2);
+    const set = setLine(forms, 92);
+    // The nominal cap height stays at the lyric level. A screen is deliberately narrow:
+    // horizontal condensation fits the entire phrase without inventing a fourth font size.
+    for (const cell of this.cells) {
+      c.save(); c.beginPath(); c.rect(cell.x + 4, cell.y + 4, cell.w - 8, cell.h - 8); c.clip();
+      c.translate(cell.x + 6, cell.y + cell.h / 2 + set.words[0]!.run.capH / 2);
+      c.scale((cell.w - 12) / Math.max(1, set.width), 1);
+      for (const s of set.words) if (s.form.born > 0) {
+        c.globalAlpha = opacity * Math.min(1, s.form.born * 1.6);
+        c.fillStyle = css(s.form.stress ? (cell.k === 'D' ? 'clay' : 'ink') : 'paper'); fillRun(c, s.run, s.x, 0);
+      }
+      c.restore();
+    }
+    c.restore();
+  }
+  dispose() { this.layer.texture.dispose(); }
+}
 
 export class DeviceWall {
   scene = new THREE.Scene();
