@@ -27,7 +27,8 @@ describe('E group score', () => {
   test('the resolved cut list supplies every scene boundary', () => {
     const shots = sceneScore(audio, lyrics, 'S14');
     expect(C.end).toBe(D.start);
-    expect([D.start, D.down, D.quiet, D.frames, D.near]).toEqual(shots.map((s) => s.start));
+    expect([D.start, D.down, D.quiet, D.frames, D.nearCut]).toEqual(shots.map((s) => s.start));
+    expect(D.near).toBe(lyrics.get('Frame by frame').words.at(-1)!.start);
     expect(D.end).toBe(shots.at(-1)!.end);
   });
 

@@ -1,17 +1,19 @@
 import type { AudioData } from '../../engine/audio';
 import type { Lyrics } from '../../engine/lyrics';
 import { ease, lerp } from '../../engine/util';
-import { afterBeats, beatsSince, span } from '../../kit/time';
-import { sceneScore } from './s13-score';
+import { afterBeats, beatsSince, span, wordTime } from '../../kit/time';
+import { resolveStoryboard, type Storyboard } from '../../storyboard';
+import board from '../../../../storyboard/shots.json';
 
 export interface DiveScore {
-  start: number; down: number; quiet: number; frames: number; near: number; end: number;
+  start: number; down: number; quiet: number; frames: number; near: number; nearCut: number; end: number;
   steps: { at: number; from: number; to: number; end: number }[];
 }
 
 export function diveScore(audio: AudioData, lyrics: Lyrics): DiveScore {
-  const shots = sceneScore(audio, lyrics, 'S14');
-  const [start, down, quiet, frames, near] = shots.map((s) => s.start) as [number, number, number, number, number];
+  const shots = resolveStoryboard(board as Storyboard, lyrics, audio).shots.filter(s => s.scene === 'S14');
+  const [start, down, quiet, frames, nearCut] = shots.map((s) => s.start) as [number, number, number, number, number];
+  const near = wordTime(lyrics, 'Frame by frame, and the bug is near', 'near') ?? nearCut;
   const beats = [down, ...audio.beats.filter((b) => b > down + 1e-5 && b < near - 1e-5), near];
   let position = 0;
   const steps = beats.map((at, i) => {
@@ -24,7 +26,7 @@ export function diveScore(audio: AudioData, lyrics: Lyrics): DiveScore {
   const final = steps.at(-1)!;
   final.at = afterBeats(audio, near, -0.48);
   final.end = near;
-  return { start, down, quiet, frames, near, end: shots.at(-1)!.end, steps };
+  return { start, down, quiet, frames, near, nearCut, end: shots.at(-1)!.end, steps };
 }
 
 export function divePosition(t: number, T: DiveScore): number {
