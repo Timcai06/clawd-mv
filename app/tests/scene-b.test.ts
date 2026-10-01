@@ -16,9 +16,12 @@ const platform = platformTimes(audio, lyrics);
 describe('B / calendar city', () => {
   test('scene cues come from resolved shots, including the next scene boundary', () => {
     const shots = resolveStoryboard(board as Storyboard, lyrics, audio).shots;
-    expect(city).toEqual({ start: shots.find((s) => s.id === 'S04-1')!.start,
+    expect(city).toMatchObject({ start: shots.find((s) => s.id === 'S04-1')!.start,
       rise: shots.find((s) => s.id === 'S04-2')!.start,
       end: shots.find((s) => s.id === 'S05-1')!.start });
+    expect(city.countEnd).toBeGreaterThan(city.start);
+    expect(city.countEnd).toBeLessThan(city.rise);
+    expect(city.october).toBeGreaterThan(city.rise);
   });
 
   test('October begins on Thursday, ends on Saturday, and the extra day starts a sixth row', () => {
@@ -39,17 +42,22 @@ describe('B / calendar city', () => {
 
   test('32 stays underground until its cut, springs up, and remains visible for the hold', () => {
     expect(cityState(audio, city.rise - 1e-5, city)).toMatchObject({ rising: false, lift: 0 });
-    expect(cityState(audio, city.rise, city)).toMatchObject({ rising: true, lift: 0, travel: 1 });
+    expect(cityState(audio, city.rise, city)).toMatchObject({ rising: true, lift: 0 });
+    expect(cityState(audio, city.end - 1e-5, city).travel).toBeCloseTo(1);
     expect(cityState(audio, afterBeats(audio, city.rise, 0.6), city).lift).toBeGreaterThan(1);
     expect(cityState(audio, city.end - 1e-5, city).roof32).toBeCloseTo(dateBlock(32).height);
   });
 
-  test('one fresh roof per measured beat; route completes all dates before the impossible day', () => {
-    for (let n = 0; n < 3; n++) {
-      const at = afterBeats(audio, city.start, n);
-      expect(cityState(audio, at, city).accented).toBe(n + 1);
+  test('the sung thirty-second counts 1 → 31 over the city, then overflows to 32 on the cut', () => {
+    expect(cityState(audio, city.start, city).accented).toBe(1);
+    let prev = 0;
+    for (let t = city.start; t < city.countEnd; t += 0.05) {
+      const n = cityState(audio, t, city).count;
+      expect(n).toBeGreaterThanOrEqual(prev); prev = n;
     }
+    expect(cityState(audio, city.countEnd, city).accented).toBe(31);
     expect(cityState(audio, city.rise, city).visited).toBe(31);
+    expect(cityState(audio, afterBeats(audio, city.rise, 1), city).counter).toBeCloseTo(32, 3);
     expect(streetAt(0)).toEqual(STREETS.points[0]!);
     expect(streetAt(1)).toEqual(STREETS.points.at(-1)!);
   });

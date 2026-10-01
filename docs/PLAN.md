@@ -134,6 +134,13 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 2. T 认可后，由 Opus 把每场的歌词换掉（可以用 Opus 子代理分组并行）。
 3. 歌词和场景的改动（A 和 B）尽量在同一轮里一起改，避免同一个场景文件改两遍。
 
+### 进度（2026-10-01，C）
+- ✅ 对照工具：`cd app && bun scripts/compare.ts --tag <名字> [--scenes S04,S11]`（拼图由 `tools/compare_sheet.py` 做）→ `out/compare/<名字>/index.html`。v1 全 18 场：`out/compare/v1/`。
+- ✅ 目标清单：`docs/STORYBOARD-TARGETS.md`（只描述分镜图，不评判）。归纳出的共同规律：分镜图里最显眼的超大裁切字，有 7 场本身就是唱出来的词，正好由歌词 v3 承担。
+- ✅ 公共模块：`kit/vartype.ts`（在 24 个 Archivo 静态实例之间插值字形轮廓，宽度 62–125、字重 300–900 连续可动；已验证 1752 个字形结构一致）；`kit/lyric-moves.ts`（Voice：声音到形态；动作：网格落位、计数器、缺字方框、盖章、Plate 贴图等）；陈列页 `--gallery voice`。
+- ✅ 样片 S04、S11（A + B 一起改）：短片 `out/review/s04-v3.mp4`、`s11-v3.mp4`，并排图 `out/compare/v3-s04-s11/`。**等 T 看。** T 认可后再铺到其余 16 场（按 Opus 子代理分组）。
+- 待清理：`scenes/parts/s11-storm.ts` 已不被 S11 使用，只剩 `tests/scene-d.test.ts` 引用，铺开时一起删。
+
 ### C. 小事
 - 导出日志里「每帧子帧数」的统计是空的（`render.ts` 的 `Promise.race` 拿到的是空对象）；运动模糊本身是生效的。
 - 片尾字幕文案（`app/src/kit/credits.ts`）等 T 改定。
