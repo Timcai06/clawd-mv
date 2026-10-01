@@ -4,6 +4,9 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { css } from '../theme';
+import { ease, lerp } from '../engine/util';
+import { span } from '../kit/time';
+import { Lens } from '../kit/lens';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
 import { Voice, drawSet, setLine, odometer } from '../kit/lyric-moves';
@@ -20,10 +23,11 @@ class World {
   users = 0;
   ground = new Ground();
   layer = new Layer2D();
+  lens = new Lens();
   times: GreenTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -37,9 +41,25 @@ export default class S16Green extends Scene {
     if (--this.w.users === 0) { this.w.dispose(); worlds.delete(this.ctx.renderer); }
   }
 
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.w.lens.rt;
     const w = this.w, v = w.voice, T = w.times, t = f.t;
     const s = greenState(this.ctx.audio, this.ctx.lyrics, v, t, T);
+    // v4 motion: the lens rides the falling wave. Close on one, two, three (each topple a nudge),
+    // then it can't keep up with "green and green…", widening as the run accelerates; "Nineteen
+    // green!" lands as a hit and the frame opens to the identity for the S17 hand-off.
+    const last = Math.max(0, s.passed - 1), card = s.cards[last]!;
+    const cx = card.front.reduce((a, p) => a + p.x, 0) / 4, cy = card.front.reduce((a, p) => a + p.y, 0) / 4;
+    const close = 1 - ease.inOutCubic(span(t, T.triggers[2]!, T.triggers[10] ?? T.nineteen.start));
+    let nudge = 0;
+    for (const at of T.triggers) if (t >= at) nudge = Math.pow(0.5, (t - at) / 0.08);
+    const hit = t >= T.nineteen.start ? Math.pow(0.5, (t - T.nineteen.start) / 0.12) : 0;
+    const open = ease.inOutCubic(span(t, T.nineteen.start, T.outgoingStart));
+    const arrive = 1 - ease.outCubic(span(t, T.start, T.incomingEnd));
+    const zoom = lerp(1 + 0.14 * close + 0.06 * (1 - close) + 0.025 * nudge + 0.1 * hit, 1, Math.max(open, arrive));
+    const lens = { zoom, fx: lerp(cx, 960, Math.max(open, arrive)), fy: lerp(cy, 540, Math.max(open, arrive)),
+      ax: lerp(cx, 960, Math.max(open, arrive)), ay: lerp(cy, 540, Math.max(open, arrive)),
+      rot: (0.01 * nudge - 0.02 * hit) * (1 - open) };
     w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, halftone: 0.08, pitch: 7, haze: 0 });
     w.layer.clear(); const c = w.layer.ctx;
 
@@ -105,6 +125,7 @@ export default class S16Green extends Scene {
       c.fillText(`${s.passed}/19 passed`, 1570, 500); drawCursor(c, { x: 1808, y: 500, h: 24 });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.lens.film(this.ctx.renderer, finalOut, lens);
     return { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035 };
   }
 }

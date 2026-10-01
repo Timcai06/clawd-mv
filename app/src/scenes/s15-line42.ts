@@ -7,12 +7,13 @@ import { F, font } from '../engine/type';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
-import { ease, hash } from '../engine/util';
+import { ease, hash, lerp } from '../engine/util';
 import { Voice, drawSet, setLine, odometer, type WordForm } from '../kit/lyric-moves';
 import { fillRun, varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveFTimes, type FTimes } from './parts/s15-f-timing';
 import { Monument } from './parts/s15-monument';
+import { Lens } from '../kit/lens';
 import { SCULPTURE, TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, freeState, handoffIn, heroState, monumentState } from './parts/s15-layout';
 export const TYPE_LEVELS = { ...PRINT_LEVELS };
 
@@ -23,6 +24,7 @@ class World {
   ground = new Ground();
   monument = new Monument();
   layer = new Layer2D();
+  lens = new Lens();
   shadow = new Layer2D();
   constructor(ctx: SceneCtx) {
     this.T = resolveFTimes(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
@@ -36,7 +38,7 @@ class World {
       c.beginPath(); c.moveTo(x, y); c.lineTo(x + len, y + hash(i, 15, 4) * 2); c.stroke();
     }
   }
-  dispose() { this.ground.pass.mat.dispose(); this.monument.dispose(); this.layer.texture.dispose(); this.shadow.texture.dispose(); }
+  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.monument.dispose(); this.layer.texture.dispose(); this.shadow.texture.dispose(); }
 }
 let world: World | undefined;
 
@@ -45,7 +47,31 @@ export default class S15Line42 extends Scene {
   override init() { this.w = world ??= new World(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
 
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+  /**
+   * v4 motion: "There it is, on line forty-two" pushes into the line and its counter; the ≤ is
+   * met by a slow lateral dolly; each of "Less / than / or / equal" nudges the lens; "Snip" is a hit
+   * with a roll; "set October free" pulls out to the full frame by the S16 cut.
+   */
+  private lensView(t: number) {
+    const T = this.w.T;
+    const s16 = T.s16[0]!;
+    if (t < T.s15[2]!) {
+      const k = ease.inOutCubic(span(t, T.s15[0]!, T.s15[2]!));
+      return { zoom: 1 + 0.45 * k, fx: lerp(960, 760, k), fy: lerp(540, 520, k), ax: 960, ay: 540, rot: -0.02 * k };
+    }
+    const dolly = ease.inOutQuad(span(t, T.s15[2]!, T.snip));
+    let zoom = 1.1 - 0.06 * dolly, rot = 0;
+    const fx = 880, fy = lerp(640, 560, dolly);
+    const line = this.ctx.lyrics.lastLine(t);
+    for (const wd of line?.words ?? []) if (t >= wd.start) { const k = Math.pow(0.5, (t - wd.start) / 0.09); zoom += 0.025 * k; rot += (wd.index % 2 ? 0.005 : -0.005) * k; }
+    const hit = t >= T.snip ? Math.pow(0.5, (t - T.snip) / 0.1) : 0;
+    zoom += 0.14 * hit; rot += 0.035 * hit;
+    const out = ease.inOutCubic(span(t, T.snip, s16));
+    return { zoom: lerp(zoom, 1, out), fx: lerp(fx, 960, out), fy: lerp(fy, 540, out), ax: 960, ay: 540, rot: rot * (1 - out * 0.7) };
+  }
+
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.w.lens.rt;
     const w = this.w, T = w.T, t = f.t, audio = this.ctx.audio;
     const s = monumentState(audio, t, T), kind = s.paper ? 'paper' : 'ink';
     const specimen = t >= Math.min(T.s15[2]!, T.less);
@@ -67,6 +93,7 @@ export default class S15Line42 extends Scene {
     c.fillText(s.paper ? 'line 42: for (let d = 0; d < days; d++)' : 'line 42: for (let d = 0; d <= days; d++)', 96, 1030);
     c.fillStyle = css('clay'); c.fillRect(760, 1007, 12, 25);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.lens.film(this.ctx.renderer, finalOut, this.lensView(t));
     const flash = t < T.snip ? 0 : 0.86 * (1 - ease.outExpo(span(t, T.snip, afterBeats(audio, T.snip, 0.24))));
     return { ...postFor(kind), hud: 0, frame: 0, paper: s.paper ? 1 : 0, bloom: 0,
       vignette: 0, grain: 0.035, flash, shake: [0, 0] as [number, number] };
