@@ -22,6 +22,7 @@
 - `docs/PLAN.md`：阶段计划和状态（先读这个）
 - `docs/TREATMENT.md`：故事、结构、歌词和画面对照、Suno 风格描述、视觉规范（阶段 1、4 的主文档）
 - `docs/ENGINE.md`：引擎和场景 API（写场景前必读）
+- `docs/HANDOFF.md`：最近一次交接时给新会话的开场提示词
 - `docs/ARCHITECTURE.md`：本项目在引擎之上的组织方式（分镜驱动的时间线、场景文件约定、公共部件）
 - `docs/STORYBOARD.md`：分镜表（场景、镜头、Clawd 动作库、组件清单）
 - `docs/tasks/`：交给 Codex 的任务说明
