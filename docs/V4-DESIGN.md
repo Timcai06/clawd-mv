@@ -1,5 +1,7 @@
 # v4 设计宣言
 
+> **⚠ 已作废（T 2026-10-01）**：P02 样片后 Tim 改定方向——以 v2 分镜稿为底做动效优化，不重做世界和场次。见 CONTEXT 决策表「v4 方向改定」和 PLAN 阶段 7。本文只作记录；第 2 节「从 pdoom 学到的方法」仍然适用于动效优化。
+
 > C（Opus）2026-10-01 写，等 Tim 看。依据：pdoom 场景源码（loss、stack、hook、loom、prompt、outro、dense、spacetime 等）、整片预览 v3、`data/lyrics.json` 的逐词时间。
 > 这份文档取代视觉规范 v2、歌词 v3 定稿、分镜图 v2 作为 v4 的主文档；那些文档降为参考。
 

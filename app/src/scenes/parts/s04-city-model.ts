@@ -132,21 +132,53 @@ function orbit(target: THREE.Vector3, yaw: number, el: number, dist: number) {
   return new THREE.Vector3(target.x + Math.sin(yaw * Math.PI / 180) * h, target.y + y, target.z + Math.cos(yaw * Math.PI / 180) * h);
 }
 
-/** Camera as a pure function of the state (seek-safe). Framing solved numerically against kf-S04. */
-export function cameraAt(audio: AudioData, t: number, T: CityTimes, s: ReturnType<typeof cityState>) {
-  if (s.rising) {
-    // The storyboard frame: tower 32 right of centre at the end of the street, the month in front.
-    // Solved against tower and clipped month bounds in kf-S04; no reference image is sampled.
-    const target = new THREE.Vector3(1.073035, 3.781747, -12.538682);
-    return { pos: orbit(target, CAM_YAW, 23.276285, 27.081276), target, fov: 42.30002, roll: 0, shiftX: 0 };
+type CamPose = { pos: THREE.Vector3; target: THREE.Vector3; fov: number; roll: number; shiftX: number };
+
+/** The storyboard frame (kf-S04): tower 32 right of centre at the end of the street, the month in front. */
+const KF = { target: new THREE.Vector3(1.073035, 3.781747, -12.538682), yaw: CAM_YAW, el: 23.276285, dist: 27.081276, fov: 42.30002 };
+
+/** Route head averaged over a short window of the count (a camera that follows without zigzagging). */
+function smoothHead(t: number, T: CityTimes, audio: AudioData) {
+  const acc = [0, 0, 0];
+  for (let k = 0; k < 5; k++) {
+    const h = streetAt(cityState(audio, t - k * 0.06, T).travel);
+    acc[0] += h[0] / 5; acc[2] += h[2] / 5;
   }
-  // S04-1: the whole month from above on the right of the frame (lens shifted, the counter and the
-  // line own the left), held for half a beat, then tipping down to an oblique while the count runs.
-  // Poses solved numerically: every roof and the route stay inside x 780–1860, y 70–1030.
+  return new THREE.Vector3(acc[0], 0, acc[2]);
+}
+
+/** S04-1: the overhead plate (S03's calendar) tips and swings down over the city, chasing the count. */
+function countCam(audio: AudioData, t: number, T: CityTimes): CamPose {
   const b = beatsSince(audio, t, T.start);
-  const dive = ease.inOutCubic(span(b, 0.5, 2.8));
-  const target = new THREE.Vector3(-1, 0, -7.2);
-  return { pos: orbit(target, lerp(106, 100, dive), lerp(82, 44, dive), lerp(64, 54, dive)), target, fov: 32, roll: 0, shiftX: lerp(-575, -550, dive) };
+  const dive = ease.inOutCubic(span(b, 0.35, 1.9));
+  const head = smoothHead(t, T, audio);
+  const target = new THREE.Vector3(-1, 0, -7.2).lerp(new THREE.Vector3(head.x * 0.55 + 0.4, 0.6, head.z * 0.7 - 2.2), dive);
+  // keeps drifting after the count lands (31): the city is never a still
+  const drift = span(t, T.countEnd, T.rise);
+  return {
+    pos: orbit(target, lerp(106, CAM_YAW + 28 - 8 * drift, dive), lerp(82, 34 - 3 * drift, dive), lerp(64, 30 - 2 * drift, dive)),
+    target, fov: lerp(32, 40, dive), roll: lerp(0, -0.04, dive), shiftX: lerp(-575, -380, dive),
+  };
+}
+
+/** Camera as a pure function of time (seek-safe), continuous across the S04-1 → S04-2 cut. */
+export function cameraAt(audio: AudioData, t: number, T: CityTimes, s: ReturnType<typeof cityState>): CamPose {
+  if (!s.rising) return countCam(audio, t, T);
+  // S04-2: the tower erupts and the camera is thrown up and back with it into the storyboard frame
+  // (overshoot, spring settle), then a slow push toward the tower's foot through "October" and
+  // "So I crack…", accelerating on the last beat into S05.
+  const from = countCam(audio, T.rise, T);
+  const rb = beatsSince(audio, t, T.rise);
+  const k = ease.outBack(span(rb, 0, 1.1), 1.25);
+  const last = ease.inCubic(span(t, afterBeats(audio, T.end, -1.5), T.end));
+  const push = ease.inOutQuad(span(rb, 1.0, beatsSince(audio, T.end, T.rise))) ;
+  const target = KF.target.clone().add(new THREE.Vector3(0.6 * push, -0.7 * push - 0.5 * last, 0.5 * push));
+  const kfPos = orbit(target, KF.yaw + 5 * push, KF.el - 3 * push + 4 * last, KF.dist * (1 - 0.14 * push - 0.2 * last));
+  const pos = from.pos.clone().lerp(kfPos, k);
+  const tg = from.target.clone().lerp(target, Math.min(1, k));
+  // the eruption kicks the camera upward for a moment
+  pos.y += 1.6 * Math.exp(-rb * 3.2) * Math.sin(Math.min(rb, 1) * Math.PI);
+  return { pos, target: tg, fov: lerp(from.fov, KF.fov, Math.min(1, k)), roll: lerp(from.roll, 0, Math.min(1, k)) + 0.012 * Math.sin(rb * 1.3), shiftX: lerp(from.shiftX, 0, Math.min(1, k)) };
 }
 
 export function projectionCamera(audio: AudioData, t: number, T: CityTimes) {
