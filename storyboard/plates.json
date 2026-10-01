@@ -1,0 +1,8 @@
+{
+  "_doc": "v4 plates (docs/V4-DESIGN.md). Each plate is one continuous scene (scenes/<file>.ts) that replaces every storyboard shot inside its window. Window = [from, to): anchors resolve exactly like shots.json anchors (lyric word -> beat grid snap + offset_beats). Shots partly inside a plate are clipped. Plates are added one by one; anything not covered still plays the v3 shots.",
+  "plates": [
+    { "id": "P02", "file": "p02-october", "name": "OCTOBER",
+      "from": { "line": "There's a thirty-second day in October", "word": "There's", "snap": "beat", "offset_beats": -1, "t": 10.1 },
+      "to": { "line": "Read the code, write a plan, check, check, check", "word": "Read", "snap": "beat", "t": 17.7 } }
+  ]
+}
