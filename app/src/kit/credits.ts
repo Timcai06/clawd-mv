@@ -1,6 +1,6 @@
-import { F, fitSize, font, plain, smart } from '../engine/type';
-import { clamp, ease } from '../engine/util';
-import { css, INK_SOFT } from '../theme';
+import { F, font, plain, smart } from '../engine/type';
+import { clamp } from '../engine/util';
+import { css, type ThemeKey } from '../theme';
 import type { Box } from './icons';
 import { span } from './time';
 
@@ -16,6 +16,7 @@ export const CREDIT_LINES = [
 export interface CreditsState {
   lines: readonly { text: string; progress: number }[];
   opacity?: number;
+  color?: ThemeKey;
 }
 
 /** Staggered reveal; the caller supplies the start time (or a lyric/beat-derived anchor). */
@@ -24,23 +25,32 @@ export function creditsState(t: number, start = 0, lines: readonly string[] = CR
   return { lines: lines.map((text, i) => ({ text: i === 0 ? smart(text) : plain(text), progress: span(elapsed, i * 0.7, i * 0.7 + 0.75) })) };
 }
 
-/** A poster colophon. Every row's opacity and rise are functions of its supplied progress. */
+/** Two annotation blocks on a 96 px grid; all six rows use the same 20 px Mono tier. */
+export function creditsLayout(box: Box, state: CreditsState) {
+  const rows = Math.ceil(state.lines.length / 2);
+  const pitch = Math.min(32, box.height / Math.max(1, rows));
+  const column = box.width / 2;
+  return state.lines.map((line, i) => ({ ...line, size: 20,
+    x: box.x + (i >= rows ? column : 0),
+    y: box.y + 20 + (i % Math.max(1, rows)) * pitch,
+    width: column - 24,
+  }));
+}
+
+/** Grid colophon: clipped columns, fixed type size, progress controls ink coverage only. */
 export function drawCredits(c: CanvasRenderingContext2D, box: Box, state: CreditsState): void {
   if (!(box.width > 0 && box.height > 0)) return;
-  const s = Math.min(box.width / 1760, box.height / 720);
   c.save(); c.beginPath(); c.rect(box.x, box.y, box.width, box.height); c.clip();
-  c.translate(box.x, box.y); c.scale(s, s); c.globalAlpha *= clamp(state.opacity ?? 1);
   c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-  state.lines.forEach((line, i) => {
+  for (const line of creditsLayout(box, state)) {
     const p = clamp(line.progress);
-    if (p <= 0) return;
-    const family = i === 0 ? F.archivo(100, 900) : F.mono();
-    const text = i === 0 ? smart(line.text).toUpperCase() : plain(line.text);
+    if (p <= 0) continue;
     c.save(); c.globalAlpha *= p;
-    c.fillStyle = css('ink', i < 2 ? 1 : INK_SOFT.strong);
-    c.font = font(family, fitSize(text, family, 1760, i === 0 ? 128 : 26));
-    c.fillText(text, 0, (i === 0 ? 144 : 258 + (i - 1) * 86) + 24 * (1 - ease.outCubic(p)));
+    c.globalAlpha *= clamp(state.opacity ?? 1);
+    c.beginPath(); c.rect(line.x, box.y, line.width, box.height); c.clip();
+    c.fillStyle = css(state.color ?? 'ink', 0.6); c.font = font(F.mono(), line.size);
+    c.fillText(plain(line.text), line.x, line.y);
     c.restore();
-  });
+  }
   c.restore();
 }
