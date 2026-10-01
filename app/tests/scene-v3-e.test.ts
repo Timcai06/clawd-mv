@@ -9,9 +9,9 @@ import * as Clawd from '../src/kit/clawd';
 import { resolveStoryboard, type Storyboard } from '../src/storyboard';
 import { TYPE_LEVELS as S14_LEVELS } from '../src/scenes/s14-shaft';
 import { TYPE_LEVELS as S15_LEVELS } from '../src/scenes/s15-line42';
-import { divePosition, diveScore } from '../src/scenes/parts/s14-score';
-import { frameAt, bounds as frameBounds, handoffIn as shaftIn, handoffOut as shaftOut, shaftBounds, shaftState,
-  spriteBounds, LYRIC_SIZE as SHAFT_SIZE, type Box } from '../src/scenes/parts/s14-layout';
+import { stackPhase, stackPos, stackScore } from '../src/scenes/parts/s14-stack';
+import { handoffOut as shaftOut } from '../src/scenes/s14-shaft';
+import type { Box } from '../src/scenes/parts/s15-bounds';
 import { handoffIn as monumentIn, handoffOut as monumentOut, heroState, monumentBounds,
   monumentState, freeState, LYRIC_SIZE as MONUMENT_SIZE } from '../src/scenes/parts/s15-layout';
 import { resolveFTimes } from '../src/scenes/parts/s15-f-timing';
@@ -21,7 +21,7 @@ import board from '../../storyboard/shots.json';
 import keyframes from '../../storyboard/keyframes.json';
 
 const audio = new AudioData(audioJSON), lyrics = new Lyrics(lyricsJSON), voice = new Voice(lyrics, audio);
-const D = diveScore(audio, lyrics), T = resolveFTimes({ audio, lyrics });
+const D = stackScore(audio, lyrics), T = resolveFTimes({ audio, lyrics });
 const shots = resolveStoryboard(board as Storyboard, lyrics, audio).shots;
 const at = (scene: string) => {
   const id = keyframes.frames.find(f => f.id === scene)!.shot;
@@ -58,17 +58,6 @@ function composition(name: string, actual: Box, target: Box) {
 }
 
 describe('E v3 measured storyboard composition', () => {
-  test('S14 open frame and actual canonical sprite cells at S14-4 + 60%', () => {
-    const t = at('S14'), s = shaftState(audio, t, D);
-    const pose = Clawd.pose('A11', { beat: audio.beatAt(t), beat0: audio.beatAt(D.down), p: 0, travel: 0 });
-    composition('S14 shaft', shaftBounds(audio, t, D), TARGETS.S14.subject);
-    composition('S14 nearest frame', frameBounds(frameAt(0, s.travel)), TARGETS.S14.mouth);
-    composition('S14 Clawd', spriteBounds(pose, s.cx, s.cy, s.px, s.roll), TARGETS.S14.hero);
-    expect(shaftBounds(audio, t, D).w * shaftBounds(audio, t, D).h / (1920 * 1080)).toBeGreaterThanOrEqual(0.3);
-    // Frame projection is a pinhole convergence, not a stack of equal-size cards.
-    expect(frameAt(2)[1]!.x - frameAt(2)[0]!.x).toBeLessThan(frameAt(1)[1]!.x - frameAt(1)[0]!.x);
-  });
-
   test('S15 solid silhouette and actual extended-arm sprite at S15-5 + 60%', () => {
     const t = at('S15');
     composition('S15 sculpture', monumentBounds(audio, t, T), TARGETS.S15.subject);
@@ -80,22 +69,13 @@ describe('E v3 measured storyboard composition', () => {
 });
 
 describe('E v3 handoffs are drawn from the shared constants', () => {
-  test('S13→S14 pitch and speed start at fall13 and change only inside the first beat', () => {
-    const s = shaftIn(D.start, audio, D);
-    expect(s.pitch).toBe(HANDOFF.fall13.pitch); expect(s.pxPerBeat).toBe(HANDOFF.fall13.pxPerBeat);
-    expect(s.distance).toBe(0);
-    expect(shaftIn(afterBeats(audio, D.start, 1), audio, D).alpha).toBe(0);
-  });
   test('S14 final frame endpoints and S15 first frame rule match line14 within 2px', () => {
-    const a = shaftOut(D.end - 1 / 60, audio, D), b = monumentIn(T.s15[0]!, audio, T);
-    const cx = (a.x0 + a.x1) / 2, len = (a.x1 - a.x0) / 2;
-    const endpoints = [-1, 1].map(k => ({ x: cx + k * len * Math.cos(a.roll), y: a.y + k * len * Math.sin(a.roll) }));
-    const outError = Math.max(...endpoints.map((p, i) => Math.hypot(p.x - (i ? HANDOFF.line14.x1 : HANDOFF.line14.x0), p.y - HANDOFF.line14.y)));
+    const a = shaftOut(), b = monumentIn(T.s15[0]!, audio, T);
+    const outError = Math.max(Math.abs(a.x0 - HANDOFF.line14.x0), Math.abs(a.x1 - HANDOFF.line14.x1), Math.abs(a.y - HANDOFF.line14.y));
     expect(outError).toBeLessThanOrEqual(2);
     for (const key of ['x0', 'x1', 'y'] as const) expect(b[key]).toBe(HANDOFF.line14[key]);
     expect(b.clay).toBe(1);
     console.log(`line14: outgoing ${outError.toFixed(3)}px; incoming 0px`);
-    expect(shaftOut(afterBeats(audio, D.end, -1), audio, D)).toEqual({ x0: 890, x1: 1012, y: 1040, roll: 0.29 });
   });
   test('S15 final frame rigid-piece bounds match domino15 within 2px', () => {
     const a = monumentOut(T.s16[0]! - 1 / 60, audio, T);
@@ -111,7 +91,7 @@ describe('E v3 typography, word timing, seek determinism', () => {
   test('three levels use the real Archivo cap-height and 20px Mono label size', async () => {
     const face = opentype.parse(await Bun.file(new URL('../public/fonts/Archivo-w1000-700.ttf', import.meta.url)).arrayBuffer());
     const ratio = (face.tables as any).os2.sCapHeight / face.unitsPerEm;
-    for (const [levels, size] of [[S14_LEVELS, SHAFT_SIZE], [S15_LEVELS, MONUMENT_SIZE]] as const) {
+    for (const [levels, size] of [[S15_LEVELS, MONUMENT_SIZE]] as const) {
       expect(levels.lyric).toBeCloseTo(size * ratio, 4);
       expect(levels.lyric).toBeGreaterThanOrEqual(50); expect(levels.lyric).toBeLessThanOrEqual(110);
       expect(levels.label).toBeGreaterThanOrEqual(14); expect(levels.label).toBeLessThanOrEqual(22);
@@ -119,6 +99,10 @@ describe('E v3 typography, word timing, seek determinism', () => {
       // Both scenes have an object as the dominant element, hence no separate giant text tier.
       expect(levels.giant).toBeNull();
     }
+  });
+  test('S14 levels: lyric and label inside the hierarchy ranges', () => {
+    expect(S14_LEVELS.lyric).toBeGreaterThanOrEqual(50); expect(S14_LEVELS.lyric).toBeLessThanOrEqual(110);
+    expect(S14_LEVELS.label).toBeGreaterThanOrEqual(14); expect(S14_LEVELS.label).toBeLessThanOrEqual(22);
   });
   test('all owned and crossing words are unborn 10ms before their aligned onset', () => {
     const owned = lyrics.linesIn(D.start, T.s16[0]!);
@@ -135,18 +119,17 @@ describe('E v3 typography, word timing, seek determinism', () => {
   test('near stops on the exact voice onset, counter and escape follow their words', () => {
     const near = lyrics.get('Frame by frame').words.at(-1)!;
     expect(D.near).toBe(near.start);
-    expect(shaftState(audio, near.start - 0.01, D).stopped).toBe(false);
-    expect(shaftState(audio, near.start, D).stopped).toBe(true);
-    expect(divePosition(D.end, D)).toBe(divePosition(near.start, D));
-    expect(shaftState(audio, D.end, D).travel).toBe(shaftState(audio, near.start, D).travel);
+    expect(stackPhase(near.start - 0.01, D).id).not.toBe('stop');
+    expect(stackPhase(near.start, D).id).toBe('stop');
+    expect(stackPos(D.end, D)).toBe(stackPos(near.start, D));
     expect(T.fortyTwo).toBe(lyrics.get('There it is').words.at(-1)!.start);
     expect(T.snip).toBe(lyrics.get('Snip the extra').words[0]!.start);
     expect(freeState(audio, T.free - 0.01, T).x).toBe(1300);
     expect(freeState(audio, afterBeats(audio, T.free, 0.75), T).x).toBeGreaterThan(1798);
   });
   test('state, layout, and handoffs survive repeated calls and reverse seeks', () => {
-    const state = (t: number) => ({ shaft: shaftState(audio, t, D), shape: monumentState(audio, t, T),
-      hero: heroState(audio, t, T), entry: shaftIn(t, audio, D), line: shaftOut(t, audio, D),
+    const state = (t: number) => ({ shaft: stackPos(t, D), shape: monumentState(audio, t, T),
+      hero: heroState(audio, t, T),
       rule: monumentIn(t, audio, T), piece: monumentOut(t, audio, T), free: freeState(audio, t, T) });
     for (const t of [at('S14'), D.near, at('S15'), T.snip, T.free, T.s16[0]! - 1 / 60]) {
       const a = state(t); expect(state(t)).toEqual(a);

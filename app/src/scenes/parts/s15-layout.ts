@@ -5,7 +5,7 @@ import * as Clawd from '../../kit/clawd';
 import { HANDOFF } from '../../kit/handoff';
 import { afterBeats, span } from '../../kit/time';
 import { ease, hash, lerp } from '../../engine/util';
-import { bounds, spriteBounds, type Point } from './s14-layout';
+import { bounds, spriteBounds, type Point } from './s15-bounds';
 import type { FTimes } from './s15-f-timing';
 
 export const LYRIC_SIZE = 98;

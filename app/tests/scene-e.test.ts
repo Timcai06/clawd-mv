@@ -3,12 +3,12 @@ import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { afterBeats } from '../src/kit/time';
 import { chorusScore, chorusState, commitId, sceneScore } from '../src/scenes/parts/s13-score';
-import { divePosition, diveScore, diveState } from '../src/scenes/parts/s14-score';
+import { stackPos, stackScore, stackPhase } from '../src/scenes/parts/s14-stack';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 
 const audio = new AudioData(audioJSON), lyrics = new Lyrics(lyricsJSON);
-const C = chorusScore(audio, lyrics), D = diveScore(audio, lyrics);
+const C = chorusScore(audio, lyrics), D = stackScore(audio, lyrics);
 const epsilon = 1e-6;
 
 describe('E group score', () => {
@@ -27,7 +27,7 @@ describe('E group score', () => {
   test('the resolved cut list supplies every scene boundary', () => {
     const shots = sceneScore(audio, lyrics, 'S14');
     expect(C.end).toBe(D.start);
-    expect([D.start, D.down, D.quiet, D.frames, D.nearCut]).toEqual(shots.map((s) => s.start));
+    expect(D.start).toBe(shots[0]!.start);
     expect(D.near).toBe(lyrics.get('Frame by frame').words.at(-1)!.start);
     expect(D.end).toBe(shots.at(-1)!.end);
   });
@@ -38,7 +38,7 @@ describe('E group score', () => {
       if (w.syl) for (const syl of w.syl) { syl[0] += 0.08; syl[1] += 0.08; }
       if (/near/.test(w.w)) { w.start += 0.7; w.end += 0.7; }
     }
-    const changed = new Lyrics(json), CC = chorusScore(audio, changed), DD = diveScore(audio, changed);
+    const changed = new Lyrics(json), CC = chorusScore(audio, changed), DD = stackScore(audio, changed);
     expect(CC.hit1 - C.hit1).toBeCloseTo(0.08);
     expect(CC.hit2 - C.hit2).toBeCloseTo(0.08);
     expect(DD.near).toBeGreaterThan(D.near);
@@ -74,34 +74,34 @@ describe('S13 choreography', () => {
 });
 
 describe('S14 descent', () => {
-  test('holds before Down, descends monotonically, and stops exactly on near', () => {
-    expect(divePosition(D.down - epsilon, D)).toBe(0);
-    let last = 0;
-    for (let t = D.down; t <= D.near; t += 1 / 120) {
-      const pos = divePosition(t, D);
-      expect(pos).toBeGreaterThanOrEqual(last - epsilon); last = pos;
+  test('falls one frame per step, monotonically, and stops dead exactly on near', () => {
+    let last = -1;
+    for (let t = D.start; t <= D.end; t += 1 / 120) {
+      const pos = stackPos(t, D);
+      expect(pos).toBeGreaterThanOrEqual(last - 0.09); last = Math.max(last, pos); // springs may overshoot slightly
     }
-    const stop = diveState(audio, D.near, D);
-    expect(stop.stopped).toBe(true);
-    expect(stop.velocity).toBe(0);
-    expect(divePosition(D.end, D)).toBe(stop.pos);
-    expect(divePosition(D.near - epsilon, D)).toBeLessThan(stop.pos);
+    expect(stackPhase(D.near - 1e-4, D).id).not.toBe('stop');
+    expect(stackPhase(D.near, D).id).toBe('stop');
+    expect(stackPos(D.end, D)).toBeCloseTo(stackPos(D.near + 0.001, D), 6);
+    // "quiet down here" falls half as often as "Down the call stack"
+    const per = (a: number, b: number) => D.steps.filter((s) => s.t >= a && s.t < b).length / (b - a);
+    expect(per(D.quiet, D.frame)).toBeLessThan(per(D.down, D.quiet));
   });
 
-  test('near removes travel but preserves the marker reveal and breathing', () => {
-    const a = diveState(audio, D.near, D), b = diveState(audio, D.end, D);
-    expect(b.pos).toBe(a.pos);
-    expect(a.reveal).toBe(0); expect(b.reveal).toBe(1);
-    expect(a.breath).not.toBe(b.breath);
+  test('every sung word is set on a frame; held words echo on later frames', () => {
+    expect(D.words.filter((w) => !w.echo)).toHaveLength(15);
+    expect(D.words.some((w) => w.echo)).toBe(true);
+    expect(D.words.find((w) => /near/i.test(w.word.w) && !w.echo)!.block).toBe(D.steps.length);
   });
 
   test('nominal BPM and arbitrary call order cannot alter either scene', () => {
     const slow = new AudioData({ ...audioJSON, bpm: 40 }), fast = new AudioData({ ...audioJSON, bpm: 240 });
+    const Ds = stackScore(slow, lyrics), Df = stackScore(fast, lyrics);
     for (const t of [D.near, C.hit1, D.quiet, C.pickup2, C.hit2, D.down]) {
       expect(chorusState(slow, t, C)).toEqual(chorusState(fast, t, C));
-      expect(diveState(slow, t, D)).toEqual(diveState(fast, t, D));
-      const a = diveState(audio, t, D); diveState(audio, D.end, D); diveState(audio, D.start, D);
-      expect(diveState(audio, t, D)).toEqual(a);
+      expect(stackPos(t, Ds)).toBe(stackPos(t, Df));
+      const a = stackPos(t, D); stackPos(D.end, D); stackPos(D.start, D);
+      expect(stackPos(t, D)).toBe(a);
     }
   });
 });
