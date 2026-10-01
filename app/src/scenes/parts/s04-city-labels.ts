@@ -61,9 +61,9 @@ export class DateLabels {
           vec2 q = (vec2(mod(i, 8.0), 3.0 - floor(i / 8.0)) + vUv) / vec2(8.0, 4.0);
           float a = texture(atlas, q).a;
           if (a < 0.003) discard;
-          float hot = float(abs(vDate - accented) < 0.1 || vDate > 31.5);
+          float hot = float(abs(vDate - accented) < 0.1 && vDate < 31.5);
           vec3 c = mix(ink, clay, hot);
-          float dim = vDate <= visited || hot > 0.5 ? 1.0 : 0.48;
+          float dim = hot > 0.5 ? 1.0 : 0.6;
           fragColor = vec4(c, a * dim);
         }`,
       uniforms: {

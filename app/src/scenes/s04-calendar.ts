@@ -10,16 +10,19 @@ import { Layer2D, W, H } from '../engine/gl';
 import { GLSL_COMMON } from '../engine/glsl/common';
 import { LineBatch } from '../engine/lines';
 import { F, font } from '../engine/type';
-import { clamp, ease, frameIdx, hash, lerp } from '../engine/util';
+import { clamp, ease, hash, lerp } from '../engine/util';
 import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { blink, drawCursor } from '../kit/cursor';
-import { beatsSince, hitAfter, span } from '../kit/time';
+import { span } from '../kit/time';
 import { Voice, drawSet, odometer, setLine } from '../kit/lyric-moves';
-import { fillRun, varRun } from '../kit/vartype';
+import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, type CityTimes, type Point3 } from './parts/s04-city-model';
+import { BLOCK, TOWER_BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, clawdRect, handoffIn, type CityTimes, type Point3 } from './parts/s04-city-model';
 import { DateLabels } from './parts/s04-city-labels';
+import { drawCalendar } from './parts/s03-form';
+import { printInBox } from './parts/s01-print';
+export const TYPE_LEVELS = { giant: 212, lyric: 50.8, label: 20 }; // cap heights in logical px
 
 const PAPER = lin('paper'), INK = lin('ink'), CLAY = lin('clay');
 const UP = new THREE.Vector3(0, 1, 0);
@@ -112,8 +115,6 @@ class CityWorld {
   labels: DateLabels;
   streets = new LineBatch(2400, { screen2D: false, blend: 'normal', depthTest: true });
   overlay = new Layer2D();
-  sprite = new Layer2D(256, 144);
-  clawd: THREE.Mesh;
   times: CityTimes;
   voice: Voice;
   matrix = new THREE.Matrix4();
@@ -165,12 +166,7 @@ class CityWorld {
     this.floor.position.set(0.0, -0.015, -8.1);
     this.scene.add(this.floor);
     this.labels = new DateLabels(ctx.renderer);
-    const spriteMat = new THREE.MeshBasicMaterial({ map: this.sprite.texture, transparent: true, depthWrite: false, toneMapped: false });
-    this.sprite.texture.magFilter = THREE.NearestFilter;
-    this.sprite.texture.minFilter = THREE.NearestFilter;
-    this.clawd = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.59), spriteMat);
-    this.clawd.frustumCulled = false;
-    this.scene.add(this.clawd);
+
   }
 
   project(p: Point3) {
@@ -183,8 +179,7 @@ class CityWorld {
     this.shadows.geometry.dispose(); (this.shadows.material as THREE.Material).dispose();
     this.floor.geometry.dispose(); this.floorMaterial.dispose();
     this.labels.dispose(); this.streets.geo.dispose(); this.streets.mat.dispose();
-    this.clawd.geometry.dispose(); (this.clawd.material as THREE.Material).dispose();
-    this.sprite.texture.dispose(); this.overlay.texture.dispose(); this.ground.pass.mat.dispose();
+    this.overlay.texture.dispose(); this.ground.pass.mat.dispose();
   }
 }
 
@@ -217,9 +212,10 @@ export default class S04Calendar extends Scene {
       const d = DATES[i]!;
       // Each block springs up in its own instant across the first beat (a ripple from day 1).
       const own = clamp(s.extrude * 1.6 - (i / 31) * 0.6);
-      const roofPulse = f.a.kick * (0.05 + 0.03 * (d.column % 3)) * own;
+      const roofPulse = 0; // Printed roofs stay fixed while the kick breathes the lyric layer.
       const h = i === 31 ? s.roof32 : Math.max(0.025, d.height * ease.outBack(own, 1.3) + roofPulse);
-      w.position.set(d.x, h / 2, d.z); w.scale.set(BLOCK, h, BLOCK);
+      const bw = i === 31 ? TOWER_BLOCK : BLOCK;
+      w.position.set(d.x, h / 2, d.z); w.scale.set(bw, h, bw);
       w.matrix.compose(w.position, w.identity, w.scale);
       w.blocks.setMatrixAt(i, w.matrix);
       // Shadow: a sheared floor quad from the block's foot towards the lower left (light upper right).
@@ -276,20 +272,10 @@ export default class S04Calendar extends Scene {
     lb.render(this.ctx.renderer, out, this.w.camera);
   }
 
-  private character(f: Frame, s: ReturnType<typeof cityState>) {
-    const w = this.w, c = w.sprite.ctx;
-    w.sprite.clear();
-    const action = s.rising && s.travel >= 0.999 ? 'A3' : 'A5';
-    const p = Clawd.pose(action, {
-      beat: f.beat, beat0: this.ctx.audio.beatAt(s.rising ? w.times.rise : w.times.start),
-      p: s.travel, travel: 0, look: s.rising ? 1 : 0,
-    });
-    Clawd.draw(c, 48, 48, p, { px: 10, eye: css('ink') });
-    w.sprite.upload();
-    const h = s.head;
-    w.clawd.position.set(h[0], 0.62, h[2]);
-    w.clawd.quaternion.copy(w.camera.quaternion);
-    w.clawd.scale.setScalar(s.rising ? 0.5 : 0.46);
+  private character(f: Frame, s: ReturnType<typeof cityState>, c: CanvasRenderingContext2D) {
+    const b=clawdRect(this.ctx.audio,f.t,this.w.times);
+    c.save();c.translate(b.x,b.y);c.scale(b.w/160,b.h/50);
+    Clawd.draw(c,0,0,Clawd.pose(s.rising?null:'A5',{beat:f.beat,beat0:this.ctx.audio.beatAt(this.w.times.start),p:s.travel,travel:0}),{px:10});c.restore();
   }
 
   /** Lyrics v3: the counter, the line under it, the OCTOBER headline, then "So I…" in the grid. */
@@ -303,22 +289,21 @@ export default class S04Calendar extends Scene {
 
     // The counter (the sung "thirty-second" made numeric): huge at top-left, then it overflows to 32
     // and, when "October" lands, flies to the right margin as the "32" annotation.
-    const fly = ease.inOutCubic(span(t, T.october - 0.02, T.october + 0.32));
-    const cx = lerp(84, 1596, fly), cy = lerp(312, 196, fly), size = lerp(300, 66, fly);
+    const fly = ease.inOutCubic(span(t, T.october, T.october + 0.32));
+    const cx = lerp(96, 1752, fly), cy = lerp(312, 196, fly), size = lerp(300, 28, fly);
     const over = s.rising;
     c.save(); c.translate(cx, cy); c.scale(breath, breath);
-    odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : 'ink', axes: { wdth: 75, wght: 900 } });
+    if (forms[2]!.born > 0) odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : 'ink', axes: { wdth: 75, wght: 900 } });
     c.restore();
     if (fly > 0.98) {
       c.strokeStyle = css('ink', 0.85); c.lineWidth = 1.2;
-      c.beginPath(); c.moveTo(1596, 214); c.lineTo(1824, 214); c.stroke();
+      c.beginPath(); c.moveTo(1752, 214); c.lineTo(1888, 214); c.stroke();
       c.beginPath(); c.moveTo(1560, 150); c.lineTo(1560, 420); c.stroke();
-      c.font = font(F.mono(400), 15); c.fillStyle = css('ink', 0.6);
-      c.fillText('EXPECTED 31', 1596, 240);
+
     }
 
     // "thirty-second day in": the line, set under the counter, each word born on its onset.
-    const pre = forms.slice(0, -1).filter((x) => x.t1 > T.start - 0.6);
+    const pre = forms.slice(0, -1);
     const lead = setLine(pre, 74, { space: 0.24 });
     const leadAlpha = slam ? Math.max(0, 1 - ease.outCubic(span(t, T.october, T.october + 0.18))) : 1;
     if (leadAlpha > 0) drawSet(c, lead, 92, 420, { on: 'paper', alpha: leadAlpha });
@@ -329,17 +314,17 @@ export default class S04Calendar extends Scene {
       const k = t - october.t0;
       const drop = k < 0.1 ? lerp(-150, 10, ease.inQuad(k / 0.1)) : lerp(10, 0, ease.outCubic(clamp((k - 0.1) / 0.14)));
       const run = varRun('OCTOBER', 286, { wdth: ox.axes.wdth, wght: Math.max(760, ox.axes.wght) });
-      const pres = Math.max(0.2, v.presence(line, t));
+      const pres = Math.max(0.6, v.presence(line, t));
       c.save(); c.globalAlpha = pres; c.fillStyle = css('ink');
       c.translate(-26, 212 + drop); c.scale(breath, breath);
-      fillRun(c, run, 0, 0);
+      printInBox(c, run, {x:0,y:-242,w:1215,h:242});
       c.restore();
       const lab = ease.outExpo(span(t, october.t0 + 0.12, october.t0 + 0.5));
       if (lab > 0) {
         c.globalAlpha = lab;
         c.strokeStyle = css('ink', 0.8); c.lineWidth = 1.2;
         c.beginPath(); c.moveTo(72, 300); c.lineTo(72 + 620 * lab, 300); c.stroke();
-        c.font = font(F.archivo(87.5, 500), 30); c.fillStyle = css('ink');
+        c.font = font(F.mono(), 20); c.fillStyle = css('ink',0.6);
         c.fillText('01—31', 72, 282);
         c.globalAlpha = 1;
       }
@@ -353,6 +338,9 @@ export default class S04Calendar extends Scene {
   private annotations(f: Frame, s: ReturnType<typeof cityState>, out: THREE.WebGLRenderTarget) {
     const w = this.w, c = w.overlay.ctx;
     w.overlay.clear();
+    const incoming = handoffIn(f.t,this.ctx.audio,w.times);
+    if(incoming.alpha>0){c.fillStyle=css('paper',incoming.alpha);c.fillRect(0,0,W,H);c.save();c.globalAlpha=incoming.alpha;drawCalendar(c,incoming);c.restore();}
+    this.character(f,s,c);
     this.lyrics(f, s, c);
     const head = w.project([s.head[0], s.head[1], s.head[2]]);
     if (head.visible && head.x > 20 && head.x < W - 30 && head.y > 20 && head.y < H - 20) {
@@ -363,7 +351,7 @@ export default class S04Calendar extends Scene {
 
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, s = cityState(this.ctx.audio, f.t, w.times);
-    this.camera(f, s); this.buildings(f, s); this.character(f, s);
+    this.camera(f, s); this.buildings(f, s);
     w.ground.render(this.ctx.renderer, out, {
       kind: 'paper', t: f.t, camX: w.camera.position.x * 34, camY: w.camera.position.z * 30,
       zoom: 1, cell: 76, grid: 0.5, kick: f.a.kick, halftone: 0.3, pitch: 12, haze: 0,
@@ -373,11 +361,8 @@ export default class S04Calendar extends Scene {
     r.render(w.scene, w.camera);
     r.render(w.labels.scene, w.camera);
     this.survey(s, out); this.annotations(f, s, out);
-    const october = w.voice.line('There’s a thirty-second day in October').words.at(-1)!.start;
-    const impact = hitAfter(f.t, w.times.rise, 0.09) * 5 + hitAfter(f.t, october, 0.07) * 7;
     return {
       ...postFor('paper'), hud: 0, grain: 0.03,
-      shake: [impact * (hash(frameIdx(f.t), 41) - 0.5), impact * (hash(frameIdx(f.t), 42) - 0.5)] as [number, number],
     };
   }
 }

@@ -1,56 +1,84 @@
-// Group A's document layout also supplies the notification's match-cut destination.
-import { F, textPath2D } from '../../engine/type';
+// S03's printed form and sung fields, with a full-page flat plate at the keyframe.
+import type { AudioData } from '../../engine/audio';
+import { ease, hash } from '../../engine/util';
 import { css } from '../../theme';
-import { CALENDAR_ISSUE } from '../../kit/content';
-import { mono, calendarForm } from './s01-drafting';
-
-export const FORM = { x: 240, y: 112, w: 1440, h: 856 } as const;
-export const STAMP = { x: 1432, y: 356, angle: -0.095, w: 350, h: 150 } as const;
-export const EXTRA = { x: 350 + 780 * 0.85, y: 450 + 394 * 0.85, r: 43 } as const;
-
-const displayPaths = new Map<string, Path2D>();
-function displayPath(text: string, size: number, width = 100) {
-  const key = `${text}:${size}:${width}`;
-  let path = displayPaths.get(key);
-  if (!path) { path = textPath2D(text, F.archivo(width, 700), size); displayPaths.set(key, path); }
-  return path;
+import { afterBeats, span } from '../../kit/time';
+import { HANDOFF, type Rect } from '../../kit/handoff';
+import { Voice, drawSet, setLine, stamp } from '../../kit/lyric-moves';
+import { mono } from './s01-drafting';
+import { machineTitle, printInBox, mixRect } from './s01-print';
+import type { OpeningTimes } from './s01-timing';
+export const FORM = { x: 60, y: 57, w: 1790, h: 1000 };
+export const FORM_ROLL = -0.032;
+export const REPORT_CLAWD = { x: 1510, y: 941, px: 11, stretchY: 1.4 };
+export const STAMP = { x: 1190, y: 766, angle: -0.21, w: 810, h: 340 };
+export function handoffIn(t: number, audio: AudioData, T: OpeningTimes) {
+  return mixRect(HANDOFF.card02, FORM, ease.outCubic(span(t, T.issue, afterBeats(audio, T.issue, 1))));
 }
-
-export function prepareForm() {
-  for (let i = 0; i <= CALENDAR_ISSUE.title.length; i++) displayPath(CALENDAR_ISSUE.title.slice(0, i), 60);
-  displayPath('31', 83, 87.5); displayPath('32', 83, 87.5);
+export function handoffOut(_t: number) { return { ...HANDOFF.month03 }; }
+export function formBounds(t: number, audio: AudioData, T: OpeningTimes) {
+  const b = handoffIn(t, audio, T), k = span(t, T.issue, afterBeats(audio, T.issue, 1));
+  const r = FORM_ROLL * k, points = [[b.x,b.y],[b.x+b.w,b.y],[b.x,b.y+b.h],[b.x+b.w,b.y+b.h]];
+  const p = points.map(([x,y]) => [960 + (x!-960)*Math.cos(r)-(y!-540)*Math.sin(r),540+(x!-960)*Math.sin(r)+(y!-540)*Math.cos(r)]);
+  const x = Math.max(0, Math.min(...p.map(p=>p[0]!))), y = Math.max(0, Math.min(...p.map(p=>p[1]!)));
+  return { dominant: { x, y, w: Math.min(1920,Math.max(...p.map(p=>p[0]!)))-x, h: Math.min(1080,Math.max(...p.map(p=>p[1]!)))-y },
+    clawd: { x: REPORT_CLAWD.x, y: REPORT_CLAWD.y, w: 16*REPORT_CLAWD.px, h: 5*REPORT_CLAWD.px*REPORT_CLAWD.stretchY } };
 }
-
-function display(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, width = 100) {
-  // Fixed vector paths avoid seek-order-dependent GPU glyph-atlas rasterisation
-  // when the large 32 is rotated and enlarged during the attachment dive.
-  c.save(); c.translate(x, y); c.fill(displayPath(text, size, width)); c.restore();
+export function drawCalendar(c: CanvasRenderingContext2D, b: Rect) {
+  c.save(); c.strokeStyle = css('ink', 0.6); c.lineWidth = 1; c.strokeRect(b.x,b.y,b.w,b.h);
+  machineTitle(c,'OCTOBER',{x:b.x+26,y:b.y+18,w:260,h:50});
+  const cw = b.w/7, rh=(b.h-70)/5;
+  c.beginPath(); for(let i=0;i<=7;i++){c.moveTo(b.x+i*cw,b.y+70);c.lineTo(b.x+i*cw,b.y+b.h);}
+  for(let i=0;i<=5;i++){c.moveTo(b.x,b.y+70+i*rh);c.lineTo(b.x+b.w,b.y+70+i*rh);} c.stroke();
+  for(let day=1;day<=32;day++){
+    const slot=day+2, x=b.x+(slot%7)*cw, y=b.y+70+Math.floor(slot/7)*rh;
+    machineTitle(c,String(day),{x:x+cw*0.28,y:y+rh*0.2,w:cw*0.4,h:rh*0.6},day===32?1:0.6);
+    if(day===32){c.strokeStyle=css('clay');c.lineWidth=4;c.beginPath();c.ellipse(x+cw*.5,y+rh*.5,cw*.65,rh*.43,-.3,0,Math.PI*2);c.stroke();}
+  } c.restore();
 }
-
-export function drawForm(c: CanvasRenderingContext2D, titleProgress: number, beat: number) {
-  c.fillStyle = css('paper', 0.96); c.fillRect(FORM.x, FORM.y, FORM.w, FORM.h);
-  // Formal rules describe fields; there is no decorative card outline.
-  c.fillStyle = css('ink', 0.3);
-  c.fillRect(288, 190, 1344, 1); c.fillRect(288, 404, 1344, 1);
-  c.fillRect(288, 850, 1344, 1); c.fillRect(1164, 448, 1, 358);
-  mono(c, 'CALENDAR / INCIDENT REPORT', 288, 160, 20);
-  mono(c, 'NO. 1031', 1420, 160, 20);
-  mono(c, 'SUBJECT', 288, 224, 16, 'ink', 0.6);
-  c.fillStyle = css('ink');
-  display(c, CALENDAR_ISSUE.title.slice(0, Math.floor(CALENDAR_ISSUE.title.length * titleProgress)), 288, 292, 60);
-  mono(c, 'RECEIVED  09:00', 288, 362, 19, 'ink', 0.6);
-  mono(c, 'PROJECT  calendar', 680, 362, 19, 'ink', 0.6);
-  mono(c, 'ATTACHMENT 01 / OBSERVED OUTPUT', 288, 437, 15, 'ink', 0.6);
-  calendarForm(c, 350, 450, 0.85);
-  mono(c, 'EXPECTED', 1208, 490, 16, 'ink', 0.6);
-  c.fillStyle = css('ink'); display(c, '31', 1208, 580, 83, 87.5);
-  mono(c, 'OBSERVED', 1208, 634, 16, 'ink', 0.6);
-  c.fillStyle = css('clay'); display(c, '32', 1208, 724, 83, 87.5);
-  mono(c, 'DIFFERENCE   +1 DAY', 1208, 779, 15, 'ink', 0.6);
-  mono(c, 'REPORTER / DICTATION', 288, 882, 15, 'ink', 0.6);
-  // A small printer registration index steps on measured beats.
-  for (let i = 0; i < 8; i++) {
-    c.fillStyle = css('ink', i === Math.floor(beat) % 8 ? 0.6 : 0.12);
-    c.fillRect(1600 + (i % 2) * 10, 904 + Math.floor(i / 2) * 10, 5, 5);
+export function drawForm(c: CanvasRenderingContext2D, rect: Rect) {
+  c.save(); c.fillStyle=css('paper',0.94);c.fillRect(rect.x,rect.y,rect.w,rect.h);
+  c.beginPath();c.rect(rect.x,rect.y,rect.w,rect.h);c.clip();c.strokeStyle=css('ink',0.55);c.lineWidth=1.3;
+  c.strokeRect(FORM.x,FORM.y,FORM.w,FORM.h);
+  c.beginPath();for(const y of [115,515,580,645,720,835,905,980]){c.moveTo(60,y);c.lineTo(1850,y);}
+  for(const [x,y0,y1] of [[210,515,980],[580,515,580],[830,515,580],[1650,580,980]]){c.moveTo(x!,y0!);c.lineTo(x!,y1!);}c.stroke();
+  // Report header and structured metadata stay at the same annotation size.
+  mono(c,'ISSUE REPORT / FORM 032',84,97,20,'ink',0.6);
+  mono(c,'ID / CAL-2026-01032   PRIORITY / HIGH',232,557,20,'ink',0.6);
+  // These are contents of the form, not free-floating annotation legends. All are ≤60% ink.
+  const fields = [
+    ['COMPONENT', 'Calendar / Date Rendering', 625],
+    ['ENVIRONMENT', 'Web v2.1.4 / macOS 14', 692],
+    ['REPRODUCE', '1. Open Calendar', 761],
+    ['', '2. Navigate to October 2026', 788],
+    ['', '3. Observe final date in month view', 815],
+    ['ACTUAL', 'Calendar shows October 32', 879],
+    ['EXPECTED', 'Calendar shows October 31', 949],
+  ] as const;
+  for (const [label, text, y] of fields) {
+    mono(c,label,76,y,18,'ink',.6);mono(c,text,232,y,20,'ink',.6);
   }
+  for(let i=0;i<4;i++) {c.strokeRect(1680,625+i*70,22,22);}
+  c.beginPath();c.moveTo(1680,625);c.lineTo(1702,647);c.moveTo(1702,625);c.lineTo(1680,647);c.stroke();
+  for(let i=0;i<400;i++){const x=60+hash(301,i,1)*1790,y=57+hash(301,i,2)*1000;c.fillStyle=css('ink',.08);c.fillRect(x,y,.7,.7);}
+  c.restore();
+}
+export function drawReportLyrics(c: CanvasRenderingContext2D, v: Voice, t: number) {
+  const line=v.line(1), forms=v.forms(line,t), pres=v.presence(line,t);
+  if(t<line.words[4]!.start){
+    const rows=[{forms:forms.slice(0,3),x:85,y:165,h:315.6},{forms:forms.slice(3,4),x:85,y:500,h:315.6}];
+    for(const row of rows){
+      const set=setLine(row.forms,460), sx=Math.min(1,1150/set.width);
+      for(const word of set.words){if(word.form.born<=0)continue;c.save();c.fillStyle=css(word.form.stress?'clay':'ink');c.globalAlpha=word.form.born;
+        printInBox(c,word.run,{x:row.x+word.x*sx,y:row.y,w:word.w*sx,h:row.h});c.restore();}
+    }
+  } else {
+    machineTitle(c,'Calendar shows',{x:85,y:165,w:1160,h:160});
+    machineTitle(c,'October 32',{x:85,y:345,w:880,h:165});
+  }
+  const bug=v.form(line.words[2]!,t);
+  if(bug.born>0) stamp(c,'BUG',STAMP.x,STAMP.y,460,{t,at:bug.t0,rot:STAMP.angle,color:bug.stress?'clay':'ink',axes:{wdth:bug.axes.wdth,wght:Math.max(800,bug.axes.wght)},seed:303});
+  if(pres>0)drawSet(c,setLine(forms.slice(4),74,{space:.18}),232,972,{on:'paper',alpha:pres});
+  const next=v.line(2);
+  if(t>=next.start)drawSet(c,setLine(v.forms(next,t),74),110,972,{on:'paper'});
 }
