@@ -3,14 +3,14 @@ import type * as THREE from "three";
 import { Scene, type Frame, type SceneCtx } from "../engine/scene";
 import { Layer2D } from "../engine/gl";
 import { F, font } from "../engine/type";
-import { hash, frameIdx } from "../engine/util";
+import { hash, frameIdx, ease, lerp } from "../engine/util";
 import { css } from "../theme";
 import { postFor } from "../kit/ground";
 import { Voice, gridSnap } from "../kit/lyric-moves";
 import { fillRun, varRun } from "../kit/vartype";
 import { drawCursor, blink } from "../kit/cursor";
-import { afterBeats, beatsSince } from "../kit/time";
-import { chorusScore, commitId, type ChorusScore } from "./parts/s13-score";
+import { afterBeats, beatsSince, span } from "../kit/time";
+import { chorusScore, chorusState, commitId, type ChorusScore } from "./parts/s13-score";
 import { gitfallLayout, handoffIn } from "./parts/s13-layout";
 import {
   drawWarped,
@@ -60,6 +60,30 @@ export default class S13Gitfall extends Scene {
       c = w.layer.ctx;
     const s = gitfallLayout(au, this.ctx.lyrics, t, T, v);
     w.layer.clear(css("ink"));
+    // v4 motion (same grammar as S08): creep and inhale before each COMMIT, a sprung kick on the
+    // hit, a bump per sung word, nervous jitter while every test is throwing fits, a push into the
+    // local/CI collision, settling to the identity frame on the last beat (S14 hand-off).
+    {
+      const st = chorusState(au, t, T);
+      const hit = st.second ? T.hit2 : T.hit1, pre = st.second ? T.pickup2 : T.start;
+      let zoom = 1, rot = 0, fx = 960, fy = 560, jx = 0, jy = 0;
+      if (st.frozen) {
+        zoom = 1 + 0.2 * ease.inQuad(span(t, pre, hit)) - 0.1 * ease.inOutCubic(span(t, afterBeats(au, hit, -0.5), hit));
+      } else {
+        const b = Math.max(0, beatsSince(au, t, hit));
+        zoom = 1 + 0.16 * Math.exp(-b * 6) * Math.cos(b * 9);
+        rot = 0.03 * Math.exp(-b * 5) * Math.sin(b * 11);
+        const line = this.ctx.lyrics.lastLine(t);
+        for (const wd of line?.words ?? []) if (t >= wd.start) { const k = Math.pow(0.5, (t - wd.start) / 0.08); zoom += 0.02 * k; rot += (wd.index % 2 ? 0.006 : -0.006) * k; }
+        if (st.testMode) { const fi = frameIdx(t); jx = (hash(fi, 7) - 0.5) * 14; jy = (hash(fi, 8) - 0.5) * 10; rot += (hash(fi >> 2, 9) - 0.5) * 0.01; }
+        if (st.split) {
+          const push = ease.inOutCubic(span(t, T.split, T.collision));
+          const back = ease.inOutCubic(span(t, afterBeats(au, T.end, -1), T.end));
+          zoom += (0.12 * push + 0.06 * st.crush) * (1 - back); fx = lerp(960, 760, push * (1 - back)); fy = lerp(560, 760, push * (1 - back));
+        }
+      }
+      c.save(); c.translate(fx + jx, fy + jy); c.rotate(rot); c.scale(zoom, zoom); c.translate(-fx, -fy);
+    }
     const entering = t < afterBeats(au, T.start, 1);
     if (entering) {
       const r = handoffIn(t, au, T);
@@ -128,6 +152,7 @@ export default class S13Gitfall extends Scene {
     }
     if (s.frozen)
       drawCursor(c, { x: 960 - 19.8, y: 576, h: 72, on: blink(au.beatAt(t)) });
+    c.restore();
     c.drawImage(w.grain, 0, 0, 1920, 1080);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     const fi = frameIdx(t),
