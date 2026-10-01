@@ -2,7 +2,7 @@
 
 > C 2026-10-01 逐张读 `out/storyboard/v2/kf-SNN.png` 写的。**只描述分镜图有什么，不评判实现好不好**，差距由 Tim 在并排图上指出。
 > 并排图：`cd app && bun scripts/compare.ts --tag <名字> [--scenes S04,S11]` → `out/compare/<名字>/index.html`。左边分镜图，右边是同一镜头（分镜图的 `shot`，镜头时长 60% 处）的实现静帧，下面一排是这一场每个镜头中点的静帧。
-> 分镜图是生图模型画的：写实纸张纹理、油墨颗粒这类效果可以不做，取舍由 Tim 定。
+> 分镜图是生图模型画的。T 2026-10-01：分镜图效果很好，尽量往它靠。纸张纤维、油墨颗粒、网点、雕刻排线这类质感都要用着色器 / Canvas 模拟出来；实在做不到的列进报告，由 Tim 取舍。
 
 ## 全片共同的构成规律（从 18 张里归纳）
 - **一个超大、被画框裁切的 Archivo 粗体字**，占画面 30–55%：OCTOBER（S04）、PING（S02）、CHECK（S06）、COMMIT（S08、S13）、undefined（S11）、GREEN（S16）、ENTER（S07）、month.ts（S05）、1…11（S12）、- d <= days / + d < days（S17）。**其中 7 个本身就是唱出来的词**（October、ping、check、commit、undefined、green、ten 前的数数）。也就是说，分镜图里最显眼的那个字，正好可以由歌词排版 v3 来承担。
