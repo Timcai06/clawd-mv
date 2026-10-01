@@ -1,219 +1,101 @@
-// S06 — a working plotter sheet. The cursor writes the plan, draws three checks on
-// measured snares, then crosses each task out. PAPER has no glow or lit surfaces.
+// S06 — the cropped CHECK headline and a front-elevation pen-plotter sheet.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
-import { strokeText, drawStrokeText, writtenLength, type StrokeText } from '../engine/stroke';
-import { F, font, textPath2D } from '../engine/type';
-import { ease, frameIdx, hash, lerp } from '../engine/util';
-import { css, lin, INK_SOFT } from '../theme';
-import { drawCursor, drawTrail, blink } from '../kit/cursor';
+import { F, font } from '../engine/type';
+import { css, lin } from '../theme';
+import { drawCursor, drawTrail } from '../kit/cursor';
 import { postFor } from '../kit/ground';
-import { afterBeats, beatsSince, span } from '../kit/time';
+import { afterBeats, span } from '../kit/time';
+import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { resolveCTimes, todoState, lyricCharTimes, type CTimes } from './parts/s06-timing';
+import { checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
+import { printRun } from './parts/s05-print';
 
-const ITEMS = ['Read the code', 'Write a plan', 'Fix October'];
-const ROW_Y = [410, 575, 740];
-const TEXT_X = 400, BOX_X = 282, BOX_SIZE = 52;
-
+export const TYPE_LEVELS = { giant: 526, lyric: 56, label: 18 }; // cap px; mono machine item can use the lyric tier
 const PAPER = /* glsl */ `
-uniform vec3 paper, ink, clay;
-uniform float t, beat, kick, snare, zoom;
-uniform vec2 pan, pen;
-float rule(float v, float pitch, float width) {
-  float d = abs(fract(v / pitch + 0.5) - 0.5) * pitch;
-  return 1.0 - smoothstep(width, width + 0.7 / PX_SCALE, d);
-}
+uniform vec3 paper,ink;
 void main() {
-  vec2 s = vec2(FRAG_PX.x, 1080.0 - FRAG_PX.y);
-  vec2 q = (s - vec2(960.0, 540.0)) / zoom + pan;
-  float minor = max(rule(q.x, 40.0, 0.25), rule(q.y, 40.0, 0.25));
-  float major = max(rule(q.x, 200.0, 0.6), rule(q.y, 200.0, 0.6));
-  float travel = beat * 48.0;
-  float feed = rule(q.y - travel, 400.0, 0.7);
-  float fibre = snoise(q * vec2(0.4, 0.014) + vec2(t * 0.08, 0.0));
-  vec3 c = mix(paper, ink, minor * 0.025 + major * (0.065 + 0.045 * kick));
-  c = mix(c, ink, (0.5 + 0.5 * fibre) * 0.012);
-  c = mix(c, ink, feed * 0.08);
-  // Registration marks travel across the sheet like a plotter carriage.
-  float dash = step(0.72, fract(q.x / 36.0 + beat * 0.12));
-  c = mix(c, clay, feed * dash * 0.14);
-  vec2 d = abs(q - pen);
-  float leader = max(rule(q.x - pen.x, 100000.0, 0.45) * step(d.y, 115.0),
-                     rule(q.y - pen.y, 100000.0, 0.45) * step(d.x, 190.0));
-  c = mix(c, clay, leader * (0.10 + 0.13 * snare));
-  fragColor = vec4(c, 1.0);
+  vec2 p=FRAG_PX;
+  float fibre=hash12(floor(p*vec2(0.7,0.15)));
+  float grain=hash12(floor(p));
+  fragColor=vec4(mix(paper,ink,fibre*0.009+grain*0.009),1.0);
 }`;
-
-interface View { x: number; y: number; zoom: number; angle: number }
-interface Pen { x: number; y: number; moving: boolean }
-
 class TodoWorld {
-  users = 0;
-  layer = new Layer2D();
-  bg = new FSPass(PAPER, {
-    paper: { value: new THREE.Vector3(...lin('paper')) }, ink: { value: new THREE.Vector3(...lin('ink')) },
-    clay: { value: new THREE.Vector3(...lin('clay')) },
-    t: { value: 0 }, beat: { value: 0 }, kick: { value: 0 }, snare: { value: 0 },
-    zoom: { value: 1 }, pan: { value: new THREE.Vector2() }, pen: { value: new THREE.Vector2() },
-  });
+  users=0;
+  layer=new Layer2D();
+  bg=new FSPass(PAPER,{paper:{value:new THREE.Vector3(...lin('paper'))},ink:{value:new THREE.Vector3(...lin('ink'))}});
   times: CTimes;
-  rows: StrokeText[];
-  lyric: StrokeText;
-  handoff: StrokeText;
-  chars: [number, number][];
-  handoffChars: [number, number][];
-  heading = new Layer2D(600, 240);
-
-  constructor(ctx: SceneCtx) {
-    this.times = resolveCTimes(ctx.audio, ctx.lyrics);
-    this.rows = ITEMS.map((s) => strokeText(s, 'readable', 84));
-    this.lyric = strokeText(this.times.plan.text, 'readable', 42);
-    this.handoff = strokeText(this.times.claws.text, 'readable', 42);
-    this.chars = lyricCharTimes(this.times.plan);
-    this.handoffChars = lyricCharTimes(this.times.claws);
-    // Rasterize the fixed heading once at output resolution. Canvas can reuse
-    // differently transformed path/glyph cache entries with different edge AA.
-    this.heading.ctx.fillStyle = css('ink');
-    this.heading.ctx.fill(textPath2D('PLAN', F.archivo(100, 800), 210, 0, 210));
-  }
-
-  dispose() { this.bg.mat.dispose(); this.layer.texture.dispose(); this.heading.texture.dispose(); }
+  voice: Voice;
+  constructor(ctx: SceneCtx) { this.times=resolveCTimes(ctx.audio,ctx.lyrics); this.voice=new Voice(ctx.lyrics,ctx.audio); }
+  dispose() { this.bg.mat.dispose(); this.layer.texture.dispose(); }
 }
-
 let world: TodoWorld | undefined;
-
 export default class S06Todo extends Scene {
   private w!: TodoWorld;
-
-  override init() { this.w = world ??= new TodoWorld(this.ctx); this.w.users++; }
-  override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
-
-  private viewAt(t: number): View {
-    const T = this.w.times, au = this.ctx.audio;
-    const enter = ease.outExpo(span(t, T.todo, afterBeats(au, T.todo, 0.6)));
-    let x = lerp(930, 960, enter), y = lerp(515, 540, enter), zoom = lerp(1.12, 1, enter);
-    let angle = lerp(-0.018, 0, enter);
-    // Small impulses are percussion accents, not unmotivated camera cuts.
-    T.checks.forEach((at, i) => {
-      const p = span(t, at, afterBeats(au, at, 0.45));
-      const impulse = t < at ? 0 : Math.sin(Math.PI * p) * (1 - p);
-      zoom += impulse * 0.095;
-      x += impulse * (i - 1) * 32;
-      y += impulse * (ROW_Y[i]! - 540) * 0.09;
-      angle += impulse * (i % 2 ? -0.007 : 0.007);
-    });
-    const exit = ease.inCubic(span(t, afterBeats(au, T.keyboard, -0.7), T.keyboard));
-    x += 60 * exit; zoom += 0.08 * exit;
-    return { x, y, zoom, angle };
-  }
-
-  private sheet(c: CanvasRenderingContext2D, t: number) {
-    const T = this.w.times, au = this.ctx.audio, st = todoState(au, t, T);
-    let pen: Pen = { x: BOX_X, y: ROW_Y[0]! - 18, moving: false };
-
-    c.drawImage(this.w.heading.canvas, 263, 58, 600, 240);
-    c.font = font(F.mono(500), 18); c.fillStyle = css('ink', INK_SOFT.strong);
-    c.fillText('calendar / month.ts', 277, 112);
-    c.fillText('01 — PREPARE', 1430, 112);
-    c.fillRect(278, 300, 1370, 1.2);
-    c.fillText('TASK', TEXT_X, 336); c.fillText('ACTION', BOX_X - 10, 336);
-    c.textAlign = 'right'; c.fillText('OCTOBER  /  32 → 31', 1650, 336); c.textAlign = 'left';
-
-    // The large counter belongs to the sheet, and counts completed pen motions.
-    c.font = font(F.archivo(75, 500), 232); c.fillStyle = css('ink', INK_SOFT.faint);
-    c.fillText(String(st.completed).padStart(2, '0'), 1360, 660);
-    c.font = font(F.mono(400), 17); c.fillStyle = css('ink', INK_SOFT.strong);
-    c.fillText('/ 03 TASKS', 1390, 704);
-    for (let i = 0; i < 3; i++) {
-      const y = ROW_Y[i]!, row = this.w.rows[i]!, written = st.rows[i]!;
-      const top = y - BOX_SIZE + 7;
-      if (t < T.rowStarts[i]!) continue;
-
-      // Functional checkboxes are open drafting strokes, never a filled button.
-      const boxPath: [number, number][] = [[BOX_X, top], [BOX_X + BOX_SIZE, top],
-        [BOX_X + BOX_SIZE, top + BOX_SIZE], [BOX_X, top + BOX_SIZE], [BOX_X, top]];
-      drawTrail(c, boxPath, Math.min(1, written * 6), { color: 'ink', width: 1.3, alpha: 0.6 });
-      c.font = font(F.mono(400), 16); c.fillStyle = css('ink', INK_SOFT.mid);
-      c.fillText(String(i + 1).padStart(2, '0'), 230, y - 8);
-
-      c.save(); c.translate(TEXT_X, y);
-      c.strokeStyle = css('ink', st.strikes[i]! >= 1 ? 0.6 : 1);
-      c.lineWidth = 2.8; c.lineCap = 'round'; c.lineJoin = 'round';
-      const head = drawStrokeText(c, row, row.total * written);
-      if (head && written < 1) pen = { x: TEXT_X + head.x, y: y + head.y, moving: true };
-      c.restore();
-
-      const check = st.checks[i]!, strike = st.strikes[i]!;
-      if (check > 0) {
-        const pts: [number, number][] = [[BOX_X + 9, top + 26], [BOX_X + 23, top + 42],
-          [BOX_X + 56, top + 2]];
-        const h = drawTrail(c, pts, check, { width: 4, color: 'clay' });
-        if (check < 1) pen = { x: h[0], y: h[1], moving: true };
+  override init() { this.w=world??=new TodoWorld(this.ctx); this.w.users++; }
+  override dispose() { if(--this.w.users===0) {this.w.dispose();world=undefined;} }
+  override render(f: Frame,out: THREE.WebGLRenderTarget) {
+    const {w}=this,T=w.times,au=this.ctx.audio,c=w.layer.ctx,s=todoLayout(au,f.t,T);
+    w.layer.clear();
+    const head=checkHeadline(f.t,T),checks=T.plan.words.filter(x=>x.w.toLowerCase().startsWith('check'));
+    if(head.born>0) {
+      const active=checks.filter(x=>x.start<=f.t).at(-1)!;
+      const form=w.voice.form(active,f.t);
+      c.fillStyle=css('ink'); c.globalAlpha=form.born;
+      const run=varRun('CHECK',730,{...form.axes,wght:head.weight});
+      printRun(c,run,s.title);
+      // Keep the storyboard's ink headline: the stressed third check passes a
+      // clay ink roller through its lower edge instead of recolouring the poster.
+      if(form.stress) {
+        c.save();c.beginPath();c.rect(0,425,1920,39*form.sung);c.clip();
+        c.fillStyle=css('clay');printRun(c,run,s.title);c.restore();
       }
-      if (strike > 0) {
-        const pts: [number, number][] = [[TEXT_X - 8, y - 23], [TEXT_X + row.width * 0.46, y - 25],
-          [TEXT_X + row.width + 12, y - 21]];
-        const h = drawTrail(c, pts, strike, { width: 2.2, color: 'clay' });
-        if (strike < 1) pen = { x: h[0], y: h[1], moving: true };
-      }
-      if (st.active === i && strike === 0 && check === 1)
-        pen = { x: TEXT_X - 8, y: y - 23, moving: true };
-      if (st.active === i && strike === 1) pen = { x: TEXT_X + row.width + 12, y: y - 21, moving: false };
-
-      c.fillStyle = css('ink', 0.15); c.fillRect(278, y + 42, 1370, 0.8);
-      c.font = font(F.mono(400), 15); c.fillStyle = css('ink', 0.5);
-      c.textAlign = 'right'; c.fillText(['READ', 'WRITE', 'FIX'][i]!, 1638, y - 10); c.textAlign = 'left';
+      c.globalAlpha=1;
     }
-
-    // Canonical Clawd stands on the plan's baseline and hops for each snare.
-    const active = st.active, at = active < 0 ? T.todo : T.checks[active]!;
-    const jump = active >= 0 && beatsSince(au, t, at) < 0.8;
-    const pose = Clawd.pose(jump ? 'A6' : 'A3', {
-      beat: au.beatAt(t), beat0: au.beatAt(at), p: 0, jumpBeats: 0.5,
-    });
-    Clawd.draw(c, 1250, 215, pose, { px: 13 });
-
-    this.drawLyrics(c, t);
-    return pen;
-  }
-
-  private drawLyrics(c: CanvasRenderingContext2D, t: number) {
-    const T = this.w.times;
-    const next = t >= T.claws.start;
-    const text = next ? this.w.handoff : this.w.lyric;
-    const chars = next ? this.w.handoffChars : this.w.chars;
-    const width = Math.min(1, 1390 / text.width);
-    c.save(); c.translate(278, 875); c.scale(width, width);
-    c.strokeStyle = css('ink', 0.2); c.lineWidth = 1.1;
-    drawStrokeText(c, text, text.total);
-    c.strokeStyle = css('ink'); c.lineWidth = 1.8;
-    drawStrokeText(c, text, writtenLength(text, chars, t));
-    c.restore();
-    c.font = font(F.mono(400), 15); c.fillStyle = css('ink', 0.55);
-    c.fillText(next ? 'NEXT  /  ENTER' : 'READ → WRITE → CHECK', 278, 944);
-    c.fillText('fix/october', 1500, 944);
-  }
-
-  override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const t = f.t, { renderer, comp } = this.ctx, view = this.viewAt(t);
-    const st = todoState(this.ctx.audio, t, this.w.times);
-    const layer = this.w.layer, c = layer.ctx;
-    layer.clear();
-    c.save(); c.translate(960, 540); c.rotate(view.angle); c.scale(view.zoom, view.zoom); c.translate(-view.x, -view.y);
-    const pen = this.sheet(c, t);
-    drawCursor(c, { x: pen.x + 3, y: pen.y + 11, h: pen.moving ? 22 : 27, on: blink(f.beat, pen.moving) });
-    c.restore();
-    const u = this.w.bg.u;
-    u.t!.value = t; u.beat!.value = f.beat; u.kick!.value = f.a.kick; u.snare!.value = st.pulse;
-    u.zoom!.value = view.zoom;
-    (u.pan!.value as THREE.Vector2).set(view.x, view.y);
-    (u.pen!.value as THREE.Vector2).set(pen.x, pen.y);
-    this.w.bg.render(renderer, out);
-    comp.draw(renderer, layer.upload(), out);
-    const amp = 3.8 * st.pulse, fi = frameIdx(t);
-    return { ...postFor('paper'), hud: 0, frame: 0, paper: 1,
-      shake: [amp * (hash(fi, 6) - 0.5), amp * (hash(fi, 7) - 0.5)] as [number, number] };
+    c.strokeStyle=css('ink',0.6); c.lineWidth=1.4;
+    c.beginPath();c.moveTo(424,460);c.lineTo(424,1080);
+    for(const y of [612,750]) {c.moveTo(424,y);c.lineTo(1920,y);}c.stroke();
+    for(let i=0;i<3;i++) {
+      const row=s.rows[i]!,b=row.box;
+      const forms=w.voice.forms(T.plan,f.t).slice(i===0?0:3,i===0?3:6);
+      if(i===2 || forms.some(x=>x.born>0)) {
+        c.strokeStyle=css('ink',0.6);c.lineWidth=i===2?4:2;
+        c.strokeRect(b.x,b.y,b.w,b.h);
+      }
+      if(i<2) drawSet(c,setLine(forms,row.size,{space:0.4}),row.x,row.y,{on:'paper'});
+      else { // This is a machine task, never a sung/predicted word.
+        c.fillStyle=css('ink',0.6);c.font=font(F.mono(500),row.size);c.fillText('Fix October',row.x,row.y);
+      }
+      // Plotter strokes remain single strokes. Vocal check onsets start the pen;
+      // the measured snares supply the hop accents, without revealing a future lyric.
+      const at=checks[i]!.start,progress=span(f.t,at,afterBeats(au,at,i===2?1:0.4));
+      const pts: [number,number][]=[[b.x+b.w*0.18,b.y+b.h*0.48],[b.x+b.w*0.41,b.y+b.h*0.7],[b.x+b.w*1.02,b.y+3]];
+      drawTrail(c,pts,progress,{width:i===2?21:11,color:'clay'});
+      if(i<2) {
+        const strike=i===0?s.strike:{x0:588,x1:1250,y:681};
+        const p=span(f.t,T.checks[i]!,afterBeats(au,T.checks[i]!,0.7));
+        // Incoming clay highlight line is received before the first local check.
+        const visible=i===0?Math.max(1-span(f.t,T.todo,afterBeats(au,T.todo,1)),p):p;
+        drawTrail(c,[[strike.x0,strike.y],[strike.x1,strike.y]],visible,{width:2,color:i===0?'clay':'ink',alpha:i===0?1:0.6});
+      }
+    }
+    // Pixel sprite at the third check's tip; the hop is a rigid translation only.
+    const at=T.checks.filter(x=>x<=f.t).at(-1)??T.todo;
+    const phase=span(f.t,at,afterBeats(au,at,0.6));
+    const hop=-10*Math.sin(phase*Math.PI);
+    const pose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(at),p:0,travel:0});
+    Clawd.draw(c,s.clawd.x,s.clawd.y+hop,pose,{px:s.clawd.px});
+    drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
+    // The next line begins in this scene: carry its sung prefix on the lower margin.
+    if(f.t>=T.claws.start) {
+      const set=setLine(w.voice.forms(T.claws,f.t),78,{space:0.22});
+      c.save();c.translate(98,1060);c.scale(Math.min(1,1700/set.width),1);
+      drawSet(c,set,0,0,{on:'paper'});c.restore();
+    }
+    w.bg.render(this.ctx.renderer,out);
+    this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
+    return {...postFor('paper'),hud:0,frame:0,bloom:0,grain:0.019};
   }
 }

@@ -5,6 +5,8 @@ import { ease, lerp } from '../../engine/util';
 import { afterBeats, beatsSince, span } from '../../kit/time';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
+import { HANDOFF } from '../../kit/handoff';
+import { clipBox } from './s05-print';
 
 export interface PlatformTimes {
   start: number;
@@ -72,4 +74,41 @@ export function projectPlatform(x: number, y: number, factor: number, s: ReturnT
     x: 960 + (x - s.camX * factor) * s.zoom,
     y: 540 + (y - s.camY * factor) * s.zoom,
   };
+}
+
+// Front elevation in logical pixels. The source ledges are the dominant object; the
+// large machine filename is intentionally cropped at the bottom, like kf-S05.
+export const SOURCE_LEDGES = [
+  { x: -90, y: 433, w: 660, h: 42, depth: 0.22 },
+  { x: 150, y: 516, w: 600, h: 64, depth: 0.55 },
+  { x: 1290, y: 468, w: 700, h: 70, depth: 0.55 },
+  { x: -90, y: 664, w: 1900, h: 120, depth: 1 },
+  { x: -70, y: 835, w: 1540, h: 300, depth: 1 },
+] as const;
+
+export function platformLayout(audio: AudioData, t: number, T: PlatformTimes) {
+  // Register the side scroll at the same 60% shot sample as scripts/compare.ts.
+  const anchor = T.scroll + (T.end - T.scroll) * 0.6;
+  const offset = (audio.beatAt(t) - audio.beatAt(anchor)) * 48;
+  const ledges = SOURCE_LEDGES.map(b => ({ ...b, x: b.x - offset * b.depth }));
+  const px = 18.5;
+  const incoming = handoffIn(t, audio, T);
+  return { ledges, offset, title: { x: -35 - offset, y: 825, w: 1290, h: 320 },
+    clawd: incoming, clawdBox: { x: incoming.x, y: incoming.y, w: 16 * incoming.px, h: 5 * incoming.px },
+    platformsBox: clipBox({ x: Math.min(...ledges.map(b => b.x)), y: 433,
+      w: Math.max(...ledges.map(b => b.x + b.w)) - Math.min(...ledges.map(b => b.x)), h: 702 }),
+    px };
+}
+
+export function handoffIn(t: number, audio: AudioData, T: PlatformTimes) {
+  const k = ease.inOutCubic(span(t, T.start, afterBeats(audio, T.start, 1)));
+  // Afterwards Clawd traverses the read platform; register its keyframe position at 60%.
+  const anchor = T.scroll + (T.end - T.scroll) * 0.6;
+  const walk = t < T.scroll ? 0 : (audio.beatAt(t) - audio.beatAt(anchor)) * 25;
+  return { x: lerp(HANDOFF.clawd04.x, 906 + walk, k), y: lerp(HANDOFF.clawd04.y, 566, k), px: lerp(HANDOFF.clawd04.px, 18.5, k) };
+}
+
+export function handoffOut(t: number, audio: AudioData, T: PlatformTimes) {
+  const k = ease.inOutCubic(span(t, afterBeats(audio, T.end, -1), T.end));
+  return { x0: lerp(270, HANDOFF.strike05.x0, k), x1: lerp(1020, HANDOFF.strike05.x1, k), y: lerp(712, HANDOFF.strike05.y, k) };
 }
