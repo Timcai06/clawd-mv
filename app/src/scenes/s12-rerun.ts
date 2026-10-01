@@ -1,33 +1,65 @@
-// S12: repeated terminal commands become increasingly damaged photocopies.
-// Clear sweeps real cache entries away. Archivo counts eleven legs against an expected ten.
+// S12: six side-by-side xerox generations persist behind the complete count-to-eleven row.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { Layer2D, makeRT } from '../engine/gl';
-import { ease, frameIdx, hash, lerp } from '../engine/util';
-import { F, font } from '../engine/type';
+import { Layer2D } from '../engine/gl';
+import { hash } from '../engine/util';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { drawCursor, blink } from '../kit/cursor';
-import { afterBeats, beatsSince } from '../kit/time';
+import { Voice, stamp, drawSet, setLine } from '../kit/lyric-moves';
+import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { beatHit, beatSpan, rerunState, resolveX9Times, type X9Times } from './s09-z-shared';
-import { CopyPass, copySettings } from './parts/s12-copy';
-import { mono, sungLine } from './parts/s09-type';
-
-const CACHE = ['month.test.ts', 'month.ts', 'calendar.json', 'test-results.json'];
-export function countTypography(number: number, phase: number, extraAge: number) {
-  const p = number === 11 ? Math.min(1, Math.max(0, extraAge / 0.6)) : (phase * 10) % 1;
-  return { width: lerp(62, 125, ease.outExpo(p)), weight: lerp(300, 900, ease.outCubic(p)),
-    scale: 1 + 0.1 * Math.sin(Math.PI * p) };
-}
+import { resolveX9Times, type X9Times } from './s09-z-shared';
+import { mono, carry, enterBeat, toner, handoffBoxes } from './parts/s09-type';
+import { xeroxSettings } from './parts/s12-copy';
+import { COPIES, countState, handoffIn } from './parts/s12-layout';
+// Archivo levels are cap heights; Plex label=18 is its CSS font size.
+export const TYPE_LEVELS = { giant: 385, lyric: 65.856, label: 18 };
 class World {
-  ground = new Ground(); groundRT = makeRT(); copy = new CopyPass();
-  layer = new Layer2D(); clean = new Layer2D(); times: X9Times; users = 0;
-  constructor(ctx: SceneCtx) { this.times = resolveX9Times(ctx); }
-  dispose() {
-    this.ground.pass.mat.dispose(); this.groundRT.dispose(); this.copy.pass.mat.dispose();
-    this.layer.texture.dispose(); this.clean.texture.dispose();
+  ground = new Ground(); layer = new Layer2D(); copies = new Layer2D(); times: X9Times; voice: Voice; users = 0;
+  constructor(ctx: SceneCtx) {
+    this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
+    const c = this.copies.ctx;
+    COPIES.forEach((p, gen) => {
+      c.save(); c.translate(p.x, p.y); c.rotate(p.roll);
+      // Toner smear and increasingly large halftone clusters, baked once.
+      c.fillStyle = css('ink', 0.6);
+      const settings = xeroxSettings(gen), grain = settings.grain;
+      for (let i = 0; i < grain; i++) {
+        const x = hash(gen, i, 1) * (p.w + gen * 20) - 20, y = hash(gen, i, 2) * (p.h + 85) - 40;
+        const r = 0.6 + gen * 0.3 * hash(gen, i, 3);
+        c.fillRect(x, y, r, r);
+      }
+      c.strokeStyle = css('ink', 0.6); c.lineWidth = 1; c.strokeRect(0, 0, p.w, p.h);
+      c.fillStyle = css('paper', 0.9); c.fillRect(1, 1, p.w - 2, p.h - 2);
+      mono(c, '> npm test', 24, 48, 18, 'ink'); c.fillStyle = css('clay'); c.fillRect(160, 29, 8, 20);
+      const names = ['october-31', 'november-30', 'leap-year', 'month-end', 'day-boundary'];
+      names.forEach((name, i) => mono(c, `${gen >= 4 ? '×' : '✓'} ${name}`, 24, 100 + i * 28, 18, gen >= 4 ? 'fail' : 'ink'));
+      mono(c, 'Test files   1 failed', 24, p.h - 113, 18);
+      mono(c, 'Tests       19 failed', 24, p.h - 82, 18, gen >= 4 ? 'fail' : 'ink');
+      mono(c, 'Expected 31 / got 32', 24, p.h - 51, 18, gen === 5 ? 'fail' : 'ink');
+      if (gen === 5) {
+        for (let i = 0; i < 4; i++) {
+          mono(c, 'FAIL  day-boundary', 24, 270 + i * 56, 18, 'fail');
+          mono(c, '× expected 31, received 32', 40, 294 + i * 56, 18, 'fail');
+        }
+      }
+      // Halftone/dropout bites the printed content itself, with horizontal feed drags.
+      c.save(); c.beginPath(); c.rect(0, 0, p.w, p.h); c.clip();
+      c.fillStyle = css('paper');
+      for (let i = 0; i < settings.dropout; i++) {
+        const x = hash(gen, i, 7) * p.w, y = hash(gen, i, 8) * p.h;
+        c.fillRect(x, y, 1 + hash(gen, i, 9) * gen * 2, 1);
+      }
+      c.fillStyle = css('ink', 0.3);
+      for (let i = 0; i < settings.bands; i++) {
+        const y = hash(gen, i, 10) * p.h, x = p.w * (0.75 + hash(gen, i, 11) * 0.25);
+        c.fillRect(x, y, settings.drift, 0.8);
+      }
+      c.restore(); c.restore();
+    });
+    this.copies.upload();
   }
+  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.copies.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S12Rerun extends Scene {
@@ -35,105 +67,44 @@ export default class S12Rerun extends Scene {
   override init() { this.w = world ??= new World(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const w = this.w, T = w.times, au = this.ctx.audio, t = f.t, s = rerunState(au, t, T);
-    const run = Math.max(0, s.run), punch = ease.outExpo(beatSpan(au, t, T.runs[run], 0.4));
-    const zoom = s.clearing ? 1 : lerp(run === 0 ? 1 : [1.05, 1.48][run - 1]!, s.zoom, punch);
-    const count = ease.outExpo(beatSpan(au, t, T.count, 0.5));
-    w.ground.render(this.ctx.renderer, w.groundRT, { kind: 'paper', t, camX: run * 70 + s.clear * 260,
-      camY: 30 * beatsSince(au, t, T.runs[0]), zoom, kick: f.a.kick, grid: 0.25,
-      halftone: s.clearing ? 0.15 : 0.3 + run * 0.15, pitch: 12 });
+    const w = this.w, t = f.t, T = w.times, v = w.voice, au = this.ctx.audio;
+    w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0 });
+    const entrance = enterBeat(au, t, T.rerunStart);
+    this.ctx.comp.draw(this.ctx.renderer, w.copies.texture, out, { opacity: entrance });
     w.layer.clear(); const c = w.layer.ctx;
-    if (t < T.count) {
-      if (!s.clearing) {
-        // Each old command is an actual printed sheet behind the next copy.
-        for (let i = 0; i <= run; i++) {
-          const active = i === run, localZoom = active ? zoom : 1 + i * 0.12;
-          c.save(); c.translate(960 + (i - run) * 75, 540 + (i - run) * 50);
-          c.rotate((i - run) * -0.035); c.scale(localZoom, localZoom); c.translate(-960, -540);
-          c.fillStyle = css('paper'); c.fillRect(260, 225, 1390, 665);
-          c.globalAlpha = active ? 1 : 0.33;
-          mono(c, `TEST RUN / COPY ${String(i + 1).padStart(2, '0')}`, 315, 282, 22);
-          mono(c, 'calendar / month.test.ts', 315, 330, 18, 'ink', 0.55);
-          const chars = active ? s.chars : 8;
-          c.font = font(F.mono(600), 58); c.fillStyle = css('ink');
-          const command = '$ ' + 'npm test'.slice(0, chars); c.fillText(command, 315, 440);
-          if (active && !s.result) drawCursor(c, { x: 330 + c.measureText(command).width,
-            y: 440, h: 48, on: blink(f.beat, chars < 8) });
-          const result = !active || s.result;
-          if (result) {
-            // Enlarging this failed-result surface is the only use of a red flood.
-            const red = active ? s.red : [0.12, 0.45, 1][i]!;
-            const rw = lerp(740, 1390, red), rh = lerp(180, 420, red);
-            c.fillStyle = css('fail'); c.fillRect(260, 477, rw, rh);
-            c.fillStyle = css('paper'); c.font = font(F.archivo(75, 900), lerp(104, 164, red));
-            c.fillText('19 FAILED', 315, 608 + red * 76);
-            mono(c, 'EXPECTED 31 / RECEIVED 32', 319, 655 + red * 110, 20, 'paper');
-          }
-          // The sung rerun line is printed on each generation, not an unrelated subtitle.
-          if (active) sungLine(c, this.ctx, t, 315, 850, 1250, 'ink', 26);
-          c.restore();
-        }
-        if (run === 2 && s.result) {
-          // The third copy is now a full-frame failed-test report, not a red ground.
-          c.fillStyle = css('fail'); c.fillRect(0, 0, 1920, 1080);
-          mono(c, 'TEST RUN / COPY 03 / calendar / month.test.ts', 120, 130, 23, 'paper');
-          mono(c, '$ npm test', 120, 240, 68, 'paper');
-          c.fillStyle = css('paper'); c.font = font(F.archivo(75, 900), 320);
-          c.fillText('19 FAILED', 105, 650);
-          mono(c, 'EXPECTED 31 / RECEIVED 32', 120, 755, 34, 'paper');
-          sungLine(c, this.ctx, t, 120, 950, 1680, 'paper', 33);
-        }
-      } else {
-        mono(c, '$ npm cache clean --force', 260, 262, 38);
-        mono(c, 'CACHE / PURGE', 260, 340, 18, 'ink', 0.5);
-        c.save(); c.beginPath(); c.rect(260 + 1390 * s.clear, 370, 1390 * (1 - s.clear), 425); c.clip();
-        for (const [i, file] of CACHE.entries()) {
-          const y = 418 + i * 82;
-          c.fillStyle = css('ink', 0.06); c.fillRect(260, y - 34, 1390, 65);
-          mono(c, `node_modules/.cache/${file}`, 300, y, 27);
-          mono(c, 'CACHED', 1430, y, 18, 'ink', 0.45);
-        }
-        c.restore();
-        c.fillStyle = css('clay'); c.fillRect(260 + 1390 * s.clear, 370, 4, 425);
-        drawCursor(c, { x: 260 + 1390 * s.clear - 10, y: 819, h: 35 });
-        if (s.clear === 1) mono(c, 'CACHE CLEARED / 0 ENTRIES', 260, 435, 23, 'ink', 0.55);
-        sungLine(c, this.ctx, t, 260, 930, 1390, 'ink', 29);
+    if (entrance < 1) {
+      const h = handoffIn(t, au, T);
+      c.strokeStyle = css('ink', 1 - entrance); c.lineWidth = 4;
+      for (const b of handoffBoxes(h)) c.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
+    }
+    carry(c, v, t, T.rerunStart, 96, 860, 'paper');
+    const runs = v.line('Run it again, run it again, again');
+    if (t < T.clear) {
+      for (let i = 0; i < 3; i++) {
+        const forms = v.forms(runs, t).slice(i * 3, i * 3 + 3), lead = forms[0];
+        if (!lead || lead.born <= 0) continue;
+        const x = [320, 870, 1410][i]!, y = 740;
+        stamp(c, lead.text, x, y, 96, { t, at: lead.t0, axes: lead.axes,
+          rot: -0.04 - i * 0.07, color: lead.stress ? 'clay' : 'ink', seed: 52 + i, box: false });
+        drawSet(c, setLine(forms.slice(1), 96), x + 130, y + 36, { on: 'paper' });
       }
     }
-    const settings = copySettings(s.run, s.clearing), u = w.copy.pass.u;
-    u.ground!.value = w.groundRT.texture; u.copy!.value = w.layer.upload();
-    for (const [key, value] of Object.entries(settings)) u[key]!.value = value;
-    u.frame!.value = frameIdx(t); u.feed!.value = au.beatAt(t) * 0.04;
-    w.copy.pass.render(this.ctx.renderer, out);
-    w.clean.clear(); const cc = w.clean.ctx;
+    const clear = v.line('Clear the cache and count to ten'), forms = v.forms(clear, t);
+    if (t >= T.clear) {
+      const set = setLine(forms.slice(0, 4), 96);
+      drawSet(c, set, 96, 615, { on: 'paper' });
+      if (forms[4]!.born > 0) drawSet(c, setLine(forms.slice(4, 6), 96), 1130, 740, { on: 'paper' });
+    }
+    const s = countState(v, t, T);
+    for (const d of s.digits) {
+      c.save(); c.translate(d.x, d.y); c.scale(d.sx, d.sy);
+      c.fillStyle = css(d.color); fillRun(c, d.run); c.restore();
+    }
+    if (s.dominant) toner(c, s.dominant, 77, 2600);
     if (s.number > 0) {
-      const extraAge = beatsSince(au, t, T.eleven), type = countTypography(s.number, s.countPhase, extraAge);
-      const extra = s.number === 11, flash = extra && t < afterBeats(au, T.eleven, 0.5);
-      cc.save(); cc.translate(960, 495); cc.scale(type.scale * count, count);
-      cc.font = font(F.archivo(type.width, type.weight), 470);
-      cc.fillStyle = css(flash ? 'fail' : 'ink'); cc.textAlign = 'center'; cc.fillText(String(s.number), 0, 0);
-      cc.restore();
-      Clawd.draw(cc, 960 - Clawd.W * 19 / 2, 660, Clawd.pose('A9', {
-        beat: s.number, beat0: 0, p: s.countPhase,
-      }), { px: 19 });
-      // A9 remains the canonical sprite; closed eyes use the official sleep eye cells.
-      mono(cc, extra ? 'COUNT ASSERTION / EXPECTED 10 / RECEIVED 11' : 'COUNT / EXPECTED 10',
-        extra ? 540 : 750, 848, 22, extra ? 'fail' : 'ink', extra ? 1 : 0.5);
-      sungLine(cc, this.ctx, t, 420, 962, 1140, 'ink', 29);
-      cc.strokeStyle = css('ink', 0.25); cc.lineWidth = 1; cc.beginPath();
-      cc.moveTo(420, 892); cc.lineTo(1500, 892); cc.stroke();
-      for (let i = 0; i < 11; i++) {
-        cc.fillStyle = css(i === 10 && extra ? 'fail' : 'ink', i < s.number ? 0.8 : 0.12);
-        cc.fillRect(420 + i * 100, 895, 70, 3);
-      }
-    } else {
-      Clawd.draw(cc, 125, 765, Clawd.pose(s.clearing ? 'A3' : 'A8', {
-        beat: f.beat, beat0: au.beatAt(T.runs[0]), p: 0,
-      }), { px: 11 });
+      const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     }
-    this.ctx.comp.draw(this.ctx.renderer, w.clean.upload(), out);
-    const k = s.clearing ? 0 : (5 + run * 4) * beatHit(au, t, T.runs[run]), fi = frameIdx(t);
-    return { ...postFor('paper'), hud: 0, grain: 0.035,
-      shake: [k * (hash(fi, 31) * 2 - 1), k * (hash(fi, 32) * 2 - 1)] as [number, number] };
+    this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    return { ...postFor('paper'), hud: 0, bloom: 0 };
   }
 }
