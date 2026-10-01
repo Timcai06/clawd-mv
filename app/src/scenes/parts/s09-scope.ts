@@ -13,10 +13,7 @@ export function scopeY(local: number) {
     + 70 * Math.exp(-(((phase - 0.4) / 0.15) ** 2));
 }
 export function scopeState(audio: AudioData, t: number, T: X9Times) {
-  const key = T.scopeKey;
-  // Head reaches the reference's x=1468 near the storyboard anchor, then continues right.
-  const phase = Math.max(0, Math.min(1, (t - T.waiting) / (key - T.waiting)));
-  const head = t <= key ? lerp(108, 1468, phase) : lerp(1468, 1824, Math.min(1, (t - key) / (T.terminalEnd - key)));
+  const head = scopeHead(t, T);
   const traces = [-60, -30, 0, 30, 60].map((offset, e) => {
     const points: [number, number][] = [];
     for (let x = SCOPE.traceX; x <= head; x += 2) {
@@ -38,4 +35,13 @@ export function handoffOut(t: number, audio: AudioData, T: X9Times) {
   const p = exitBeat(audio, t, T.terminalEnd);
   return { x: HANDOFF.nineteen09.x, baseline: lerp(232, HANDOFF.nineteen09.baseline, p),
     capH: lerp(140, HANDOFF.nineteen09.capH, p) };
+}
+
+/** Pure head-only query for birth-time sampling, without allocating echo traces. */
+export function scopeHead(t: number, T: X9Times) {
+  const key = T.scopeKey;
+  // Head reaches the reference's x=1468 near the storyboard anchor, then continues right.
+  const phase = Math.max(0, Math.min(1, (t - T.waiting) / (key - T.waiting)));
+  const head = t <= key ? lerp(108, 1468, phase) : lerp(1468, 1824, Math.min(1, (t - key) / (T.terminalEnd - key)));
+  return head;
 }

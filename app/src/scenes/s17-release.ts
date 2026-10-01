@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { PrintOverlay } from '../kit/print-overlay';
 // S17: the final commit, a human review, merging type and the front-on device/diff poster.
 import * as THREE from 'three';
@@ -25,6 +26,7 @@ export const TYPE_LEVELS = { giant: 201, lyric: 63.112, label: 20 };
 
 class World {
   print = new PrintOverlay();
+  sparks = new SparkLines();
   users = 0;
   ground = new Ground();
   layer = new Layer2D();
@@ -34,7 +36,7 @@ class World {
   times: ReleaseTimes;
   diff = ['- d <= days', '+ d < days'].map(text => varRun(text, 340, { wdth: 100, wght: 900 }));
   constructor(ctx: SceneCtx) { this.voice = new Voice(ctx.lyrics, ctx.audio); this.times = resolveReleaseTimes(ctx.audio, ctx.lyrics); }
-  dispose() { this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
+  dispose() { this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -59,6 +61,21 @@ export default class S17Release extends Scene {
       c.beginPath(); c.moveTo(408, 434); c.bezierCurveTo(660, 610, 900, 610, lerp(900, 1160, join), lerp(610, 546, join)); c.stroke();
       drawCursor(c, { x: lerp(900, 1160, join), y: lerp(610, 546, join) + 12, h: 28 });
     }
+  }
+
+  private sparkJoin(c: CanvasRenderingContext2D, t: number) {
+    const T=this.w.times, audio=this.ctx.audio, from=T.release[5]!.start, to=afterBeats(audio,from,2);
+    if (t<from || t>=to+0.4) return;
+    const join=span(t,from,to), end=T.tomorrow[0]!.start;
+    const path=(tb:number, shapeJoin=span(tb,from,to))=>{
+      const k=span(tb,from,to),q=1-k;
+      return {x:q*q*q*408+3*q*q*k*660+3*q*k*k*900+k*k*k*lerp(900,1160,shapeJoin),
+        y:q*q*q*434+3*q*q*k*610+3*q*k*k*610+k*k*k*lerp(610,546,shapeJoin)};
+    };
+    this.w.sparks.begin(c,undefined,'paper');
+    heatTrail(this.w.sparks,t,tb=>path(tb,join),{from,to,width:3,alpha:sparkFade(t,end)});
+    if(t<to) cursorSpark(c,undefined,this.w.sparks,t,tb=>({...path(tb),y:path(tb).y+12,h:28}),
+      {on:'paper',from,to,end,seed:17});
   }
 
   private review(c: CanvasRenderingContext2D, t: number) {
@@ -143,7 +160,7 @@ export default class S17Release extends Scene {
         for (let i = 0; i < 2; i++) printRun(c, w.diff[i]!, DIFF_BOXES[i]!, i ? 'pass' : 'fail', 171 + i, 0.6);
       }
       if (s.review) this.review(c, t);
-      else if (s.merge) this.merge(c, t, s.join);
+      else if (s.merge) { this.merge(c, t, s.join); this.sparkJoin(c, t); }
       else if (deviceBand) {
         if (!s.wall) releaseLyric(c, v, machineLine, t, 96, 700, 1728, 'paper', [0, 4]);
       } else {

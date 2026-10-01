@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 // S09: the reference oscilloscope, with reconstructed afterimages and a clay scan head.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -12,15 +13,16 @@ import { varRun, fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
 import { mono, carry, counter19 } from './parts/s09-type';
-import { scopeState, handoffIn, handoffOut, SCOPE } from './parts/s09-scope';
+import { scopeState, handoffIn, handoffOut, SCOPE, scopeY, scopeHead } from './parts/s09-scope';
 // 19 is a machine counter, capH=140 (reference + nineteen09), not a ≥200px giant.
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
 class World {
+  sparks = new SparkLines();
   glow = new GlowLayer();
   ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
   constructor(ctx: SceneCtx) { this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.glow.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.sparks.dispose(); this.glow.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S09Terminal extends Scene {
@@ -65,8 +67,14 @@ export default class S09Terminal extends Scene {
       c.fillStyle = css('clay'); c.beginPath(); c.arc(x, SCOPE.y, 9, 0, Math.PI * 2); c.fill();
       glowDraw(c, w.glow.ctx, g => { g.fillStyle = css('clay'); g.beginPath(); g.arc(x, SCOPE.y, 9, 0, Math.PI * 2); g.fill(); });
     }
-    c.fillStyle = css('clay'); c.fillRect(s.head - 16, SCOPE.y - 16, 32, 32);
-    glowDraw(c, w.glow.ctx, g => { g.fillStyle = css('clay'); g.fillRect(s.head - 16, SCOPE.y - 16, 32, 32); });
+    w.sparks.begin(c, w.glow.ctx, 'ink');
+    const scan = (tb: number) => ({ x: scopeHead(tb, T) - 16, y: SCOPE.y + 16, h: 32, w: 32 });
+    cursorSpark(c, w.glow.ctx, w.sparks, t, scan,
+      { on: 'ink', from: T.waiting, to: T.terminalEnd-1/60, end: T.terminalEnd, seed: 9 });
+    if (sparkFade(t, T.terminalEnd) > 0) heatTrail(w.sparks, t, tb => {
+      const x = scopeHead(tb, T);
+      return { x, y: scopeY((x - SCOPE.traceX - 26) / SCOPE.period) };
+    }, { from: Math.max(T.waiting, t-0.4), width: 2.5, alpha: sparkFade(t, T.terminalEnd) });
     const n = handoffOut(t, au, T);
     mono(c, 'npm test', 96, 290, TYPE_LEVELS.label, 'paper');
     mono(c, 'running 19 tests…', 96, 322, TYPE_LEVELS.label, 'paper');
@@ -97,7 +105,8 @@ export default class S09Terminal extends Scene {
     c.restore();
     counter19(c, n.x, n.baseline, n.capH, 'paper');
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    w.glow.composite(this.ctx, out, 1.6);
+    w.sparks.finish(this.ctx, out);
+    w.glow.composite(this.ctx, out, 2.0);
     return { ...postFor('ink'), ca: 0.6, hud: 0 };
   }
 }

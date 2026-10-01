@@ -108,3 +108,14 @@ export function greenState(audio: AudioData, lyrics: Lyrics, voice: Voice, t: nu
   return { cards, passed: cards.filter(c => c.passed).length, word, form, headline, clawd,
     plaqueBounds: bounds(cards.flatMap(c => [...c.front, ...c.side])) };
 }
+
+/** Geometry-only birth-time query: identical falling faces, no lyric/layout allocations. */
+export function greenArcCards(audio: AudioData, t: number, T: GreenTimes) {
+  return T.triggers.map((at,i) => {
+    const fall=ease.inOutCubic(Math.min(1,Math.max(0,beatsSince(audio,t,at)/(i<3?0.8:0.32))));
+    let card=arcDomino(i,t>=at,fall);
+    if(i===0 && t<T.incomingEnd) card=placeFace(card,HANDOFF.domino15,1-ease.inOutCubic(span(t,T.start,T.incomingEnd)));
+    if(i===18 && t>=T.outgoingStart) card=placeFace(card,HANDOFF.domino16,ease.inOutCubic(span(t,T.outgoingStart,T.outgoingEnd)));
+    return card;
+  });
+}

@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { PrintOverlay } from '../kit/print-overlay';
 // S16: the cropped GREEN slab above one foreshortened arc of nineteen engraved dominoes.
 import * as THREE from 'three';
@@ -13,7 +14,7 @@ import { drawCursor } from '../kit/cursor';
 import { heatColor, Voice, drawSet, setLine, odometer } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { greenState, greenTimes, type GreenTimes } from './parts/s16-green-state';
+import { greenState, greenArcCards, greenTimes, type GreenTimes } from './parts/s16-green-state';
 import { drawDomino, polygon, printRun } from './parts/s16-print';
 
 // Minimum capital heights: the fitted headline is >=510; 92 px Archivo has a 686/1000 cap.
@@ -22,6 +23,7 @@ export const TYPE_LEVELS = { giant: 510, lyric: 63.112, label: 20 };
 
 class World {
   print = new PrintOverlay();
+  sparks = new SparkLines();
   users = 0;
   ground = new Ground();
   layer = new Layer2D();
@@ -29,7 +31,7 @@ class World {
   times: GreenTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -84,6 +86,27 @@ export default class S16Green extends Scene {
       c.beginPath(); c.moveTo(a.x + 2, a.y - 24);
       c.quadraticCurveTo((a.x + b.x) / 2, Math.min(a.y, b.y) - 55, b.x - 4, b.y - 28); c.stroke();
       c.beginPath(); c.moveTo(b.x - 8, b.y - 31); c.lineTo(b.x - 4, b.y - 28); c.lineTo(b.x - 3, b.y - 34); c.stroke();
+    }
+    w.sparks.begin(c, undefined, 'paper');
+    const waveEnd = T.triggers.at(-1)!;
+    const wavePath = (tb: number) => {
+      const i = Math.max(0, Math.min(s.cards.length-2, T.triggers.filter(at=>at<=tb).length-1));
+      const cards = greenArcCards(this.ctx.audio, tb, T);
+      const a = cards[i]!.front[1]!, b = cards[i+1]!.front[0]!;
+      const k = span(tb,T.triggers[i]!,T.triggers[i+1]!), q=1-k;
+      return { x:q*q*(a.x+2)+2*q*k*(a.x+b.x)/2+k*k*(b.x-4),
+        y:q*q*(a.y-24)+2*q*k*(Math.min(a.y,b.y)-55)+k*k*(b.y-28) };
+    };
+    if (t>=Math.max(T.triggers[0]!,T.incomingEnd) && t<waveEnd && sparkFade(t,T.outgoingStart)>0)
+      cursorSpark(c,undefined,w.sparks,t,tb=>({...wavePath(tb),h:24}),
+        {on:'paper',from:Math.max(T.triggers[0]!,T.incomingEnd),to:waveEnd,end:T.outgoingStart,seed:16});
+    if (t>=T.incomingEnd && sparkFade(t,T.outgoingStart)>0) for(let i=0;i<s.cards.length-1;i++) {
+      const a=s.cards[i]!.front[1]!, b=s.cards[i+1]!.front[0]!;
+      heatTrail(w.sparks,t,tb=>{
+        const k=span(tb,T.triggers[i]!,T.triggers[i+1]!),q=1-k;
+        return {x:q*q*(a.x+2)+2*q*k*(a.x+b.x)/2+k*k*(b.x-4),
+          y:q*q*(a.y-24)+2*q*k*(Math.min(a.y,b.y)-55)+k*k*(b.y-28)};
+      },{from:T.triggers[i]!,to:T.triggers[i+1]!,width:1.3,alpha:sparkFade(t,T.outgoingStart)});
     }
     const numericLine = v.line('One goes green, and two, and three');
     for (const card of s.cards) {

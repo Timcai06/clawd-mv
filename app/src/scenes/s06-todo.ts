@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { PrintOverlay } from '../kit/print-overlay';
 // S06 — the cropped CHECK headline and a front-elevation pen-plotter sheet.
 import * as THREE from 'three';
@@ -5,7 +6,7 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { css, lin } from '../theme';
-import { drawCursor, drawTrail } from '../kit/cursor';
+import { drawCursor, drawTrail, trailHead } from '../kit/cursor';
 import { postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
@@ -26,13 +27,14 @@ void main() {
 }`;
 class TodoWorld {
   print = new PrintOverlay();
+  sparks = new SparkLines();
   users=0;
   layer=new Layer2D();
   bg=new FSPass(PAPER,{paper:{value:new THREE.Vector3(...lin('paper'))},ink:{value:new THREE.Vector3(...lin('ink'))}});
   times: CTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times=resolveCTimes(ctx.audio,ctx.lyrics); this.voice=new Voice(ctx.lyrics,ctx.audio); }
-  dispose() { this.print.dispose(); this.bg.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.sparks.dispose(); this.print.dispose(); this.bg.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: TodoWorld | undefined;
 export default class S06Todo extends Scene {
@@ -55,6 +57,8 @@ export default class S06Todo extends Scene {
     c.save();
     c.translate(lerp(fx,960,0.2*drift+0.8*dive),lerp(fy,540,0.2*drift+0.8*dive)-30*entry);
     c.rotate(tilt-0.015*entry); c.scale(zoom,zoom); c.translate(-fx,-fy);
+    w.sparks.begin(c, undefined, 'paper');
+    let writing = false;
     const head=checkHeadline(f.t,T),checks=T.plan.words.filter(x=>x.w.toLowerCase().startsWith('check'));
     if(head.born>0) {
       const active=checks.filter(x=>x.start<=f.t).at(-1)!;
@@ -88,7 +92,16 @@ export default class S06Todo extends Scene {
       // the measured snares supply the hop accents, without revealing a future lyric.
       const at=checks[i]!.start,progress=span(f.t,at,afterBeats(au,at,i===2?1:0.4));
       const pts: [number,number][]=[[b.x+b.w*0.18,b.y+b.h*0.48],[b.x+b.w*0.41,b.y+b.h*0.7],[b.x+b.w*1.02,b.y+3]];
-      drawTrail(c,pts,progress,{width:i===2?21:11,color:'clay'});
+      const finish = afterBeats(au, at, i===2?1:0.4);
+      const path = (tb: number) => trailHead(pts, span(tb, at, finish));
+      const lengths = [Math.hypot(pts[1]![0]-pts[0]![0],pts[1]![1]-pts[0]![1]), Math.hypot(pts[2]![0]-pts[1]![0],pts[2]![1]-pts[1]![1])];
+      heatTrail(w.sparks, f.t, path, { from: at, to: finish, width: i===2?21:11,
+        knots: [at + (finish-at)*lengths[0]!/(lengths[0]!+lengths[1]!)], cold: sparkFade(f.t, T.keyboard)===0 });
+      if (f.t >= at && f.t < finish) {
+        writing = true;
+        cursorSpark(c, undefined, w.sparks, f.t, tb => ({ ...path(tb), h: 27 }),
+          { on: 'paper', from: at, to: finish, end: T.keyboard, seed: 60+i });
+      }
       if(i<2) {
         const strike=i===0?s.strike:{x0:588,x1:1250,y:681};
         const p=span(f.t,T.checks[i]!,afterBeats(au,T.checks[i]!,0.7));
@@ -103,7 +116,7 @@ export default class S06Todo extends Scene {
     const hop=-10*Math.sin(phase*Math.PI);
     const pose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(at),p:0,travel:0});
     Clawd.draw(c,s.clawd.x,s.clawd.y+hop,pose,{px:s.clawd.px});
-    drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
+    if (!writing) drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
     // The next line begins in this scene: carry its sung prefix on the lower margin.
     if(f.t>=T.claws.start) {
       const set=setLine(w.voice.forms(T.claws,f.t),78,{space:0.22});

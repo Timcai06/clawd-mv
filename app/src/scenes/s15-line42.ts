@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { PrintOverlay } from '../kit/print-overlay';
 // S15 — an engraved solid ≤, a forty-two counter, and a carved equal-stroke cut.
 // The reference cut frame remains INK; sustained PAPER begins at the October shot.
@@ -19,6 +20,7 @@ import { SCULPTURE, TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, freeState, handoffI
 export const TYPE_LEVELS = { ...PRINT_LEVELS };
 
 class World {
+  sparks = new SparkLines();
   glow = new GlowLayer();
   print = new PrintOverlay();
   users = 0;
@@ -41,7 +43,7 @@ class World {
       c.beginPath(); c.moveTo(x, y); c.lineTo(x + len, y + hash(i, 15, 4) * 2); c.stroke();
     }
   }
-  dispose() { this.glow.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.monument.dispose(); this.layer.texture.dispose(); this.shadow.texture.dispose(); }
+  dispose() { this.sparks.dispose(); this.glow.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.monument.dispose(); this.layer.texture.dispose(); this.shadow.texture.dispose(); }
 }
 let world: World | undefined;
 
@@ -98,10 +100,22 @@ export default class S15Line42 extends Scene {
       g.beginPath(); g.moveTo(rule.x0, rule.y); g.lineTo(rule.x1, rule.y); g.stroke(); });
     c.font = font(F.mono(400), TYPE_LEVELS.label); c.fillStyle = css(s.paper ? 'ink' : 'paper', 0.6);
     c.fillText(s.paper ? 'line 42: for (let d = 0; d < days; d++)' : 'line 42: for (let d = 0; d <= days; d++)', 96, 1030);
-    c.fillStyle = css('clay'); c.fillRect(760, 1007, 12, 25);
-    if (!s.paper) { w.glow.ctx.fillStyle = css('clay'); w.glow.ctx.fillRect(760, 1007, 12, 25); }
+    w.sparks.begin(c, s.paper ? undefined : w.glow.ctx, kind);
+    const snipEnd = afterBeats(audio,T.snip,0.25);
+    if (t >= T.snip && t < snipEnd + 0.4) {
+      const path = (tb: number) => ({ x: lerp(rule.x0, rule.x1, span(tb,T.snip,snipEnd)), y: rule.y });
+      heatTrail(w.sparks,t,path,{from:T.snip,to:snipEnd,width:1,cold:sparkFade(t,T.s16[0]!)===0});
+    }
+    const at = (tb: number) => tb >= T.snip && tb < snipEnd
+      ? { x: lerp(rule.x0,rule.x1,span(tb,T.snip,snipEnd)), y: rule.y, h:25, w:12 }
+      : { x:760,y:1032,h:25,w:12 };
+    cursorSpark(c, s.paper ? undefined : w.glow.ctx, w.sparks,t,at,
+      {on:kind,from:T.snip,to:snipEnd,end:T.s16[0]!,seed:15,
+        // Existing fracture axis in s15-monument-glsl.ts / monumentBounds, projected at the current scale.
+        boost:tb=>60*Math.exp(-(((lerp(rule.x0,rule.x1,span(tb,T.snip,snipEnd))-(1260+(1040-1260)*monumentState(audio,tb,T).scale))/70)**2))});
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    if (!s.paper) w.glow.composite(this.ctx, out, 1.6);
+    w.sparks.finish(this.ctx, out);
+    if (!s.paper) w.glow.composite(this.ctx, out, 2.0);
     else w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer, finalOut, this.lensView(t));
     const flash = t < T.snip ? 0 : 0.86 * (1 - ease.outExpo(span(t, T.snip, afterBeats(audio, T.snip, 0.24))));

@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark } from '../kit/spark';
 // S14 — "Down the call stack, quiet down here / Frame by frame, and the bug is near".
 // An infinite vertical stack of call frames drawn as engineering diagrams (paper hairlines on solid
 // ink slabs, hidden lines removed, sinking into haze). The camera falls one frame per step with spring
@@ -15,7 +16,6 @@ import { F, font } from '../engine/type';
 import { clamp, ease, frameIdx, hash, lerp, TAU } from '../engine/util';
 import { css, lin } from '../theme';
 import { Ground, GlowLayer, postFor } from '../kit/ground';
-import { drawCursor } from '../kit/cursor';
 import { HANDOFF } from '../kit/handoff';
 import { afterBeats } from '../kit/time';
 import { heatColor, Voice } from '../kit/lyric-moves';
@@ -62,6 +62,7 @@ class WordPlane {
 
 class World {
   users = 0;
+  sparks = new SparkLines();
   ground = new Ground();
   glow = new GlowLayer();
   cam = new THREE.PerspectiveCamera(34, W / H, 0.1, 600);
@@ -192,7 +193,7 @@ class World {
     this.lines.geo.dispose(); this.lines.mat.dispose();
     this.bodies.geometry.dispose(); (this.bodies.material as THREE.Material[]).forEach((m) => m.dispose());
     for (const p of this.planes) p.plane.dispose();
-    this.hud.texture.dispose(); this.glow.dispose(); this.ground.pass.mat.dispose();
+    this.sparks.dispose(); this.hud.texture.dispose(); this.glow.dispose(); this.ground.pass.mat.dispose();
   }
 }
 
@@ -314,11 +315,23 @@ export default class S14Shaft extends Scene {
     // 2D: cursor head + Clawd, the depth counter, the stop callout, the S15 handoff
     const c = w.hud.ctx; w.hud.clear();
     const g = w.glow.ctx; w.glow.clear();
+    w.sparks.begin(c, g, 'ink');
     const head = this.project(MX, headY, HZ + 0.02);
     if (head.ok) {
       const ch = clamp(34 * 14 / dist, 12, 40);
-      drawCursor(c, { x: head.x - ch * 0.27, y: head.y + ch, h: ch });
-      drawCursor(g, { x: head.x - ch * 0.27, y: head.y + ch, h: ch });
+      // Evaluate the unchanged camera method on a disposable receiver at the birth time.
+      // The live render camera is never mutated by historical emitter queries.
+      const birthCamera = w.cam.clone();
+      const at = (tb: number) => {
+        const depth = stackPos(tb,S);
+        const { ph, dist } = this.camera.call({ w: { S, cam: birthCamera } } as unknown as S14Shaft, tb, depth);
+        const stop = ph.id === 'stop', k = stop ? ease.outCubic(clamp((tb-S.near)/0.35)) : 0;
+        const y = stop ? -last*P + lerp(CALL_Y-0.3,BUG_Y,k) : -depth*P+CALL_Y-0.3;
+        const v = new THREE.Vector3(MX,y,HZ+0.02).project(birthCamera), h=clamp(34*14/dist,12,40);
+        return v.z > -1 && v.z < 1 ? { x: (v.x*0.5+0.5)*W-h*0.27, y: (0.5-v.y*0.5)*H+h, h } : null;
+      };
+      cursorSpark(c, g, w.sparks, t, at, { on: 'ink', from: S.start, to: S.near,
+        end: Math.min(S.near+0.35, S.end), seed: 14 });
       const px = clamp(Math.round(5 * 18 / dist), 3, 7), sz = Clawd.size(px);
       Clawd.draw(c, head.x - sz.w / 2, head.y + ch + px * 2, Clawd.pose(stopped ? 'A3' : 'A11', {
         beat: f.beat, beat0: this.ctx.audio.beatAt(S.down), p: 0, look: 'down',
@@ -351,7 +364,8 @@ export default class S14Shaft extends Scene {
       }
     }
     this.ctx.comp.draw(r, w.hud.upload(), out);
-    w.glow.composite(this.ctx, out, 1.6);
+    w.sparks.finish(this.ctx, out);
+    w.glow.composite(this.ctx, out, 2.0);
     void TAU;
     return { ...postFor('ink'), hud: 0, bloom: 0.55, bloomThreshold: 0.95, vignette: 0.32 };
   }

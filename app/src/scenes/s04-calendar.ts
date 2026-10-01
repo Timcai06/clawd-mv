@@ -1,3 +1,4 @@
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { PrintOverlay } from '../kit/print-overlay';
 // S04 — October as an engraved city (storyboard v2 kf-S04, lyric typography v3).
 // The sung "thirty-second" is a day counter that runs 1 → 31 over the city: the cursor and Clawd
@@ -19,7 +20,7 @@ import { span } from '../kit/time';
 import { heatColor, Voice, drawSet, odometer, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { BLOCK, TOWER_BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, clawdRect, handoffIn, type CityTimes, type Point3 } from './parts/s04-city-model';
+import { BLOCK, TOWER_BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, projectionCamera, clawdRect, handoffIn, type CityTimes, type Point3 } from './parts/s04-city-model';
 import { DateLabels } from './parts/s04-city-labels';
 import { drawCalendar } from './parts/s03-form';
 import { printInBox } from './parts/s01-print';
@@ -105,6 +106,7 @@ void main() {
 
 class CityWorld {
   print = new PrintOverlay();
+  sparks = new SparkLines();
   users = 0;
   ground = new Ground();
   scene = new THREE.Scene();
@@ -118,6 +120,7 @@ class CityWorld {
   streets = new LineBatch(2400, { screen2D: false, blend: 'normal', depthTest: true });
   overlay = new Layer2D();
   times: CityTimes;
+  streetKnots: number[];
   voice: Voice;
   matrix = new THREE.Matrix4();
   position = new THREE.Vector3();
@@ -130,6 +133,13 @@ class CityWorld {
 
   constructor(ctx: SceneCtx) {
     this.times = cityTimes(ctx.audio, ctx.lyrics);
+    // Exact street-corner birth times prevent a sampled trail shortcut through a block.
+    this.streetKnots = STREETS.lengths.map(distance => {
+      let lo=this.times.start, hi=this.times.end;
+      for(let i=0;i<40;i++){const mid=(lo+hi)/2;
+        if(cityState(ctx.audio,mid,this.times).travel*STREETS.total<distance) lo=mid; else hi=mid;}
+      return (lo+hi)/2;
+    });
     this.voice = new Voice(ctx.lyrics, ctx.audio);
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     geometry.setAttribute('date', new THREE.InstancedBufferAttribute(Float32Array.from({ length: 32 }, (_, i) => i + 1), 1));
@@ -176,7 +186,7 @@ class CityWorld {
     return { x: (v.x * 0.5 + 0.5) * W, y: (0.5 - v.y * 0.5) * H, visible: v.z > -1 && v.z < 1 };
   }
 
-  dispose() { this.print.dispose();
+  dispose() { this.sparks.dispose(); this.print.dispose();
     this.blocks.geometry.dispose(); this.blockMaterial.dispose();
     this.shadows.geometry.dispose(); (this.shadows.material as THREE.Material).dispose();
     this.floor.geometry.dispose(); this.floorMaterial.dispose();
@@ -346,7 +356,21 @@ export default class S04Calendar extends Scene {
     this.lyrics(f, s, c);
     const head = w.project([s.head[0], s.head[1], s.head[2]]);
     if (head.visible && head.x > 20 && head.x < W - 30 && head.y > 20 && head.y < H - 20) {
-      drawCursor(c, { x: head.x - 7, y: head.y + 6, h: 24, on: blink(f.beat, !s.rising) });
+      w.sparks.begin(c, undefined, 'paper');
+      const at = (tb: number) => {
+        const state = cityState(this.ctx.audio, tb, w.times);
+        const v = new THREE.Vector3(...state.head).project(projectionCamera(this.ctx.audio, tb, w.times));
+        return v.z > -1 && v.z < 1 ? { x: (v.x*0.5+0.5)*W-7, y: (0.5-v.y*0.5)*H+6,
+          h: 24, on: blink(this.ctx.audio.beatAt(tb), !state.rising) } : null;
+      };
+      if (sparkFade(f.t, w.times.end) > 0) {
+        heatTrail(w.sparks, f.t, tb => {
+          const p = w.project(cityState(this.ctx.audio, tb, w.times).head);
+          return p.visible ? p : null;
+        }, { from: w.times.start, width: 3.2, knots: w.streetKnots, alpha: sparkFade(f.t, w.times.end) });
+        cursorSpark(c, undefined, w.sparks, f.t, at,
+          { on: 'paper', from: w.times.start, to: w.times.end-1/60, end: w.times.end, seed: 4 });
+      } else drawCursor(c, { x: head.x - 7, y: head.y + 6, h: 24, on: blink(f.beat, !s.rising) });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.overlay.upload(), out);
   }

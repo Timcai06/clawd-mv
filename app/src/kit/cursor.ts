@@ -57,3 +57,24 @@ export function drawTrail(c: CanvasRenderingContext2D, pts: readonly [number, nu
   c.restore();
   return head;
 }
+
+/** Pure counterpart of drawTrail: the same arc-length head without drawing a stroke. */
+export function trailHead(pts: readonly [number, number][], progress: number): { x: number; y: number } {
+  if (!pts.length) return { x: 0, y: 0 };
+  const lengths = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1]));
+  let left = Math.max(0, Math.min(1, progress)) * lengths.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < lengths.length; i++) {
+    const d = lengths[i]!; if (d <= 0) continue;
+    if (left <= d) { const k = left / d, a = pts[i]!, b = pts[i + 1]!;
+      return { x: a[0] + (b[0] - a[0]) * k, y: a[1] + (b[1] - a[1]) * k }; }
+    left -= d;
+  }
+  const p = pts.at(-1)!; return { x: p[0], y: p[1] };
+}
+
+/** Legacy scan/annotation blocks keep their exact width without changing the Canvas CTM. */
+export function drawCursorWidth(c: CanvasRenderingContext2D, s: CursorState, width: number) {
+  const on = s.on ?? 1; if (on <= 0) return;
+  c.save(); c.globalAlpha *= on; c.fillStyle = css(s.color ?? 'clay');
+  c.fillRect(s.x, s.y - s.h, width, s.h); c.restore();
+}
