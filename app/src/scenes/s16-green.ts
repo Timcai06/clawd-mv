@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S16: the cropped GREEN slab above one foreshortened arc of nineteen engraved dominoes.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -9,7 +10,7 @@ import { span } from '../kit/time';
 import { Lens } from '../kit/lens';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
-import { Voice, drawSet, setLine, odometer } from '../kit/lyric-moves';
+import { heatColor, Voice, drawSet, setLine, odometer } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { greenState, greenTimes, type GreenTimes } from './parts/s16-green-state';
@@ -20,6 +21,7 @@ import { drawDomino, polygon, printRun } from './parts/s16-print';
 export const TYPE_LEVELS = { giant: 510, lyric: 63.112, label: 20 };
 
 class World {
+  print = new PrintOverlay();
   users = 0;
   ground = new Ground();
   layer = new Layer2D();
@@ -27,7 +29,7 @@ class World {
   times: GreenTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -73,7 +75,7 @@ export default class S16Green extends Scene {
       // The reference's headline is INK. A stressed attack briefly prints clay, then
       // becomes the persistent ink title rather than disappearing between greens.
       printRun(c, run, s.headline, s.form.stress && s.form.singing ? 'clay' : 'ink', 16,
-        Math.min(1, s.form.born * 1.6));
+        Math.min(1, s.form.born * 1.6), heatColor(s.form.stress && s.form.singing ? 'clay' : 'ink', 'paper', s.form.age));
     }
 
     c.strokeStyle = css('ink', 0.8); c.lineWidth = 1.3;
@@ -94,7 +96,7 @@ export default class S16Green extends Scene {
       const run = varRun(form.text.replace(/[,!]/g, ''), 92, form.axes);
       printRun(c, run, { x: card.face.x + 5, y: card.face.y + card.face.h * 0.72,
         w: card.face.w * 0.78, h: TYPE_LEVELS.lyric }, form.stress ? 'clay' : 'ink', 100 + card.i,
-        presence * Math.min(1, form.born * 1.6)); c.restore();
+        presence * Math.min(1, form.born * 1.6), heatColor(form.stress ? 'clay' : 'ink', 'paper', form.age)); c.restore();
     }
 
     // Numeric words belong to the faces; GREEN is the headline. Connecting words
@@ -117,7 +119,7 @@ export default class S16Green extends Scene {
     }
     const final = v.form(T.nineteen, t);
     if (final.born > 0) {
-      odometer(c, 18 + final.sung, 1570, 500, 92, { digits: 2, color: final.stress ? 'clay' : 'pass', pitch: 51 });
+      odometer(c, 18 + final.sung, 1570, 500, 92, { digits: 2, color: final.stress ? 'clay' : 'pass', on: 'paper', age: final.age, pitch: 51 });
       c.font = font(F.mono(500), 20); c.fillStyle = css('pass', 0.6); c.fillText('/19 passed', 1675, 499);
       drawCursor(c, { x: 1808, y: 500, h: 24 });
     } else {
@@ -125,6 +127,7 @@ export default class S16Green extends Scene {
       c.fillText(`${s.passed}/19 passed`, 1570, 500); drawCursor(c, { x: 1808, y: 500, h: 24 });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer, finalOut, lens);
     return { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035 };
   }

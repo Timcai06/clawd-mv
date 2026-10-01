@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S13: diagonal clay/ink print, perspective COMMIT, an upward log and colliding solid panels.
 import type * as THREE from "three";
 import { Scene, type Frame, type SceneCtx } from "../engine/scene";
@@ -5,8 +6,8 @@ import { Layer2D } from "../engine/gl";
 import { F, font } from "../engine/type";
 import { hash, frameIdx, ease, lerp } from "../engine/util";
 import { css } from "../theme";
-import { postFor } from "../kit/ground";
-import { Voice, gridSnap } from "../kit/lyric-moves";
+import { GlowLayer, postFor } from "../kit/ground";
+import { glowDraw, heatColor, Voice, gridSnap } from "../kit/lyric-moves";
 import { fillRun, varRun } from "../kit/vartype";
 import { drawCursor, blink } from "../kit/cursor";
 import { afterBeats, beatsSince, span } from "../kit/time";
@@ -26,6 +27,9 @@ import {
 export const TYPE_LEVELS = { giant: 930, lyric: 72, label: 20 }; // Archivo cap heights; Mono label font size.
 class World {
   layer = new Layer2D();
+  glow = new GlowLayer();
+  printMask = new Layer2D();
+  print = new PrintOverlay('texture(mask, vUv).a', { mask: { value: this.printMask.texture } }, 'uniform sampler2D mask;');
   grain = printTexture(13);
   voice: Voice;
   T: ChorusScore;
@@ -35,7 +39,7 @@ class World {
     this.T = chorusScore(ctx.audio, ctx.lyrics);
   }
   dispose() {
-    this.layer.texture.dispose();
+    this.layer.texture.dispose(); this.glow.dispose(); this.printMask.texture.dispose(); this.print.dispose();
   }
 }
 let world: World | undefined;
@@ -58,8 +62,9 @@ export default class S13Gitfall extends Scene {
       t = f.t,
       v = w.voice,
       c = w.layer.ctx;
+    const stripGlow: (() => void)[] = [];
     const s = gitfallLayout(au, this.ctx.lyrics, t, T, v);
-    w.layer.clear(css("ink"));
+    w.layer.clear(css("ink")); w.glow.clear(); w.printMask.clear();
     // v4 motion (same grammar as S08): creep and inhale before each COMMIT, a sprung kick on the
     // hit, a bump per sung word, nervous jitter while every test is throwing fits, a push into the
     // local/CI collision, settling to the identity frame on the last beat (S14 hand-off).
@@ -100,11 +105,22 @@ export default class S13Gitfall extends Scene {
         ],
         "clay",
       );
+    // Register the clay area once, including the existing camera transform.
+    glowDraw(c, w.printMask.ctx, m => {
+      m.fillStyle = css('paper');
+      if (entering) { const r = handoffIn(t, au, T); m.fillRect(r.x, r.y, r.w, r.h); }
+      else polygon(m, [[0,0],[937,0],[1096,1080],[0,1080]], 'paper');
+    });
+    const g = w.glow.ctx; g.save(); g.setTransform(c.getTransform());
+    g.beginPath(); g.rect(-10000,-10000,20000,20000);
+    if (entering) { const r = handoffIn(t, au, T); g.rect(r.x,r.y,r.w,r.h); }
+    else { g.moveTo(0,0); g.lineTo(937,0); g.lineTo(1096,1080); g.lineTo(0,1080); g.closePath(); }
+    g.clip('evenodd');
     this.river(c, s.travel, s.handoff.pitch);
     // Printed archive retains the previous sung COMMIT; it is never drawn before that onset.
     if (s.form.born > 0) {
       const axes = { ...s.form.axes, wght: Math.max(800, s.form.axes.wght) };
-      drawWarped(c, "COMMIT", axes, s.giant, "ink");
+      drawWarped(c, "COMMIT", axes, s.giant, "ink", heatColor("ink", "clay", s.form.age));
       if (!s.split && !s.frozen) {
         // Level two grows by measured beats: the submitted words fill the clay half, top to bottom.
         const at = s.second ? T.hit2 : T.hit1,
@@ -116,7 +132,7 @@ export default class S13Gitfall extends Scene {
           c.save();
           c.globalAlpha = 0.13;
           const q = s.giant.map(([x, y]) => [x, y - i * 300] as Point) as Quad;
-          drawWarped(c, "COMMIT", axes, q, "ink");
+          drawWarped(c, "COMMIT", axes, q, "ink", heatColor("ink", "clay", s.form.age));
           c.restore();
         }
       }
@@ -128,11 +144,12 @@ export default class S13Gitfall extends Scene {
       this.splinters(c, t, T, s.arrive, s.crush);
     } else if (s.testMode) this.tests(c, t);
     drawSprite(c, s.clawd, "clay", "ink");
+    glowDraw(c, g, g => drawSprite(g, { ...s.clawd, pose: { ...s.clawd.pose, cells: s.clawd.pose.cells.filter(cell => cell.k === 'O') } }, 'clay', 'ink'), 0.25);
     const line = this.ctx.lyrics.lastLine(t);
     if (line && v.presence(line, t, 1) > 0) {
       const hook = /one more commit/i.test(line.text);
       if (s.frozen || !hook) {
-        if (/fix a bit/i.test(line.text)) this.stack(c, t);
+        if (/fix a bit/i.test(line.text)) this.stack(c, t, stripGlow);
         else {
           // One readable row below the panel collision; born words cross shot cuts unchanged.
           const y = s.split ? 884 : 145;
@@ -144,24 +161,31 @@ export default class S13Gitfall extends Scene {
             cols: 12,
             size: 100,
             on: s.split ? "ink" : "clay",
+            glow: g,
             t,
             alpha: v.presence(line, t, 1),
           });
         }
       }
     }
-    if (s.frozen)
-      drawCursor(c, { x: 960 - 19.8, y: 576, h: 72, on: blink(au.beatAt(t)) });
+    if (s.frozen) {
+      const cursor = { x: 960 - 19.8, y: 576, h: 72, on: blink(au.beatAt(t)) };
+      drawCursor(c, cursor); glowDraw(c, g, g => drawCursor(g, cursor));
+    }
+    g.restore();
+    for (const paint of stripGlow) paint(); stripGlow.length = 0;
     c.restore();
     c.drawImage(w.grain, 0, 0, 1920, 1080);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.printMask.upload(); w.print.render(this.ctx.renderer, out, 0.04);
+    w.glow.composite(this.ctx, out, 1.6);
     const fi = frameIdx(t),
       magnitude = s.split ? 4 * s.crush : 10 * s.impact;
     return {
       ...postFor("ink"),
       hud: 0,
       frame: 0,
-      bloom: 0,
+      ca: 0.6,
       vignette: 0,
       shake: [
         (hash(fi, 131) - 0.5) * magnitude,
@@ -191,6 +215,7 @@ export default class S13Gitfall extends Scene {
         id % 3 === 2 ? 1 : 0.6,
       );
       c.fillText(id % 3 === 2 ? "fix a bit" : "fix", 1585, y);
+      if (id % 3 === 2) glowDraw(c, this.w.glow.ctx, g => { g.font = c.font; g.fillStyle = c.fillStyle; g.fillText('fix a bit', 1585, y); });
     }
     c.restore();
   }
@@ -277,6 +302,7 @@ export default class S13Gitfall extends Scene {
     for (let i = 0; i < 3; i++) {
       const y = 300 + ((travel * 140 + i * 180) % 500);
       rule(c, [1380, y], [1395, y + 90], "clay", 0.9, 2);
+      glowDraw(c, this.w.glow.ctx, g => rule(g, [1380, y], [1395, y + 90], 'clay', 0.9, 2));
     }
   }
   private splinters(
@@ -304,6 +330,8 @@ export default class S13Gitfall extends Scene {
         ],
         i % 3 === 0 ? "clay" : i % 2 ? "paper" : "ink",
       );
+      if (i % 3 === 0) glowDraw(c, this.w.glow.ctx, g => polygon(g,
+        [[x,y],[x+dx,y+dy],[x+dx-6,y+dy+14]], 'clay'));
     }
   }
   private tests(c: CanvasRenderingContext2D, t: number) {
@@ -326,7 +354,7 @@ export default class S13Gitfall extends Scene {
       c.fillText(String(i + 1).padStart(2, "0"), x + 22, y + 14);
     }
   }
-  private stack(c: CanvasRenderingContext2D, t: number) {
+  private stack(c: CanvasRenderingContext2D, t: number, stripGlow: (() => void)[]) {
     const v = this.w.voice,
       line = v.line("“Fix,” and “fix,” and “fix a bit”");
     // Two singles followed by one phrase; each new fix pushes preceding records up one pitch.
@@ -345,13 +373,20 @@ export default class S13Gitfall extends Scene {
       for (const form of row) {
         const run = varRun(form.text, 100, form.axes);
         if (form.born > 0) {
-          c.fillStyle = css(form.stress || i === 2 ? "clay" : "paper");
+          c.fillStyle = heatColor(form.stress || i === 2 ? "clay" : "paper", "ink", form.age);
           // Clay stress stays visible on an ink print strip inside the clay half.
           c.fillStyle = css("ink", 0.9);
           c.fillRect(x - 8, y - 88, run.width + 16, 104);
-          c.fillStyle = css(form.stress || i === 2 ? "clay" : "paper");
+          c.fillStyle = heatColor(form.stress || i === 2 ? "clay" : "paper", "ink", form.age);
           c.globalAlpha = Math.min(1, form.born * 1.6);
           fillRun(c, run, x, y);
+          if (form.stress || i === 2) {
+            const g = this.w.glow.ctx;
+            // Defer these strip-local words until after the ground clip is restored.
+            const matrix = c.getTransform(), alpha = c.globalAlpha, xx = x;
+            stripGlow.push(() => { g.save(); g.setTransform(matrix); g.globalAlpha = alpha;
+              g.fillStyle = heatColor('clay','ink',form.age); fillRun(g,run,xx,y); g.restore(); });
+          }
           c.globalAlpha = 1;
         }
         x += run.width + 26;

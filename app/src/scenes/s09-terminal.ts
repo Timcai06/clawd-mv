@@ -3,11 +3,11 @@ import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { css } from '../theme';
-import { Ground, postFor } from '../kit/ground';
+import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { drawCursor, blink } from '../kit/cursor';
 import { afterBeats, span } from '../kit/time';
 import { clamp, ease, lerp } from '../engine/util';
-import { Voice } from '../kit/lyric-moves';
+import { glowDraw, heatColor, Voice } from '../kit/lyric-moves';
 import { varRun, fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
@@ -17,9 +17,10 @@ import { scopeState, handoffIn, handoffOut, SCOPE } from './parts/s09-scope';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
 class World {
+  glow = new GlowLayer();
   ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
   constructor(ctx: SceneCtx) { this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.glow.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S09Terminal extends Scene {
@@ -30,7 +31,7 @@ export default class S09Terminal extends Scene {
     const w = this.w, au = this.ctx.audio, T = w.times, t = f.t;
     const s = scopeState(au, t, T);
     w.ground.render(this.ctx.renderer, out, { kind: 'ink', t, grid: 0, haze: 0, streaks: 0 });
-    w.layer.clear(); const c = w.layer.ctx;
+    w.layer.clear(); w.glow.clear(); const c = w.layer.ctx;
     // v4 motion: the scope is filmed close. The lens rides the scan head while we wait for a pass,
     // pulses on every beat like the trace, and opens back to the full graticule on the last beat
     // (the 19 counter is handed to S10 at its exact position).
@@ -62,8 +63,10 @@ export default class S09Terminal extends Scene {
     rule(base.x0, base.y, base.x1, base.y, 0.94);
     for (let x = 108; x < s.head; x += SCOPE.period / 2) {
       c.fillStyle = css('clay'); c.beginPath(); c.arc(x, SCOPE.y, 9, 0, Math.PI * 2); c.fill();
+      glowDraw(c, w.glow.ctx, g => { g.fillStyle = css('clay'); g.beginPath(); g.arc(x, SCOPE.y, 9, 0, Math.PI * 2); g.fill(); });
     }
     c.fillStyle = css('clay'); c.fillRect(s.head - 16, SCOPE.y - 16, 32, 32);
+    glowDraw(c, w.glow.ctx, g => { g.fillStyle = css('clay'); g.fillRect(s.head - 16, SCOPE.y - 16, 32, 32); });
     const n = handoffOut(t, au, T);
     mono(c, 'npm test', 96, 290, TYPE_LEVELS.label, 'paper');
     mono(c, 'running 19 tests…', 96, 322, TYPE_LEVELS.label, 'paper');
@@ -75,18 +78,26 @@ export default class S09Terminal extends Scene {
       const run = varRun(form.text, 96, form.axes);
       if (form.born > 0) {
         c.save(); c.beginPath(); c.rect(pass ? s.head - run.width : x, 338, run.width * form.sung, 122); c.clip();
-        c.fillStyle = css(form.stress ? 'clay' : 'paper');
-        fillRun(c, run, pass ? s.head - run.width : x, 427); c.restore();
+        c.fillStyle = heatColor(form.stress ? 'clay' : 'paper', 'ink', form.age);
+        fillRun(c, run, pass ? s.head - run.width : x, 427);
+        if (form.stress) glowDraw(c, w.glow.ctx, g => {
+          g.beginPath(); g.rect(pass ? s.head - run.width : x, 338, run.width * form.sung, 122); g.clip();
+          g.fillStyle = c.fillStyle; fillRun(g, run, pass ? s.head - run.width : x, 427);
+        }); c.restore();
         drawCursor(c, { x: pass ? s.head : x + run.width * form.sung, y: 427, h: 72,
           on: form.singing ? 1 : pass ? blink(f.beat) : 0 });
+        glowDraw(c, w.glow.ctx, g => drawCursor(g, { x: pass ? s.head : x + run.width * form.sung, y: 427, h: 72,
+          on: form.singing ? 1 : pass ? blink(f.beat) : 0 }));
       }
       x += run.width + 24;
     }
-    carry(c, v, t, T.terminal, 96, 427, 'ink');
+    carry(c, v, t, T.terminal, 96, 427, 'ink', 96, w.glow.ctx);
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
+    glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
     c.restore();
     counter19(c, n.x, n.baseline, n.capH, 'paper');
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    return { ...postFor('ink'), bloom: 0, hud: 0 };
+    w.glow.composite(this.ctx, out, 1.6);
+    return { ...postFor('ink'), ca: 0.6, hud: 0 };
   }
 }

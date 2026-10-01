@@ -1,10 +1,11 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S02: one giant printed PING crossing an ink/paper split; no editor behind the headline.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { Voice, gridSnap, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, gridSnap, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import { drawCursor } from '../kit/cursor';
 import { afterBeats, beatsSince, span } from '../kit/time';
@@ -18,9 +19,10 @@ import { notifyLayout, handoffIn, PING_BOX, WAKE_CLAWD } from './parts/s02-layou
 import { drawReportLyrics } from './parts/s03-form';
 export const TYPE_LEVELS = { giant: 625, lyric: 50.8, label: 20 };
 class NotifyWorld {
+  print = new PrintOverlay('step(edge, p.x)', { edge: { value: 0 } }, 'uniform float edge;');
   users = 0; ground = new Ground(); layer = new Layer2D(); lens = new Lens(); T; voice;
   constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.layer.texture.dispose(); }
 }
 let shared: NotifyWorld | undefined;
 export default class S02Notify extends Scene {
@@ -53,7 +55,7 @@ export default class S02Notify extends Scene {
         c.save(); c.beginPath(); c.rect(left ? 0 : s.edge, 0, left ? s.edge : 1920 - s.edge, 1080); c.clip();
         c.globalAlpha = (1 - s.exit) * Math.min(1, ping.born * 1.6);
         const hit = t < afterBeats(au, ping.t0, 0.18);
-        c.fillStyle = css(ping.stress && hit ? 'clay' : left ? 'paper' : 'ink'); printInBox(c, run, box); c.restore();
+        c.fillStyle = heatColor(ping.stress && hit ? 'clay' : left ? 'paper' : 'ink', left ? 'ink' : 'paper', ping.age); printInBox(c, run, box); c.restore();
       }
       grain(c, box, 22, 500);
     }
@@ -75,6 +77,8 @@ export default class S02Notify extends Scene {
     // Got/a/bug can precede the bug-snapped S03 cut. Same TITLE positions on both sides.
     if (t >= w.voice.line(1).start) drawReportLyrics(c, w.voice, t);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.pass.u.edge!.value = s.edge * (1 - s.exit);
+    w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer, finalOut, this.view(t));
     return { ...postFor('paper'), hud: 0, bloom: 0, grain: 0.03, vignette: 0 };
   }

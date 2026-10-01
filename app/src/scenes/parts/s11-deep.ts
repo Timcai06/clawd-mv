@@ -82,9 +82,12 @@ export class DeepStorm {
           gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
         }`,
       fragmentShader: `
-        uniform sampler2D map; varying vec2 vUv; varying float vAlpha;
-        void main() { vec4 c = texture2D(map, vUv); gl_FragColor = vec4(c.rgb, c.a * vAlpha); }`,
-      uniforms: { map: { value: this.texture } },
+        uniform sampler2D map; uniform float glowOnly; varying vec2 vUv; varying float vAlpha;
+        void main() { vec4 c = texture2D(map, vUv);
+          if (glowOnly > 0.5 && vUv.y > 1.0 / ${ROWS}.0) discard;
+          gl_FragColor = vec4(c.rgb, c.a * vAlpha);
+        }`,
+      uniforms: { map: { value: this.texture }, glowOnly: { value: 0 } },
       transparent: true, depthWrite: false, depthTest: false, toneMapped: false,
     });
     this.mesh = new THREE.InstancedMesh(geo, mat, DEEP.count);

@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S06 — the cropped CHECK headline and a front-elevation pen-plotter sheet.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -8,7 +9,7 @@ import { drawCursor, drawTrail } from '../kit/cursor';
 import { postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
-import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
@@ -24,13 +25,14 @@ void main() {
   fragColor=vec4(mix(paper,ink,fibre*0.009+grain*0.009),1.0);
 }`;
 class TodoWorld {
+  print = new PrintOverlay();
   users=0;
   layer=new Layer2D();
   bg=new FSPass(PAPER,{paper:{value:new THREE.Vector3(...lin('paper'))},ink:{value:new THREE.Vector3(...lin('ink'))}});
   times: CTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times=resolveCTimes(ctx.audio,ctx.lyrics); this.voice=new Voice(ctx.lyrics,ctx.audio); }
-  dispose() { this.bg.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.print.dispose(); this.bg.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: TodoWorld | undefined;
 export default class S06Todo extends Scene {
@@ -57,14 +59,14 @@ export default class S06Todo extends Scene {
     if(head.born>0) {
       const active=checks.filter(x=>x.start<=f.t).at(-1)!;
       const form=w.voice.form(active,f.t);
-      c.fillStyle=css('ink'); c.globalAlpha=form.born;
+      c.fillStyle=heatColor('ink', 'paper', form.age); c.globalAlpha=form.born;
       const run=varRun('CHECK',730,{...form.axes,wght:head.weight});
       printRun(c,run,s.title);
       // Keep the storyboard's ink headline: the stressed third check passes a
       // clay ink roller through its lower edge instead of recolouring the poster.
       if(form.stress) {
         c.save();c.beginPath();c.rect(0,425,1920,39*form.sung);c.clip();
-        c.fillStyle=css('clay');printRun(c,run,s.title);c.restore();
+        c.fillStyle=heatColor('clay', 'paper', form.age);printRun(c,run,s.title);c.restore();
       }
       c.globalAlpha=1;
     }
@@ -111,6 +113,7 @@ export default class S06Todo extends Scene {
     c.restore();
     w.bg.render(this.ctx.renderer,out);
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
+    w.print.render(this.ctx.renderer, out);
     return {...postFor('paper'),hud:0,frame:0,bloom:0,grain:0.019};
   }
 }

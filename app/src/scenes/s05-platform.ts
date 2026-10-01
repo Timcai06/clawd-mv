@@ -5,8 +5,8 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { css, lin } from '../theme';
-import { postFor } from '../kit/ground';
-import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { GlowLayer, postFor } from '../kit/ground';
+import { glowDraw, Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import { HANDOFF } from '../kit/handoff';
 import { afterBeats, span } from '../kit/time';
@@ -29,13 +29,14 @@ void main() {
 }`;
 
 class PlatformWorld {
+  glow = new GlowLayer();
   users = 0;
   text = new Layer2D();
   bg = new FSPass(PRINT, { ink: { value: new THREE.Vector3(...lin('ink')) }, paper: { value: new THREE.Vector3(...lin('paper')) }, pan: { value: 0 } });
   times: PlatformTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times = platformTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.text.texture.dispose(); this.bg.mat.dispose(); }
+  dispose() { this.glow.dispose(); this.text.texture.dispose(); this.bg.mat.dispose(); }
 }
 let world: PlatformWorld | undefined;
 
@@ -64,7 +65,7 @@ export default class S05Platform extends Scene {
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, T = w.times, au = this.ctx.audio;
     const s = platformLayout(au, f.t, T), c = w.text.ctx;
-    w.text.clear();
+    w.text.clear(); w.glow.clear();
     // v4 motion: arrive pushed in on Clawd (continuing S04's push), pull out over the first beat;
     // a punch on "claws"; the last beat pushes in on the read line (the strike S06 picks up).
     const claws = this.ctx.lyrics.get('crack my claws').words.find((x) => /claws/i.test(x.w))!;
@@ -97,7 +98,7 @@ export default class S05Platform extends Scene {
       const fit=Math.min(1,1550/set.width);
       const lx = 270 - s.offset;
       c.save(); c.translate(lx,738); c.scale(fit,1);
-      drawSet(c,set,0,0,{on:'ink'}); c.restore();
+      drawSet(c,set,0,0,{on:'ink',glow:w.glow.ctx}); c.restore();
       // Each born word owns a segment of the same physical platform.
       c.strokeStyle=css('paper',0.6); c.lineWidth=1.5;
       for(const word of set.words) if(word.form.born>0) {
@@ -124,20 +125,24 @@ export default class S05Platform extends Scene {
     const armsUp=f.t>=claws.start && f.t<claws.start+0.32;
     const pose=Clawd.pose(armsUp?'A7':'A5',{beat:f.beat,beat0:au.beatAt(T.start),p:0,travel:0});
     Clawd.draw(c,rider.x,rider.y,pose,{px:rider.px});
+    glowDraw(c, w.glow.ctx, g => Clawd.draw(g, rider.x, rider.y, { ...pose, cells: pose.cells.filter(cell => cell.k === 'O') }, { px: rider.px, alpha: 0.25 }));
     const strike=handoffOut(f.t,au,T);
     c.strokeStyle=css('clay'); c.lineWidth=2;
     c.beginPath(); c.moveTo(strike.x0,strike.y); c.lineTo(strike.x1,strike.y); c.stroke();
+    glowDraw(c, w.glow.ctx, g => { g.strokeStyle = css('clay'); g.lineWidth = 2; g.beginPath(); g.moveTo(strike.x0, strike.y); g.lineTo(strike.x1, strike.y); g.stroke(); });
     // Filename is machine text, a documented giant-type exception, not a sung word.
     c.fillStyle=css('paper',0.6);
     printRun(c,varRun('month.ts',430,{wdth:100,wght:900}),s.title);
     const exit=span(f.t,afterBeats(au,T.end,-1),T.end);
     drawCursor(c,{x:1045,y:724,h:50*(1-exit),on:1});
+    glowDraw(c, w.glow.ctx, g => drawCursor(g, {x:1045,y:724,h:50*(1-exit),on:1}));
     // The incoming platform starts directly below the shared Clawd rectangle.
     const entry=1-span(f.t,T.start,afterBeats(au,T.start,1));
     if(entry>0) { c.fillStyle=css('paper',0.5*entry); c.fillRect(HANDOFF.clawd04.x-30,HANDOFF.clawd04.y+30,180,1); }
     c.restore();
     w.bg.u.pan!.value=s.offset; w.bg.render(this.ctx.renderer,out);
     this.ctx.comp.draw(this.ctx.renderer,w.text.upload(),out);
-    return {...postFor('ink'),hud:0,frame:0,bloom:0,grain:0.022,vignette:0};
+    w.glow.composite(this.ctx, out, 1.6);
+    return {...postFor('ink'),hud:0,frame:0,ca:0.6,grain:0.022,vignette:0};
   }
 }

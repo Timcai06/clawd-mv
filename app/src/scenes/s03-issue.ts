@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S03: tilted full-page form, distressed clay rubber stamp and mini-calendar attachment.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -13,9 +14,10 @@ import { mono } from './parts/s01-drafting';
 import { drawForm, drawCalendar, drawReportLyrics, handoffIn, handoffOut, FORM_ROLL, REPORT_CLAWD } from './parts/s03-form';
 export const TYPE_LEVELS = { giant: 315.6, lyric: 50.8, label: 20 };
 class IssueWorld {
+  print = new PrintOverlay();
   users=0; ground=new Ground(); layer=new Layer2D(); lens=new Lens(); T; voice;
   constructor(ctx:SceneCtx){this.T=openingTimes(ctx.audio,ctx.lyrics);this.voice=new Voice(ctx.lyrics,ctx.audio);}
-  dispose(){this.lens.dispose();this.ground.pass.mat.dispose();this.ground.pass.mesh.geometry.dispose();this.layer.texture.dispose();}
+  dispose(){ this.print.dispose();this.lens.dispose();this.ground.pass.mat.dispose();this.ground.pass.mesh.geometry.dispose();this.layer.texture.dispose();}
 }
 let shared:IssueWorld|undefined;
 export default class S03Issue extends Scene {
@@ -45,6 +47,7 @@ export default class S03Issue extends Scene {
       mono(c,'Issue #1031 · calendar',b.x+24,b.y+b.h*.65,20,'ink',.6);drawReportLyrics(c,w.voice,t);
     }
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
+    w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer,finalOut,this.view(t));
     return {...postFor('paper'),hud:0,bloom:0,grain:.035,vignette:0};
   }

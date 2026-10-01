@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S04 — October as an engraved city (storyboard v2 kf-S04, lyric typography v3).
 // The sung "thirty-second" is a day counter that runs 1 → 31 over the city: the cursor and Clawd
 // follow it street by street and each roof lights clay as it is counted. On the S04-2 downbeat the
@@ -15,7 +16,7 @@ import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { blink, drawCursor } from '../kit/cursor';
 import { span } from '../kit/time';
-import { Voice, drawSet, odometer, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, drawSet, odometer, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { BLOCK, TOWER_BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, clawdRect, handoffIn, type CityTimes, type Point3 } from './parts/s04-city-model';
@@ -103,6 +104,7 @@ void main() {
 }`;
 
 class CityWorld {
+  print = new PrintOverlay();
   users = 0;
   ground = new Ground();
   scene = new THREE.Scene();
@@ -174,7 +176,7 @@ class CityWorld {
     return { x: (v.x * 0.5 + 0.5) * W, y: (0.5 - v.y * 0.5) * H, visible: v.z > -1 && v.z < 1 };
   }
 
-  dispose() {
+  dispose() { this.print.dispose();
     this.blocks.geometry.dispose(); this.blockMaterial.dispose();
     this.shadows.geometry.dispose(); (this.shadows.material as THREE.Material).dispose();
     this.floor.geometry.dispose(); this.floorMaterial.dispose();
@@ -293,7 +295,7 @@ export default class S04Calendar extends Scene {
     const cx = lerp(96, 1752, fly), cy = lerp(312, 196, fly), size = lerp(300, 28, fly);
     const over = s.rising;
     c.save(); c.translate(cx, cy); c.scale(breath, breath);
-    if (forms[2]!.born > 0) odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : 'ink', axes: { wdth: 75, wght: 900 } });
+    if (forms[2]!.born > 0) odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : 'ink', on: 'paper', age: forms[2]!.age, axes: { wdth: 75, wght: 900 } });
     c.restore();
     if (fly > 0.98) {
       c.strokeStyle = css('ink', 0.85); c.lineWidth = 1.2;
@@ -315,7 +317,7 @@ export default class S04Calendar extends Scene {
       const drop = k < 0.1 ? lerp(-150, 10, ease.inQuad(k / 0.1)) : lerp(10, 0, ease.outCubic(clamp((k - 0.1) / 0.14)));
       const run = varRun('OCTOBER', 286, { wdth: ox.axes.wdth, wght: Math.max(760, ox.axes.wght) });
       const pres = Math.max(0.6, v.presence(line, t));
-      c.save(); c.globalAlpha = pres; c.fillStyle = css('ink');
+      c.save(); c.globalAlpha = pres; c.fillStyle = heatColor('ink', 'paper', october.age);
       c.translate(-26, 212 + drop); c.scale(breath, breath);
       printInBox(c, run, {x:0,y:-242,w:1215,h:242});
       c.restore();
@@ -361,6 +363,7 @@ export default class S04Calendar extends Scene {
     r.render(w.scene, w.camera);
     r.render(w.labels.scene, w.camera);
     this.survey(s, out); this.annotations(f, s, out);
+    w.print.render(this.ctx.renderer, out);
     return {
       ...postFor('paper'), hud: 0, grain: 0.03,
     };

@@ -4,7 +4,7 @@ import { ease, hash } from '../../engine/util';
 import { css } from '../../theme';
 import { afterBeats, span } from '../../kit/time';
 import { HANDOFF, type Rect } from '../../kit/handoff';
-import { Voice, drawSet, setLine, stamp } from '../../kit/lyric-moves';
+import { heatColor, Voice, drawSet, setLine, stamp } from '../../kit/lyric-moves';
 import { mono } from './s01-drafting';
 import { machineTitle, printInBox, mixRect } from './s01-print';
 import type { OpeningTimes } from './s01-timing';
@@ -69,7 +69,7 @@ export function drawReportLyrics(c: CanvasRenderingContext2D, v: Voice, t: numbe
     const rows=[{forms:forms.slice(0,3),x:85,y:165,h:315.6},{forms:forms.slice(3,4),x:85,y:500,h:315.6}];
     for(const row of rows){
       const set=setLine(row.forms,460), sx=Math.min(1,1150/set.width);
-      for(const word of set.words){if(word.form.born<=0)continue;c.save();c.fillStyle=css(word.form.stress?'clay':'ink');c.globalAlpha=word.form.born;
+      for(const word of set.words){if(word.form.born<=0)continue;c.save();c.fillStyle=heatColor(word.form.stress?'clay':'ink', 'paper', word.form.age);c.globalAlpha=word.form.born;
         printInBox(c,word.run,{x:row.x+word.x*sx,y:row.y,w:word.w*sx,h:row.h});c.restore();}
     }
   } else {

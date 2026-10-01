@@ -7,7 +7,7 @@ import { F, font } from '../engine/type';
 import { css } from '../theme';
 import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { drawCursor, blink } from '../kit/cursor';
-import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { glowDraw, Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
@@ -18,7 +18,7 @@ export const TYPE_LEVELS = { giant: null, lyric: 50.8, label: 20 }; // cap heigh
 class BootWorld { lens = new Lens();
   users = 0; ground = new Ground(); text = new Layer2D(); glow = new GlowLayer(); T; voice;
   constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.text.texture.dispose(); this.glow.layer.texture.dispose(); }
+  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.text.texture.dispose(); this.glow.dispose(); }
 }
 let shared: BootWorld | undefined;
 export default class S01Boot extends Scene {
@@ -60,6 +60,8 @@ export default class S01Boot extends Scene {
       for (const cell of p.cells) if (cell.k === 'O') {
         c.strokeStyle = css('clay', 0.42); c.lineWidth = 0.8;
         c.strokeRect(BOOT_CLAWD.x + cell.x * BOOT_CLAWD.px, BOOT_CLAWD.y + (cell.y + p.dy) * BOOT_CLAWD.px, BOOT_CLAWD.px, BOOT_CLAWD.px);
+        glowDraw(c, g, g => { g.strokeStyle = c.strokeStyle; g.lineWidth = c.lineWidth;
+          g.strokeRect(BOOT_CLAWD.x + cell.x * BOOT_CLAWD.px, BOOT_CLAWD.y + (cell.y + p.dy) * BOOT_CLAWD.px, BOOT_CLAWD.px, BOOT_CLAWD.px); });
       }
       const reveal = { ...p, cells: p.cells.filter((cell, i) => cell.k === 'D' || i < Math.floor(p.cells.length * s.pixels)) };
       Clawd.draw(c, BOOT_CLAWD.x, BOOT_CLAWD.y, reveal, { px: BOOT_CLAWD.px });
@@ -68,9 +70,9 @@ export default class S01Boot extends Scene {
     const cursor = { ...cursorFromTop(handoffOut(f.t, au, w.T)), on: blink(f.beat, f.t >= afterBeats(au,w.T.ping,-1)) };
     drawCursor(c, cursor); drawCursor(g, cursor);
     const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
-    drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink' });
+    drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink', glow: g });
     this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.glow.composite(this.ctx, out, 1.4);
     this.w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
-    return { ...postFor('ink'), hud: 0, grain: 0.03, bloomRadius: 0.6, vignette: 0 };
+    return { ...postFor('ink'), hud: 0, grain: 0.03, ca: 0.6, vignette: 0 };
   }
 }

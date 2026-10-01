@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S15 — an engraved solid ≤, a forty-two counter, and a carved equal-stroke cut.
 // The reference cut frame remains INK; sustained PAPER begins at the October shot.
 import * as THREE from 'three';
@@ -5,10 +6,10 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { css } from '../theme';
-import { Ground, postFor } from '../kit/ground';
+import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
 import { ease, hash, lerp } from '../engine/util';
-import { Voice, drawSet, setLine, odometer, type WordForm } from '../kit/lyric-moves';
+import { glowDraw, heatColor, Voice, drawSet, setLine, odometer, type WordForm } from '../kit/lyric-moves';
 import { fillRun, varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveFTimes, type FTimes } from './parts/s15-f-timing';
@@ -18,6 +19,8 @@ import { SCULPTURE, TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, freeState, handoffI
 export const TYPE_LEVELS = { ...PRINT_LEVELS };
 
 class World {
+  glow = new GlowLayer();
+  print = new PrintOverlay();
   users = 0;
   T: FTimes;
   voice: Voice;
@@ -38,7 +41,7 @@ class World {
       c.beginPath(); c.moveTo(x, y); c.lineTo(x + len, y + hash(i, 15, 4) * 2); c.stroke();
     }
   }
-  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.monument.dispose(); this.layer.texture.dispose(); this.shadow.texture.dispose(); }
+  dispose() { this.glow.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.monument.dispose(); this.layer.texture.dispose(); this.shadow.texture.dispose(); }
 }
 let world: World | undefined;
 
@@ -77,25 +80,32 @@ export default class S15Line42 extends Scene {
     const specimen = t >= Math.min(T.s15[2]!, T.less);
     w.ground.render(this.ctx.renderer, out, { kind, t, grid: specimen ? 0 : 0.16,
       haze: 0, streaks: 0, halftone: s.paper ? 0.08 : 0, kick: f.a.kick * 0.15 });
-    w.layer.clear(); const c = w.layer.ctx;
+    w.layer.clear(); w.glow.clear(); const c = w.layer.ctx;
     if (specimen) {
       if (!s.paper) this.ctx.comp.draw(this.ctx.renderer, w.shadow.upload(), out);
       w.monument.render(this.ctx.renderer, out, s);
       const hero = heroState(audio, t, T);
       Clawd.draw(c, hero.cx - 8 * hero.px, hero.cy - 2.5 * hero.px, hero.pose, { px: hero.px });
+      if (!s.paper) glowDraw(c, w.glow.ctx, g => Clawd.draw(g, hero.cx - 8 * hero.px, hero.cy - 2.5 * hero.px,
+        { ...hero.pose, cells: hero.pose.cells.filter(cell => cell.k === 'O') }, { px: hero.px, alpha: 0.25 }));
     } else this.source(c);
     this.lyrics(c, f);
     // One machine annotation at the bottom; its incoming clay rule is exactly line14.
     const rule = handoffIn(t, audio, T);
     c.strokeStyle = css(rule.clay > 0.01 ? 'clay' : s.paper ? 'ink' : 'paper', 0.6);
     c.lineWidth = 1; c.beginPath(); c.moveTo(rule.x0, rule.y); c.lineTo(rule.x1, rule.y); c.stroke();
+    if (!s.paper && rule.clay > 0.01) glowDraw(c, w.glow.ctx, g => { g.strokeStyle = c.strokeStyle; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(rule.x0, rule.y); g.lineTo(rule.x1, rule.y); g.stroke(); });
     c.font = font(F.mono(400), TYPE_LEVELS.label); c.fillStyle = css(s.paper ? 'ink' : 'paper', 0.6);
     c.fillText(s.paper ? 'line 42: for (let d = 0; d < days; d++)' : 'line 42: for (let d = 0; d <= days; d++)', 96, 1030);
     c.fillStyle = css('clay'); c.fillRect(760, 1007, 12, 25);
+    if (!s.paper) { w.glow.ctx.fillStyle = css('clay'); w.glow.ctx.fillRect(760, 1007, 12, 25); }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    if (!s.paper) w.glow.composite(this.ctx, out, 1.6);
+    else w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer, finalOut, this.lensView(t));
     const flash = t < T.snip ? 0 : 0.86 * (1 - ease.outExpo(span(t, T.snip, afterBeats(audio, T.snip, 0.24))));
-    return { ...postFor(kind), hud: 0, frame: 0, paper: s.paper ? 1 : 0, bloom: 0,
+    return { ...postFor(kind), hud: 0, frame: 0, paper: s.paper ? 1 : 0, ca: s.paper ? 0 : 0.6,
       vignette: 0, grain: 0.035, flash, shake: [0, 0] as [number, number] };
   }
 
@@ -112,7 +122,7 @@ export default class S15Line42 extends Scene {
     on: 'paper' | 'ink', roll = 0, alpha = 1) {
     if (form.born <= 0) return;
     c.save(); c.translate(x, y); c.rotate(roll);
-    drawSet(c, setLine([form], LYRIC_SIZE), 0, 0, { on, alpha }); c.restore();
+    drawSet(c, setLine([form], LYRIC_SIZE), 0, 0, { on, glow: on === 'ink' ? this.w.glow.ctx : undefined, alpha }); c.restore();
   }
 
   private lyrics(c: CanvasRenderingContext2D, f: Frame) {
@@ -124,12 +134,12 @@ export default class S15Line42 extends Scene {
     const forms = v.forms(line, t);
     const on = t >= T.s15[5]! ? 'paper' : 'ink';
     if (line.i === v.line('There it is, on line forty-two').i) {
-      drawSet(c, setLine(forms.slice(0, 3), LYRIC_SIZE), 122, 410, { on, alpha: presence });
-      drawSet(c, setLine(forms.slice(3, 5), LYRIC_SIZE), 122, 550, { on, alpha: presence });
+      drawSet(c, setLine(forms.slice(0, 3), LYRIC_SIZE), 122, 410, { on, glow: on === 'ink' ? this.w.glow.ctx : undefined, alpha: presence });
+      drawSet(c, setLine(forms.slice(3, 5), LYRIC_SIZE), 122, 550, { on, glow: on === 'ink' ? this.w.glow.ctx : undefined, alpha: presence });
       const number = forms[5]!;
       if (number.born > 0) {
         odometer(c, 1 + 41 * ease.inOutCubic(number.sung), 750, 550, LYRIC_SIZE,
-          { digits: 2, axes: number.axes, color: number.stress ? 'clay' : 'paper', alpha: number.born * presence });
+          { digits: 2, axes: number.axes, color: number.stress ? 'clay' : 'paper', on, age: number.age, glow: w.glow.ctx, alpha: number.born * presence });
       }
       return;
     }
@@ -156,12 +166,12 @@ export default class S15Line42 extends Scene {
       if (free.born > 0) {
         const escape = freeState(audio, t, T);
         c.save(); c.translate(escape.x, escape.baseline); c.rotate(escape.roll);
-        c.globalAlpha = free.born * presence; c.fillStyle = css(free.stress ? 'clay' : 'ink');
+        c.globalAlpha = free.born * presence; c.fillStyle = heatColor(free.stress ? 'clay' : 'ink', on, free.age);
         fillRun(c, varRun('FREE', LYRIC_SIZE, free.axes), 0, 0); c.restore();
       }
       return;
     }
     // Words sung on either side of an editorial cut keep their original onset and axes.
-    drawSet(c, setLine(forms, LYRIC_SIZE), 110, 180, { on, alpha: presence });
+    drawSet(c, setLine(forms, LYRIC_SIZE), 110, 180, { on, glow: on === 'ink' ? this.w.glow.ctx : undefined, alpha: presence });
   }
 }

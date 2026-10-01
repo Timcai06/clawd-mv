@@ -6,7 +6,7 @@
 // Everything is a pure function of the uniforms the scene passes in (time, camera, kick...).
 // Also: GlowLayer (clay-only glow on INK) and per-ground post presets.
 import * as THREE from 'three';
-import { FSPass, Layer2D, type Compositor } from '../engine/gl';
+import { FSPass, Layer2D, makeRT, clearRT, type Compositor } from '../engine/gl';
 import { lin, POSTER_POST } from '../theme';
 
 export type GroundKind = 'paper' | 'ink' | 'clay';
@@ -125,9 +125,32 @@ export class Ground {
  */
 export class GlowLayer {
   layer = new Layer2D();
+  private target?: THREE.WebGLRenderTarget;
+  private occlusion?: THREE.MeshBasicMaterial;
+  /** Additional clay-only 3D draw, using the scene's unchanged geometry/camera. */
+  renderScene(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, occluders?: THREE.Scene) {
+    this.target ??= makeRT();
+    clearRT(renderer, this.target, [0, 0, 0], 0);
+    if (occluders) {
+      this.occlusion ??= new THREE.MeshBasicMaterial({ color: 0, toneMapped: false });
+      const saved = occluders.overrideMaterial;
+      occluders.overrideMaterial = this.occlusion;
+      renderer.render(occluders, camera); occluders.overrideMaterial = saved;
+    }
+    renderer.render(scene, camera);
+  }
+  dispose() { this.layer.texture.dispose(); this.target?.dispose(); this.occlusion?.dispose(); }
   get ctx() { return this.layer.ctx; }
   clear() { this.layer.clear(); }
-  composite(ctx: { renderer: THREE.WebGLRenderer; comp: Compositor }, out: THREE.WebGLRenderTarget, intensity = 2.2) {
+  composite(ctx: { renderer: THREE.WebGLRenderer; comp: Compositor }, out: THREE.WebGLRenderTarget, intensity = 2.2, mask?: FSPass) {
+    if (mask) {
+      this.target ??= makeRT();
+      ctx.comp.draw(ctx.renderer, this.layer.upload(), this.target);
+      mask.render(ctx.renderer, this.target);
+      ctx.comp.draw(ctx.renderer, this.target.texture, out, { mode: 'add', premult: false, tint: [intensity, intensity, intensity] });
+      return;
+    }
+    if (this.target) ctx.comp.draw(ctx.renderer, this.target.texture, out, { mode: 'add', premult: false, tint: [intensity, intensity, intensity] });
     ctx.comp.draw(ctx.renderer, this.layer.upload(), out, { mode: 'add', tint: [intensity, intensity, intensity] });
   }
 }

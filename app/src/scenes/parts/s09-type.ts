@@ -42,10 +42,10 @@ export function runBox(run: VarRun, x: number, y: number, sx = 1, sy = 1, roll =
 }
 /** A crossing line retains all already sung words, including before the new scene's first onset. */
 export function carry(c: CanvasRenderingContext2D, v: Voice, t: number, start: number,
-  x: number, y: number, on: 'ink' | 'paper', size = 96) {
+  x: number, y: number, on: 'ink' | 'paper', size = 96, glow?: CanvasRenderingContext2D) {
   const line = v.lyrics.lines.find(l => l.start < start && l.end > start);
   if (!line || t >= Math.min(v.lyrics.lines[line.i + 1]?.start ?? Infinity, afterBeats(v.audio, line.end, 1))) return;
-  wrap(v.forms(line, t), size, 1920 - 96 - x).forEach((set, row) => drawSet(c, set, x, y + row * 110, { on }));
+  wrap(v.forms(line, t), size, 1920 - 96 - x).forEach((set, row) => drawSet(c, set, x, y + row * 110, { on, glow }));
 }
 /** Knock static toner voids out of a printed layer; never erases the live Ground. */
 export function toner(c: CanvasRenderingContext2D, box: Rect, seed: number, count = 1400) {

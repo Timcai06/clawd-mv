@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S17: the final commit, a human review, merging type and the front-on device/diff poster.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -7,7 +8,7 @@ import { Lens } from '../kit/lens';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
-import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { fillRun, varRun } from '../kit/vartype';
 import { afterBeats, beatsSince, span } from '../kit/time';
 import * as Clawd from '../kit/clawd';
@@ -23,6 +24,7 @@ import { printRun } from './parts/s16-print';
 export const TYPE_LEVELS = { giant: 201, lyric: 63.112, label: 20 };
 
 class World {
+  print = new PrintOverlay();
   users = 0;
   ground = new Ground();
   layer = new Layer2D();
@@ -32,7 +34,7 @@ class World {
   times: ReleaseTimes;
   diff = ['- d <= days', '+ d < days'].map(text => varRun(text, 340, { wdth: 100, wght: 900 }));
   constructor(ctx: SceneCtx) { this.voice = new Voice(ctx.lyrics, ctx.audio); this.times = resolveReleaseTimes(ctx.audio, ctx.lyrics); }
-  dispose() { this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
+  dispose() { this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -76,7 +78,7 @@ export default class S17Release extends Scene {
     for (let i = 0; i < set.words.length; i++) {
       const s = set.words[i]!;
       if (s.form.born <= 0) continue;
-      c.globalAlpha = Math.min(1, s.form.born * 1.6); c.fillStyle = css(s.form.stress ? 'clay' : 'ink');
+      c.globalAlpha = Math.min(1, s.form.born * 1.6); c.fillStyle = heatColor(s.form.stress ? 'clay' : 'ink', 'paper', s.form.age);
       fillRun(c, s.run, i === 2 ? lerp(0, s.x, join) : s.x, i === 2 ? lerp(810, 490, join) : 490);
     }
     c.restore(); releaseLyric(c, v, line, t, 96, 960, 1728, 'paper', [3, 7]);
@@ -126,7 +128,7 @@ export default class S17Release extends Scene {
       if (commit.born > 0) {
         const run = varRun('COMMIT', 760, commit.axes);
         printRun(c, run, { x: -60, y: 205, w: 2040, h: 530 }, flooded ? 'ink' : 'clay', 17,
-          Math.min(1, commit.born * 1.6));
+          Math.min(1, commit.born * 1.6), heatColor(flooded ? 'ink' : 'clay', flooded ? 'clay' : 'paper', commit.age));
       }
     } else {
       const machineLine = v.line('And it works on every machine');
@@ -151,6 +153,7 @@ export default class S17Release extends Scene {
       }
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.render(this.ctx.renderer, out, state.ground === 'clay' ? 0.04 : 0.05);
     w.lens.film(this.ctx.renderer, finalOut, this.lensView(t, state.shot));
     return { ...postFor(state.ground), hud: 0, frame: 0, grain: 0.035 };
   }

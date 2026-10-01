@@ -6,7 +6,7 @@ import { css, lin } from '../../theme';
 import { drawDevice } from '../../kit/devices';
 import { WALL_CELLS } from './s17-release-state';
 import { hash } from '../../engine/util';
-import { Voice, setLine } from '../../kit/lyric-moves';
+import { heatColor, Voice, setLine } from '../../kit/lyric-moves';
 import { fillRun } from '../../kit/vartype';
 import { wallCells } from './s17-release-layout';
 
@@ -63,7 +63,7 @@ export class PrintedDeviceWall {
       c.scale((cell.w - 12) / Math.max(1, set.width), 1);
       for (const s of set.words) if (s.form.born > 0) {
         c.globalAlpha = opacity * Math.min(1, s.form.born * 1.6);
-        c.fillStyle = css(s.form.stress ? (cell.k === 'D' ? 'clay' : 'ink') : 'paper'); fillRun(c, s.run, s.x, 0);
+        c.fillStyle = heatColor(s.form.stress ? (cell.k === 'D' ? 'clay' : 'ink') : 'paper', cell.k === 'D' ? 'ink' : 'clay', s.form.age); fillRun(c, s.run, s.x, 0);
       }
       c.restore();
     }

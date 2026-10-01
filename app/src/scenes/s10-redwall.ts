@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S10: upright foreshortened glass reports, engraved thickness and beat-driven shards.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -19,6 +20,7 @@ const polygon = (c: CanvasRenderingContext2D, pts: Point[]) => {
   c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
 };
 class World {
+  print = new PrintOverlay();
   ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
   hatch: CanvasPattern;
   constructor(ctx: SceneCtx) {
@@ -29,7 +31,7 @@ class World {
     for (let i = -48; i < 96; i += 4) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + 48, 48); c.stroke(); }
     this.hatch = this.layer.ctx.createPattern(tile, 'repeat')!;
   }
-  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S10Redwall extends Scene {
@@ -106,12 +108,13 @@ export default class S10Redwall extends Scene {
     const n = handoffIn(t, au, T), first = v.form(line.words[0]!, t);
     if (t < line.start) counter19(c, n.x, n.baseline, n.capH, 'fail');
     else if (first.born > 0) odometer(c, 19 * first.sung, n.x, n.baseline, 196,
-      { digits: 2, color: first.stress ? 'clay' : 'fail', axes: first.axes, pitch: 98 });
+      { digits: 2, color: first.stress ? 'clay' : 'fail', on: 'paper', age: first.age, axes: first.axes, pitch: 98 });
     c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
     c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
     carry(c, v, t, T.wallStart, 96, 348, 'paper');
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y + 40 * fall, crab.pose, { px: crab.px });
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.render(this.ctx.renderer, out);
     return { ...postFor('paper'), hud: 0, bloom: 0 };
   }
 }

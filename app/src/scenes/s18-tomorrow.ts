@@ -1,18 +1,20 @@
+import { PrintOverlay } from '../kit/print-overlay';
+import { GlowLayer, postFor } from '../kit/ground';
 // S18: measured kf-S18 layout. Dawn is a binary ink/paper screen, never a colour gradient.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D, clearRT, W } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { ease, hash, lerp } from '../engine/util';
-import { css, POSTER_POST } from '../theme';
-import { Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { css } from '../theme';
+import { glowDraw, Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { drawCredits, drawSignature } from '../kit/credits';
 import * as Clawd from '../kit/clawd';
 import { blink, drawCursor } from '../kit/cursor';
 import { afterBeats, beatsSince, span } from '../kit/time';
 import { Lens } from '../kit/lens';
 import { resolveOutroTimes, outroState, outroCredits, starState, S18_LAYOUT, CONSTELLATION_EDGES, type OutroTimes } from './parts/s18-score';
-import { S18_PAPER } from './parts/s18-print';
+import { DAWN_PAPER_GLSL, S18_PAPER } from './parts/s18-print';
 
 // Cap heights for Archivo; label is the pre-conversion Plex Mono font size (px).
 export const LYRIC_SIZE = 80;
@@ -20,16 +22,25 @@ export const TYPE_LEVELS = { giant: null, lyric: 54.88, label: 20 } as const;
 
 class TomorrowWorld {
   layer = new Layer2D();
-  paper = new FSPass(S18_PAPER, { dawn: { value: 0 } });
+  glow = new GlowLayer();
+  print = new PrintOverlay('dawnPaper(p, dawn)', { dawn: { value: 0 } }, 'uniform float dawn;\n' + DAWN_PAPER_GLSL);
+  nightMask = new FSPass(`uniform float dawn; ${DAWN_PAPER_GLSL}
+    void main() { vec2 p = vec2(FRAG_PX.x,1080.0-FRAG_PX.y);
+      fragColor=vec4(vec3(1.0-dawnPaper(p,dawn)),1.0); }`, { dawn: { value: 0 } },
+    { blending: THREE.CustomBlending, transparent: true });
+  paper = new FSPass(S18_PAPER, { dawn: { value: 0 }, glowOnly: { value: 0 } });
   times: OutroTimes;
   voice: Voice;
   users = 0;
   constructor(ctx: SceneCtx) {
+    const m = this.nightMask.mat;
+    m.blendSrc = THREE.DstColorFactor; m.blendDst = THREE.ZeroFactor;
+    m.blendSrcAlpha = THREE.ZeroFactor; m.blendDstAlpha = THREE.OneFactor;
     this.times = resolveOutroTimes(ctx.audio, ctx.lyrics);
     this.voice = new Voice(ctx.lyrics, ctx.audio);
   }
   lens = new Lens();
-  dispose() { this.lens.dispose(); this.layer.texture.dispose(); this.paper.mat.dispose(); }
+  dispose() { this.glow.dispose(); this.print.dispose(); this.nightMask.mat.dispose(); this.lens.dispose(); this.layer.texture.dispose(); this.paper.mat.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, TomorrowWorld>();
 
@@ -100,6 +111,7 @@ export default class S18Tomorrow extends Scene {
     c.fillStyle = css('ink'); c.fillRect(5, 0, 1, q.h);
     c.font = font(F.mono(500), TYPE_LEVELS.label); c.fillText('Issue #1032', 35, 76);
     c.fillStyle = css('clay'); c.fillRect(226, 44, 14, 35);
+    glowDraw(c, this.world.glow.ctx, g => { g.fillStyle = css('clay'); g.fillRect(226,44,14,35); });
     c.restore();
   }
 
@@ -108,9 +120,13 @@ export default class S18Tomorrow extends Scene {
     const p = Clawd.pose(wave ? 'A13' : 'A1', { beat: f.beat, beat0: this.ctx.audio.beatAt(at), p: 0 });
     // Keep the feet on the reference horizon during the canonical sleep breath.
     Clawd.draw(c, q.x, q.y - p.dy * q.px, p, { px: q.px });
+    glowDraw(c, this.world.glow.ctx, g => Clawd.draw(g, q.x, q.y - p.dy * q.px,
+      { ...p, cells: p.cells.filter(cell => cell.k === 'O') }, { px: q.px, alpha: 0.25 }));
     if (!showCallout) return;
     c.save(); c.font = font(F.mono(600), TYPE_LEVELS.label); c.fillStyle = css('clay');
     for (let i = 0; i < 3; i++) c.fillText('z', q.x + 161 + i * 28, q.y - 30 - i * 24);
+    glowDraw(c, this.world.glow.ctx, g => { g.font = c.font; g.fillStyle = css('clay');
+      for (let i = 0; i < 3; i++) g.fillText('z', q.x + 161 + i * 28, q.y - 30 - i * 24); });
     c.restore();
   }
 
@@ -120,7 +136,7 @@ export default class S18Tomorrow extends Scene {
       const alpha = v.presence(line, t);
       if (!alpha) continue;
       const set = setLine(v.forms(line, t), LYRIC_SIZE, { space: 0.22 });
-      drawSet(c, set, 96, 690, { on: 'ink', alpha });
+      drawSet(c, set, 96, 690, { on: 'ink', alpha, glow: this.world.glow.ctx });
     }
   }
 
@@ -138,7 +154,8 @@ export default class S18Tomorrow extends Scene {
       c.fillText('A FILM BY  ·  作品', 100, 512); c.restore();
     }
     const right = drawSignature(c, 92, 708, 168, (i) => (b - 1 - i * 0.5) / 0.35, { color: 'paper' });
-    if (b > 1) drawCursor(c, { x: right + 6, y: 708, h: 168, on: b > 4 ? blink(f.beat) : 1 });
+    if (b > 1) { const cursor = { x: right + 6, y: 708, h: 168, on: b > 4 ? blink(f.beat) : 1 };
+      drawCursor(c, cursor); glowDraw(c, this.world.glow.ctx, g => drawCursor(g, cursor)); }
   }
 
   /**
@@ -158,9 +175,13 @@ export default class S18Tomorrow extends Scene {
     const w = this.world, T = w.times, s = outroState(this.ctx.audio, f.t, T), c = w.layer.ctx;
     clearRT(this.ctx.renderer, out);
     w.paper.u.dawn!.value = s.dawn;
-    w.paper.render(this.ctx.renderer, out);
-    w.layer.clear();
+    w.paper.u.glowOnly!.value = 0; w.paper.render(this.ctx.renderer, out);
+    w.paper.u.glowOnly!.value = 1;
+    w.glow.renderScene(this.ctx.renderer, w.paper.scene, w.paper.cam);
+    w.paper.u.glowOnly!.value = 0;
+    w.layer.clear(); w.glow.clear();
     this.stars(c, f.t);
+    glowDraw(c, w.glow.ctx, g => this.stars(g, f.t));
     c.fillStyle = css('paper', 0.8); c.fillRect(0, S18_LAYOUT.horizon, W, 1);
     c.fillRect(855, S18_LAYOUT.horizon + 12, W - 855, 1);
     const singing = T.carried.some(line => w.voice.presence(line, f.t) > 0);
@@ -178,7 +199,11 @@ export default class S18Tomorrow extends Scene {
       drawCredits(c, { x: 96, y: 742, width: 840, height: 170 }, { ...outroCredits(this.ctx.audio, f.t, T), columns: 1 });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.pass.u.dawn!.value = s.dawn; w.print.render(this.ctx.renderer, out);
+    // Remove the dawn PAPER coverage from the clay glow canvas before its HDR composite.
+    w.nightMask.u.dawn!.value = s.dawn;
+    w.glow.composite(this.ctx, out, 1.6, w.nightMask);
     w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
-    return { ...POSTER_POST, grain: 0.012, hud: 0, fade: s.fade };
+    return { ...postFor('ink'), ca: 0.6, grain: 0.012, hud: 0, fade: s.fade };
   }
 }

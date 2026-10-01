@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S08: the flat, bilateral-bleed COMMIT print in kf-S08; one shared world for all twelve cuts.
 import type * as THREE from "three";
 import { Scene, type Frame, type SceneCtx } from "../engine/scene";
@@ -6,7 +7,7 @@ import { F, font } from "../engine/type";
 import { hash, frameIdx, ease, lerp } from "../engine/util";
 import { css } from "../theme";
 import { postFor } from "../kit/ground";
-import { Voice, gridSnap } from "../kit/lyric-moves";
+import { heatColor, Voice, gridSnap } from "../kit/lyric-moves";
 import { varRun, type Axes } from "../kit/vartype";
 import { drawCursor, blink } from "../kit/cursor";
 import { afterBeats, beatsSince, span } from "../kit/time";
@@ -29,6 +30,7 @@ import {
 // Values are cap heights for Archivo; label is the Mono font size (as permitted by the task).
 export const TYPE_LEVELS = { giant: 550, lyric: 72, label: 20 };
 class World {
+  print = new PrintOverlay();
   layer = new Layer2D();
   grain = printTexture(8);
   voice: Voice;
@@ -38,7 +40,7 @@ class World {
     this.voice = new Voice(ctx.lyrics, ctx.audio);
     this.T = commitScore(ctx.audio, ctx.lyrics);
   }
-  dispose() {
+  dispose() { this.print.dispose();
     this.layer.texture.dispose();
   }
 }
@@ -75,6 +77,7 @@ export default class S08Commit extends Scene {
         { ...s.form.axes, wght: Math.max(800, s.form.axes.wght) },
         s.giant,
         "paper",
+        heatColor("paper", "clay", s.form.age),
       );
       this.brackets(c, "ink");
       // One machine annotation and its fine rule; second hash replaces the first after the repeat.
@@ -160,6 +163,7 @@ export default class S08Commit extends Scene {
     }
     c.drawImage(w.grain, 0, 0, 1920, 1080);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.render(this.ctx.renderer, out, clay ? 0.04 : 0.05);
     const magnitude = 10 * s.impact,
       fi = frameIdx(t);
     return {

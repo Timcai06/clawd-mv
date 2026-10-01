@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
 import { css } from '../theme';
-import { Ground, postFor } from '../kit/ground';
-import { Voice, drawWithMissing, drawSet, setLine } from '../kit/lyric-moves';
+import { Ground, GlowLayer, postFor } from '../kit/ground';
+import { glowDraw, heatColor, Voice, drawWithMissing, drawSet, setLine } from '../kit/lyric-moves';
 import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { beatHit, resolveX9Times, type X9Times } from './s09-z-shared';
@@ -15,12 +15,13 @@ import { carry, toner, handoffBoxes } from './parts/s09-type';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: 296.352, lyric: 65.856, label: 18 };
 class World {
+  glow = new GlowLayer();
   ground = new Ground(); storm: DeepStorm; camera = new THREE.PerspectiveCamera(52, W / H, 0.1, 200);
   layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
   constructor(ctx: SceneCtx) {
     this.storm = new DeepStorm(ctx.renderer); this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
   }
-  dispose() { this.storm.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.glow.dispose(); this.storm.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S11Rain extends Scene {
@@ -39,7 +40,11 @@ export default class S11Rain extends Scene {
     w.camera.position.set(0, 0, view.z); w.camera.up.set(Math.sin(ROLL), Math.cos(ROLL), 0);
     w.camera.lookAt(0, 0, -20); w.camera.updateMatrixWorld();
     const r = this.ctx.renderer; r.setRenderTarget(out); r.render(w.storm.scene, w.camera);
-    w.layer.clear(); const c = w.layer.ctx;
+    const stormMat = w.storm.mesh.material as THREE.ShaderMaterial;
+    stormMat.uniforms.glowOnly!.value = 1;
+    w.glow.renderScene(r, w.storm.scene, w.camera);
+    stormMat.uniforms.glowOnly!.value = 0;
+    w.layer.clear(); w.glow.clear(); const c = w.layer.ctx;
     // Only the living verse racks forward; typography remains at the lyric level.
     const verse = v.line('Stack traces falling like rain from the sky'), presence = v.presence(verse, t, 0);
     if (presence > 0 && t < T.impacts[0]) {
@@ -51,19 +56,23 @@ export default class S11Rain extends Scene {
           if (word.form.born <= 0) return;
           const focus = word.form.born, blur = (1 - focus) * 12;
           c.save(); c.filter = blur > 0.3 ? `blur(${blur}px)` : 'none';
-          c.globalAlpha = presence * focus; c.fillStyle = css(word.form.stress ? 'clay' : 'paper');
-          fillRun(c, word.run, word.x, i * 125 - (1 - focus) * 90); c.restore();
+          c.globalAlpha = presence * focus; c.fillStyle = heatColor(word.form.stress ? 'clay' : 'paper', 'ink', word.form.age);
+          fillRun(c, word.run, word.x, i * 125 - (1 - focus) * 90);
+          if (word.form.stress) glowDraw(c, w.glow.ctx, g => { g.fillStyle = c.fillStyle; fillRun(g, word.run, word.x, i * 125 - (1 - focus) * 90); });
+          c.restore();
         });
       }); c.restore();
     }
-    carry(c, v, t, T.rainStart, 96, 780, 'ink');
+    carry(c, v, t, T.rainStart, 96, 780, 'ink', 96, w.glow.ctx);
     if (s.first.born > 0) {
       c.save(); c.translate(s.x, s.y); c.rotate(s.roll); c.scale(s.sx, s.sy);
       c.globalAlpha = s.first.born * (1 - s.out);
-      c.fillStyle = css(s.first.stress ? 'clay' : 'paper'); fillRun(c, s.run);
+      c.fillStyle = heatColor(s.first.stress ? 'clay' : 'paper', 'ink', s.first.age); fillRun(c, s.run);
+      if (s.first.stress) glowDraw(c, w.glow.ctx, g => { g.fillStyle = c.fillStyle; fillRun(g, s.run); });
       if (s.second.born > 0) {
         c.globalAlpha = s.second.born * (1 - s.out);
-        drawWithMissing(c, s.run, 0, 0, i => s.second.sung * 10 - i - 0.6, css(s.second.stress ? 'clay' : 'paper'));
+        drawWithMissing(c, s.run, 0, 0, i => s.second.sung * 10 - i - 0.6, heatColor(s.second.stress ? 'clay' : 'paper', 'ink', s.second.age));
+        if (s.second.stress) glowDraw(c, w.glow.ctx, g => drawWithMissing(g, s.run, 0, 0, i => s.second.sung * 10 - i - 0.6, heatColor('clay','ink',s.second.age)));
       }
       c.restore();
       toner(c, s.dominant, 31, 2600);
@@ -77,9 +86,11 @@ export default class S11Rain extends Scene {
     }
     const line = v.line('Undefined, undefined, and I don’t know why');
     const rest = v.forms(line, t).slice(2), set = setLine(rest, 96);
-    drawSet(c, set, 960 - set.width / 2, 1040, { on: 'ink' });
+    drawSet(c, set, 960 - set.width / 2, 1040, { on: 'ink', glow: w.glow.ctx });
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
+    glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    return { ...postFor('ink'), hud: 0, bloom: 0 };
+    w.glow.composite(this.ctx, out, 1.6);
+    return { ...postFor('ink'), hud: 0, ca: 0.6 };
   }
 }

@@ -18,7 +18,7 @@ import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
 import { HANDOFF } from '../kit/handoff';
 import { afterBeats } from '../kit/time';
-import { Voice } from '../kit/lyric-moves';
+import { heatColor, Voice } from '../kit/lyric-moves';
 import { fillRun, varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { ARGS, FRAMES, landPulse, stackPhase, stackPos, stackScore, type StackScore } from './parts/s14-stack';
@@ -192,7 +192,7 @@ class World {
     this.lines.geo.dispose(); this.lines.mat.dispose();
     this.bodies.geometry.dispose(); (this.bodies.material as THREE.Material[]).forEach((m) => m.dispose());
     for (const p of this.planes) p.plane.dispose();
-    this.hud.texture.dispose(); this.glow.layer.texture.dispose(); this.ground.pass.mat.dispose();
+    this.hud.texture.dispose(); this.glow.dispose(); this.ground.pass.mat.dispose();
   }
 }
 
@@ -301,12 +301,15 @@ export default class S14Shaft extends Scene {
       p.plane.mesh.position.set(p.x, by + p.y, HZ + 0.35);
       const born = t >= wd.start ? 1 : 0;
       const stress = w.voice.isStressed(wd);
-      const flash = t >= wd.start ? Math.pow(0.5, (t - wd.start) / 0.08) : 0;
-      const base = stress ? CLAY : PAPER;
-      const col: RGB = [base[0] + flash * 0.6, base[1] + flash * 0.4, base[2] + flash * 0.3];
+      const colour = new THREE.Color(heatColor(stress ? 'clay' : 'paper', 'ink', t - wd.start));
+      const col: RGB = [colour.r, colour.g, colour.b];
       p.plane.set(col, born * (e.echo ? 0.32 : 1));
     }
     r.setRenderTarget(out); r.render(w.text3, w.cam);
+    const opacities = w.planes.map(p => p.plane.mat.opacity);
+    w.planes.forEach(p => { if (!w.voice.isStressed(p.entry.word)) p.plane.mat.opacity = 0; });
+    w.glow.renderScene(r, w.text3, w.cam, w.bodyScene);
+    w.planes.forEach((p, i) => { p.plane.mat.opacity = opacities[i]!; });
 
     // 2D: cursor head + Clawd, the depth counter, the stop callout, the S15 handoff
     const c = w.hud.ctx; w.hud.clear();

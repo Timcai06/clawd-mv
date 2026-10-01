@@ -1,3 +1,4 @@
+import { PrintOverlay } from '../kit/print-overlay';
 // S12: six side-by-side xerox generations persist behind the complete count-to-eleven row.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -6,7 +7,7 @@ import { ease, hash, lerp } from '../engine/util';
 import { afterBeats, span } from '../kit/time';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { Voice, stamp, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, stamp, drawSet, setLine } from '../kit/lyric-moves';
 import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
@@ -16,6 +17,7 @@ import { COPIES, countState, handoffIn } from './parts/s12-layout';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: 385, lyric: 65.856, label: 18 };
 class World {
+  print = new PrintOverlay();
   ground = new Ground(); layer = new Layer2D(); copies = new Layer2D(); times: X9Times; voice: Voice; users = 0;
   constructor(ctx: SceneCtx) {
     this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
@@ -60,7 +62,7 @@ class World {
     });
     this.copies.upload();
   }
-  dispose() { this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.copies.texture.dispose(); }
+  dispose() { this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.copies.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S12Rerun extends Scene {
@@ -113,7 +115,7 @@ export default class S12Rerun extends Scene {
     const s = countState(v, t, T);
     for (const d of s.digits) {
       c.save(); c.translate(d.x, d.y); c.scale(d.sx, d.sy);
-      c.fillStyle = css(d.color); fillRun(c, d.run); c.restore();
+      c.fillStyle = heatColor(d.color, 'paper', d.form.age); fillRun(c, d.run); c.restore();
     }
     if (s.dominant) toner(c, s.dominant, 77, 2600);
     if (s.number > 0) {
@@ -121,6 +123,7 @@ export default class S12Rerun extends Scene {
     }
     c.restore();
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.render(this.ctx.renderer, out);
     return { ...postFor('paper'), hud: 0, bloom: 0 };
   }
 }

@@ -35,7 +35,7 @@ void main() {
 }`;
 const KEY_FRAG=/* glsl */ `
 uniform vec3 paper,ink,clay;
-uniform float opacity;
+uniform float opacity, glowOnly;
 varying vec3 vWorld,vNormal;
 varying float vEnter;
 varying float vSung;
@@ -48,7 +48,10 @@ void main() {
   vec3 roof=mix(paper,clay,max(vEnter,vSung));
   float grain=hash12(floor(vWorld.xz*260.0));
   roof=mix(roof,ink,grain*0.035);
-  gl_FragColor=vec4(mix(side,roof,top),opacity);
+  vec3 col = mix(side,roof,top);
+  float clayCoverage = top * max(vEnter,vSung);
+  if (glowOnly > 0.5) col = clay * clayCoverage;
+  gl_FragColor=vec4(col,opacity);
 }`;
 const GROUND=/* glsl */ `
 uniform vec3 ink,paper,clay;
@@ -108,7 +111,7 @@ class KeyboardWorld {
     geo.setAttribute('keyMeta',new THREE.InstancedBufferAttribute(new Float32Array(KEY_FIELD.flatMap(k=>[k.x,k.z,k.index,k.enter?1:0])),4));
     geo.setAttribute('keySung',new THREE.InstancedBufferAttribute(new Float32Array(KEY_FIELD.length),1));
     this.mat=new THREE.ShaderMaterial({vertexShader:KEY_VERT,fragmentShader:GLSL_COMMON+KEY_FRAG,
-      uniforms:{beat:{value:0},kick:{value:0},landing:{value:0},opacity:{value:1},ink:{value:new THREE.Vector3(...INK)},paper:{value:new THREE.Vector3(...PAPER)},clay:{value:new THREE.Vector3(...CLAY)}},transparent:true});
+      uniforms:{beat:{value:0},kick:{value:0},landing:{value:0},opacity:{value:1},glowOnly:{value:0},ink:{value:new THREE.Vector3(...INK)},paper:{value:new THREE.Vector3(...PAPER)},clay:{value:new THREE.Vector3(...CLAY)}},transparent:true});
     this.caps=new THREE.InstancedMesh(geo,this.mat,KEY_FIELD.length);
     const m=new THREE.Matrix4();
     KEY_FIELD.forEach((k,i)=>{m.makeScale(k.width,0.42,k.depth);m.setPosition(k.x,0,k.z);this.caps.setMatrixAt(i,m);});
@@ -142,7 +145,7 @@ class KeyboardWorld {
     this.clawd.renderOrder=2;this.scene.add(this.clawd);
   }
   dispose() {
-    this.bg.mat.dispose();this.mat.dispose();this.caps.geometry.dispose();this.hud.texture.dispose();this.glow.layer.texture.dispose();this.sprite.texture.dispose();
+    this.bg.mat.dispose();this.mat.dispose();this.caps.geometry.dispose();this.hud.texture.dispose();this.glow.dispose();this.sprite.texture.dispose();
     this.clawd.geometry.dispose();(this.clawd.material as THREE.Material).dispose();
     this.legendTexture.dispose();this.legends.geometry.dispose();(this.legends.material as THREE.Material).dispose();
     for(const w of this.words){w.texture.dispose();w.mesh.geometry.dispose();(w.mesh.material as THREE.Material).dispose();}
@@ -196,6 +199,15 @@ export default class S07Keyboard extends Scene {
     w.clawd.quaternion.copy(w.camera.quaternion);w.clawd.rotateZ(-rider.roll);
     (w.clawd.material as THREE.MeshBasicMaterial).opacity=opacity;
     this.ctx.renderer.setRenderTarget(out);this.ctx.renderer.clearDepth();this.ctx.renderer.render(w.scene,w.camera);
+    // Preserve key depth/coverage; hide paper legends and clay-surface ink lyrics in this pass.
+    w.mat.uniforms.glowOnly!.value=1;
+    w.legends.visible=false; for(const p of w.words)p.mesh.visible=false;
+    w.sprite.clear();
+    const auraPose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(T.land),p:0,travel:0});
+    Clawd.draw(w.sprite.ctx,0,0,{...auraPose,cells:auraPose.cells.filter(cell=>cell.k==='O')},{px:10,alpha:0.25});w.sprite.upload();
+    w.glow.renderScene(this.ctx.renderer,w.scene,w.camera);
+    w.mat.uniforms.glowOnly!.value=0;
+    w.legends.visible=true; for(const p of w.words)p.mesh.visible=true;
     w.hud.clear();w.glow.clear();const c=w.hud.ctx;
     // Slice the print plate on the ruled perspective plane; its horizon and enlarged
     // right edge match the storyboard's cropped title, without a lit billboard.
@@ -210,6 +222,6 @@ export default class S07Keyboard extends Scene {
     const exit=handoffOut(f.t,au,T),reveal=span(f.t,afterBeats(au,T.end,-1),T.end);
     if(reveal>0) {c.globalAlpha=reveal;drawCursor(c,exit);drawCursor(w.glow.ctx,{...exit,on:reveal});c.globalAlpha=1;}
     this.ctx.comp.draw(this.ctx.renderer,w.hud.upload(),out);w.glow.composite(this.ctx,out,1.4);
-    return {...postFor('ink'),hud:0,frame:0,bloom:0.15,bloomThreshold:1.1,grain:0.023,vignette:0};
+    return {...postFor('ink'),hud:0,frame:0,ca:0.6,grain:0.023,vignette:0};
   }
 }

@@ -11,7 +11,7 @@ import type { AudioData } from '../engine/audio';
 import type { Line, Lyrics, Word } from '../engine/lyrics';
 import { SCALE, scaleContext2D } from '../engine/gl';
 import { clamp, ease, frameIdx, hash, lerp } from '../engine/util';
-import { css, type ThemeKey } from '../theme';
+import { css, THEME, type ThemeKey } from '../theme';
 import { afterBeats, span } from './time';
 import { fillRun, glyphPath, varRun, type Axes, type VarRun } from './vartype';
 
@@ -19,6 +19,25 @@ export type On = 'paper' | 'ink' | 'clay';
 /** Text colour on a ground, and the stress colour on it (clay on paper/ink, ink on clay). */
 export const fgOn = (on: On): ThemeKey => (on === 'paper' ? 'ink' : 'paper');
 export const stressOn = (on: On): ThemeKey => (on === 'clay' ? 'ink' : 'clay');
+
+/** Static token RGB interpolation; unborn words retain their base colour. */
+export function heatColor(base: ThemeKey, on: On, age: number): string {
+  const rgb = (key: ThemeKey) => {
+    const n = parseInt(THEME[key].slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const cold = rgb(base), hot = rgb(on === 'ink' ? 'hot' : on === 'paper' ? 'clay' : 'paper');
+  const k = age < 0 ? 0 : Math.exp(-age / 0.28);
+  return `rgb(${cold.map((v, i) => Math.round(lerp(v, hot[i]!, k))).join(',')})`;
+}
+
+/** Repeat an existing drawing in a clay-only layer at its exact logical transform. */
+export function glowDraw(source: CanvasRenderingContext2D, glow: CanvasRenderingContext2D,
+  draw: (g: CanvasRenderingContext2D) => void, alpha = 1) {
+  glow.save(); glow.setTransform(source.getTransform());
+  glow.globalAlpha = source.globalAlpha * alpha; glow.filter = source.filter;
+  draw(glow); glow.restore();
+}
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}-]/gu, '');
 
@@ -40,6 +59,8 @@ export interface WordForm {
   word: Word;
   /** Display text (typographic quotes; case as sung unless the move changes it). */
   text: string;
+  /** Seconds since word.start (negative before birth). */
+  age: number;
   t0: number;
   t1: number;
   /** 0 before the onset, eases to 1 within ~110 ms of it. */
@@ -113,7 +134,7 @@ export class Voice {
     const live = t >= w.start && t < w.end ? (this.env(t) - 0.5) * 160 : 0;
     const wght = clamp(lerp(300, target, swell) + live, 300, 900);
     return {
-      word: w, text: w.w, t0: w.start, t1: w.end,
+      word: w, text: w.w, age: t - w.start, t0: w.start, t1: w.end,
       born: t < w.start ? 0 : ease.outExpo(clamp((t - w.start) / 0.11)),
       sung, singing: t >= w.start && t < w.end, stress, held, axes: { wdth, wght },
     };
@@ -145,6 +166,8 @@ export class Voice {
 
 export interface SetOpts {
   on: On;
+  /** Optional clay-only duplicate, on INK only. */
+  glow?: CanvasRenderingContext2D;
   /** Explicit colour override (token). */
   color?: ThemeKey;
   /** Word space as a fraction of size (default 0.26). */
@@ -175,8 +198,12 @@ export function drawSet(c: CanvasRenderingContext2D, set: { words: SetWord[] }, 
   for (const s of set.words) {
     if (s.form.born <= 0) continue;
     c.globalAlpha = (o.alpha ?? 1) * Math.min(1, s.form.born * 1.6);
-    c.fillStyle = css(s.form.stress && !o.color ? stressOn(o.on) : fg);
-    fillRun(c, s.run, x + s.x, y + (1 - s.form.born) * s.run.size * 0.06);
+    const base = s.form.stress && !o.color ? stressOn(o.on) : fg;
+    c.fillStyle = heatColor(base, o.on, s.form.age);
+    const baseline = y + (1 - s.form.born) * s.run.size * 0.06;
+    fillRun(c, s.run, x + s.x, baseline);
+    if (base === 'clay' && o.on === 'ink' && o.glow)
+      glowDraw(c, o.glow, g => { g.fillStyle = c.fillStyle; fillRun(g, s.run, x + s.x, baseline); });
   }
   c.globalAlpha = 1;
 }
@@ -204,7 +231,7 @@ export function wrap(forms: WordForm[], size: number, width: number, o: Pick<Set
  * Returns the cell rectangles used (for scenes that attach things to them).
  */
 export function gridSnap(c: CanvasRenderingContext2D, forms: WordForm[], g: {
-  x: number; y: number; colW: number; rowH: number; cols: number; size: number; on: On; t: number; alpha?: number; upper?: boolean;
+  x: number; y: number; colW: number; rowH: number; cols: number; size: number; on: On; t: number; glow?: CanvasRenderingContext2D; alpha?: number; upper?: boolean;
 }) {
   const fg = fgOn(g.on);
   let col = 0, row = 0;
@@ -220,9 +247,16 @@ export function gridSnap(c: CanvasRenderingContext2D, forms: WordForm[], g: {
       c.strokeStyle = css(f.stress ? stressOn(g.on) : fg, (0.12 + 0.55 * flash) * (g.alpha ?? 1));
       c.lineWidth = 1;
       c.strokeRect(cx + 0.5, cy + 0.5, span * g.colW - 1, g.rowH - 1);
+      if (f.stress && g.on === 'ink' && g.glow)
+        glowDraw(c, g.glow, glow => { glow.strokeStyle = c.strokeStyle; glow.lineWidth = c.lineWidth;
+          glow.strokeRect(cx + 0.5, cy + 0.5, span * g.colW - 1, g.rowH - 1); });
       c.globalAlpha = (g.alpha ?? 1) * Math.min(1, f.born * 1.5);
-      c.fillStyle = css(f.stress ? stressOn(g.on) : fg);
-      fillRun(c, run, cx + g.size * 0.14, cy + g.rowH * 0.5 + run.capH * 0.5 - (1 - f.born) * g.rowH * 0.3);
+      const base = f.stress ? stressOn(g.on) : fg;
+      c.fillStyle = heatColor(base, g.on, f.age);
+      const baseline = cy + g.rowH * 0.5 + run.capH * 0.5 - (1 - f.born) * g.rowH * 0.3;
+      fillRun(c, run, cx + g.size * 0.14, baseline);
+      if (base === 'clay' && g.on === 'ink' && g.glow)
+        glowDraw(c, g.glow, glow => { glow.fillStyle = c.fillStyle; fillRun(glow, run, cx + g.size * 0.14, baseline); });
       c.globalAlpha = 1;
     }
     col += span;
@@ -236,7 +270,7 @@ export function gridSnap(c: CanvasRenderingContext2D, forms: WordForm[], g: {
  * Digits are set at fixed pitch so the columns do not jitter. Draws with (x, y) = left, baseline.
  */
 export function odometer(c: CanvasRenderingContext2D, value: number, x: number, y: number, size: number, o: {
-  digits: number; axes?: Axes; color: ThemeKey; alpha?: number; pitch?: number; blur?: boolean;
+  digits: number; axes?: Axes; color: ThemeKey; on?: On; age?: number; glow?: CanvasRenderingContext2D; alpha?: number; pitch?: number; blur?: boolean;
 }) {
   const axes = o.axes ?? { wdth: 87.5, wght: 900 };
   const pitch = o.pitch ?? varRun('0', size, axes).width * 1.04;
@@ -244,7 +278,8 @@ export function odometer(c: CanvasRenderingContext2D, value: number, x: number, 
   const lineH = capH * 1.45;
   c.save();
   c.beginPath(); c.rect(x - size * 0.1, y - capH - (lineH - capH) / 2, pitch * o.digits + size * 0.2, lineH); c.clip();
-  c.fillStyle = css(o.color, o.alpha ?? 1);
+  c.fillStyle = o.age === undefined ? css(o.color) : heatColor(o.color, o.on ?? 'paper', o.age);
+  c.globalAlpha *= o.alpha ?? 1;
   for (let k = 0; k < o.digits; k++) {
     const place = Math.pow(10, o.digits - 1 - k);
     const v = value / place;
@@ -257,7 +292,13 @@ export function odometer(c: CanvasRenderingContext2D, value: number, x: number, 
       const digit = ((Math.floor(pos) + d) % 10 + 10) % 10;
       const run = varRun(String(digit), size, axes);
       const dy = (d - (pos - Math.floor(pos))) * lineH;
-      fillRun(c, run, x + k * pitch + (pitch - run.width) / 2, y + dy);
+      const dx = x + k * pitch + (pitch - run.width) / 2;
+      fillRun(c, run, dx, y + dy);
+      if (o.color === 'clay' && o.on === 'ink' && o.glow)
+        glowDraw(c, o.glow, g => {
+          g.beginPath(); g.rect(x - size * 0.1, y - capH - (lineH - capH) / 2, pitch * o.digits + size * 0.2, lineH); g.clip();
+          g.fillStyle = c.fillStyle; fillRun(g, run, dx, y + dy);
+        });
     }
   }
   c.restore();
@@ -293,7 +334,7 @@ export function drawWithMissing(c: CanvasRenderingContext2D, run: VarRun, x: num
  * Returns the shake amount (0..1) for the scene's post shake.
  */
 export function stamp(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, o: {
-  t: number; at: number; rot?: number; color: ThemeKey; axes?: Axes; seed?: number; box?: boolean;
+  t: number; at: number; rot?: number; color: ThemeKey; on?: On; axes?: Axes; seed?: number; box?: boolean;
 }): number {
   if (o.t < o.at) return 0;
   const k = o.t - o.at;
@@ -302,12 +343,12 @@ export function stamp(c: CanvasRenderingContext2D, text: string, x: number, y: n
   c.save();
   c.translate(x, y); c.rotate(o.rot ?? -0.1); c.scale(sc, sc);
   c.globalAlpha = clamp(k / 0.04);
-  c.fillStyle = css(o.color);
+  c.fillStyle = heatColor(o.color, o.on ?? 'paper', k);
   const ox = -run.width / 2, oy = run.capH / 2;
   fillRun(c, run, ox, oy);
   if (o.box !== false) {
     const pad = size * 0.16, lw = size * 0.07;
-    c.lineWidth = lw; c.strokeStyle = css(o.color);
+    c.lineWidth = lw; c.strokeStyle = heatColor(o.color, o.on ?? 'paper', k);
     c.strokeRect(ox - pad, -run.capH / 2 - pad, run.width + pad * 2, run.capH + pad * 2);
   }
   // Rubber: knock speckles out of the ink.

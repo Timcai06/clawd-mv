@@ -74,6 +74,7 @@ export function drawWarped(
   axes: Axes,
   q: Quad,
   color: ThemeKey,
+  heat?: string,
 ) {
   const run = varRun(text, 100, axes),
     e = inkExtent(run),
@@ -104,7 +105,7 @@ export function drawWarped(
       } else path.closePath();
     }
   }
-  c.fillStyle = css(color);
+  c.fillStyle = heat ?? css(color);
   c.fill(path);
 }
 export function polygon(

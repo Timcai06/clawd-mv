@@ -7,6 +7,7 @@ import { hexToLinear } from './engine/util';
 export const THEME = {
   paper: '#F2EFE9', // background, the poster sheet
   ink: '#1B2A4A', // main colour: display type, grid rules, UI text
+  hot: '#FFF3E0', // white-hot lyric onset: rgb(255,243,224)
   clay: '#D77757', // the only accent: Clawd (same as the official clawd_body), hook word, current line, the big circle
   // Semantic colours: test state (fail / pass marks and counters) and PR diff lines.
   // Approved by Tim (2026-09-30) for test state and PR diff lines only; values provisional.

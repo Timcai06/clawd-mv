@@ -43,7 +43,7 @@ export function countState(v: Voice, t: number, T: X9Times) {
     const raw = runBox(run, 0, 0), target = i === 10 ? handoffOut(t, v.audio, T) : { x: p.x, y: 1031 - p.h, w: p.w, h: p.h };
     const sx = target.w / raw.w, sy = target.h / raw.h;
     const x = target.x - raw.x * sx, y = target.y - raw.y * sy;
-    return { run, x, y, sx, sy, color: i === 10 ? 'clay' as const : 'ink' as const,
+    return { form, run, x, y, sx, sy, color: i === 10 ? 'clay' as const : 'ink' as const,
       box: runBox(run, x, y, sx, sy) };
   });
   const pose = Clawd.pose('A9', { beat: number, beat0: 0, p: temporal.countPhase });

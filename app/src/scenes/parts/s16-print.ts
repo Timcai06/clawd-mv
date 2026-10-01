@@ -37,10 +37,10 @@ export function printedPoints(run: VarRun, box: Rect): Pt[] {
 }
 
 export function printRun(c: CanvasRenderingContext2D, run: VarRun, box: Rect,
-  color: 'ink' | 'paper' | 'clay' | 'pass' | 'fail', seed: number, alpha = 1) {
+  color: 'ink' | 'paper' | 'clay' | 'pass' | 'fail', seed: number, alpha = 1, heat?: string) {
   const b = inkBounds(run), m = printTransform(run, box);
   c.save(); c.transform(m.sx, 0, 0, m.sy, m.tx, m.ty);
-  c.globalAlpha = alpha; c.fillStyle = css(color); fillRun(c, run);
+  c.globalAlpha = alpha; c.fillStyle = heat ?? css(color); fillRun(c, run);
   c.clip(runPath(run)); c.fillStyle = css('paper', 0.3);
   for (let i = 0; i < 550; i++) c.fillRect(b.x + hash(seed, i, 1) * b.w,
     b.y + hash(seed, i, 2) * b.h, 0.35 + hash(seed, i, 3) * 0.7, 0.4);
