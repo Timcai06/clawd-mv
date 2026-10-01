@@ -3,12 +3,13 @@ import type * as THREE from "three";
 import { Scene, type Frame, type SceneCtx } from "../engine/scene";
 import { Layer2D } from "../engine/gl";
 import { F, font } from "../engine/type";
-import { hash, frameIdx } from "../engine/util";
+import { hash, frameIdx, ease, lerp } from "../engine/util";
 import { css } from "../theme";
 import { postFor } from "../kit/ground";
 import { Voice, gridSnap } from "../kit/lyric-moves";
+import { varRun, type Axes } from "../kit/vartype";
 import { drawCursor, blink } from "../kit/cursor";
-import { afterBeats, span } from "../kit/time";
+import { afterBeats, beatsSince, span } from "../kit/time";
 import { MONTH_SOURCE } from "../kit/content";
 import {
   commitScore,
@@ -64,6 +65,9 @@ export default class S08Commit extends Scene {
       c = w.layer.ctx;
     const clay = s.hook && !s.frozen;
     w.layer.clear(css(clay ? "clay" : "paper"));
+    const cam = this.camera(t, s, T);
+    c.save();
+    c.translate(cam.fx, cam.fy); c.rotate(cam.rot); c.scale(cam.zoom, cam.zoom); c.translate(-cam.fx, -cam.fy);
     if (clay && s.form.born > 0) {
       drawWarped(
         c,
@@ -103,7 +107,7 @@ export default class S08Commit extends Scene {
         );
       }
     } else {
-      this.brackets(c, "ink");
+      if (!(t >= T.brackets && t < T.taps[0]!)) this.brackets(c, "ink");
       if (s.taps) this.keyboard(c, f, T);
       else if (s.preview) this.preview(c, f);
       else if (t >= T.quit && t < T.pick2) this.code(c, f, T);
@@ -121,7 +125,7 @@ export default class S08Commit extends Scene {
         c.translate(960, 360);
         c.scale(v.breath(f.a.kick), v.breath(f.a.kick));
         c.translate(-960, -360);
-        gridSnap(c, forms, {
+        const cells = gridSnap(c, forms, {
           x: 96,
           y: 170,
           colW: 144,
@@ -133,12 +137,14 @@ export default class S08Commit extends Scene {
           alpha: pres,
         });
         c.restore();
+        if (t >= T.brackets && t < T.taps[0]!) this.fitBrackets(c, t, cells, f);
       }
     }
     if (s.frozen) {
       const p = handoffIn(t, au, { ...T, start: s.second ? T.pick2 : T.start });
       drawCursor(c, { ...p, on: blink(au.beatAt(t)) });
     }
+    c.restore();
     // The hash's hairline is the only outgoing object; no transition outside the last beat.
     if (t >= T.hit1) {
       const p = handoffOut(t, au, T);
@@ -168,6 +174,67 @@ export default class S08Commit extends Scene {
       ] as [number, number],
     };
   }
+  /**
+   * v4 motion: the print is filmed. Before each hook the frame creeps in on the cursor (tension),
+   * inhales on the last half beat, then the slam throws it back out; held COMMITs drift; paper
+   * lines bump on every sung word; "my machine" pushes into the calendar preview.
+   */
+  private camera(t: number, s: ReturnType<typeof commitLayout>, T: CommitScore) {
+    const au = this.ctx.audio;
+    const hit = s.second ? T.hit2 : T.hit1, pre = s.second ? T.pick2 : T.start;
+    let zoom = 1, rot = 0, fx = 960, fy = 540;
+    if (s.frozen) {
+      const creep = ease.inQuad(span(t, pre, hit));
+      const inhale = ease.inOutCubic(span(t, afterBeats(au, hit, -0.5), hit));
+      zoom = 1 + 0.22 * creep - 0.12 * inhale;
+      fx = 960; fy = 560;
+    } else {
+      const b = Math.max(0, beatsSince(au, t, hit));
+      // slam: arrives too close, kicks back past 1 and settles
+      zoom = 1 + 0.16 * Math.exp(-b * 6) * Math.cos(b * 9);
+      rot = 0.025 * Math.exp(-b * 5) * Math.sin(b * 11);
+      if (s.hook) zoom += 0.05 * ease.inOutQuad(span(t, hit, s.second ? T.works : T.brackets));
+    }
+    if (!s.hook && !s.frozen) {
+      const line = this.ctx.lyrics.lastLine(t);
+      let bump = 0, sign = 1;
+      for (const w of line?.words ?? []) if (t >= w.start) { bump = Math.pow(0.5, (t - w.start) / 0.08); sign = w.index % 2 ? 1 : -1; }
+      zoom += 0.02 * bump + 0.03 * ease.inOutQuad(span(t, T.brackets, T.end));
+      rot += 0.004 * bump * sign;
+      if (s.preview) {
+        const k = ease.inOutCubic(span(t, T.works, T.end));
+        zoom += 0.16 * k; fx = lerp(960, 420, k); fy = lerp(540, 560, k);
+      }
+    }
+    return { zoom, rot, fx, fy };
+  }
+
+  /** "Every bracket's gonna fit": the corner brackets creep in word by word, then snap shut on "fit". */
+  private fitBrackets(c: CanvasRenderingContext2D, t: number, cells: { x: number; y: number; w: number; h: number; form: { text: string; t0: number; born: number; axes: Axes } }[], f: Frame) {
+    const fit = cells.find((x) => /^fit/i.test(x.form.text));
+    const born = cells.filter((x) => x.form.born > 0).length;
+    const creep = Math.min(1, born / 4) * 0.25;
+    const snap = fit && t >= fit.form.t0 ? ease.outBack(span(t, fit.form.t0, fit.form.t0 + 0.16), 2.2) : 0;
+    const homeL = { x: 96, y: 200 }, homeR = { x: 212, y: 200 };
+    const cy = fit ? fit.y + fit.h * 0.5 + 34 : 200;
+    const fw = fit ? varRun(fit.form.text, 100, fit.form.axes).width : 0;
+    const tl = fit ? { x: fit.x - 46, y: cy } : homeL, tr = fit ? { x: fit.x + 14 + fw + 12, y: cy } : homeR;
+    const k = Math.max(creep, snap);
+    c.font = font(F.mono(400), 100);
+    c.fillStyle = css(snap > 0 ? "clay" : "ink", snap > 0 ? 1 : 0.6);
+    c.fillText("[", lerp(homeL.x, tl.x, k), lerp(homeL.y, tl.y, k));
+    c.fillText("]", lerp(homeR.x, tr.x, k), lerp(homeR.y, tr.y, k));
+    // the other pairs lean in with the creep and recoil on the snap
+    const rec = snap > 0 ? Math.exp(-(t - fit!.form.t0) / 0.12) : 0;
+    c.fillStyle = css("ink", 0.6);
+    c.fillText("{", 1490 - 120 * creep + 40 * rec, 200);
+    c.fillText("}", 1605 - 120 * creep + 40 * rec, 200);
+    c.fillText("(", 1670 - 90 * creep + 30 * rec, 980);
+    c.fillText(")", 1790 - 90 * creep + 30 * rec, 980);
+    rule(c, [270, 146], [840, 146], "ink", 0.6 * (1 - k));
+    void f;
+  }
+
   private brackets(c: CanvasRenderingContext2D, color: "ink" | "paper") {
     // Graphic brackets share the lyric cap level, never create another type scale.
     c.font = font(F.mono(400), 100);
