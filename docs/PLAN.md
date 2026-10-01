@@ -143,6 +143,7 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 - ✅ 吸收 Codex 的 pdoom 源码分析（`docs/reference/pdoom-analysis-codex-20261001.md`）后定稿：TREATMENT「歌词 v3 与分镜对齐：定稿」（层级规则、每场歌词机制、17 个交接物、同步层次），交接常量 `kit/handoff.ts`。
 - T 再次强调（2026-10-01）：**分镜图第一**，好不好由 T 定。任务说明改为先还原分镜图（构图包围盒用数值核对），歌词机制不能改分镜构图。
 - ✅ Codex 7 组并行完成并合并（`docs/tasks/V3-rollout.md`）：A S01–S04 · B S05–S07 · C S08 S13 · D S09–S12 · E S14–S15 · F S16–S17 · G S18。合并后 tsc 无错，242 项测试通过，分镜检查 0 过短 0 不递增。各组报告和短片在 `out/v3-<组>/`，并排图在 `out/compare/v3-<组>/`。
+- ✅ T 看整片预览 v2（2026-10-01）：「效果其实挺不错」，但受 Codex 设计能力所限还不够好（例：S14 远不如 pdoom 1:50 起的 transformer / stack 段）。**从此 C（Opus）是唯一的核心设计师和执行者**，逐场优化直到完成；Codex 只在 C 明确指派时做纯工具活。
 - 各组报告里的遗留项（等 T 看完预览再决定）：A：S01 主导元素占比 22%（低于 30%）；B：想要共享常量 `HANDOFF.cursor07`（S07→S08 现在各写各的）；D：S09 唱词暂用 Archivo，真正 Mono 唱词需要 Plex 的连续字形接口；E/F：S15→S16、S17→S18 交接需跨组联调；G：尾奏「oh」没有逐词数据，暂按拍点亮星。纸纤维、颗粒、排线都是程序模拟。
 - 待清理：`scenes/parts/s11-storm.ts` 已不被 S11 使用，只剩 `tests/scene-d.test.ts` 引用，铺开时一起删。
 
