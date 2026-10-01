@@ -1,378 +1,184 @@
-// S14: inside the machine. A plumb cursor follows a call stack down an engraved shaft.
-// The final camera approach ends on near; seeks and shutter samples never integrate state.
+// S14 — open, engraved stack frames projected down into a vertical shaft.
+// Geometry is calibrated to kf-S14 and shared with the nonvisual composition tests.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D, W, H } from '../engine/gl';
-import { LineBatch } from '../engine/lines';
-import { GLSL_COMMON } from '../engine/glsl/common';
 import { F, font } from '../engine/type';
-import { ease, lerp } from '../engine/util';
+import { hash } from '../engine/util';
 import { css, lin } from '../theme';
 import { GlowLayer, postFor } from '../kit/ground';
-import { drawCursor, drawTrail, blink } from '../kit/cursor';
-import { afterBeats, span } from '../kit/time';
-import { CALL_STACK, MONTH_SOURCE } from '../kit/content';
+import { Voice, Plate, drawSet, setLine } from '../kit/lyric-moves';
+import { fillRun, varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { label, inscribe, machineLine } from './parts/s13-score';
-import { diveScore, diveState, type DiveScore } from './parts/s14-score';
+import { diveScore, type DiveScore } from './parts/s14-score';
+import { frameAt, handoffIn, handoffOut, shaftState, VP, TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, type Point } from './parts/s14-layout';
+export const TYPE_LEVELS = { ...PRINT_LEVELS };
 
-const PITCH = 5.5;
-const HALF_X = 7.2;
-const HALF_Z = 2.1;
-const COUNT = 22;
-const PAPER = lin('paper');
-const CLAY = lin('clay');
-const INK = lin('ink');
-const ATLAS_W = 1536, ATLAS_H = 768;
-const PX = 11;
-
-const SHAFT_BG = /* glsl */ `
-uniform float t, fall, entrance, hush, speed, kick;
+const BG = /* glsl */ `
 uniform vec3 ink, paper;
-float rule(float x, float pitch) {
-  float d = abs(fract(x / pitch + 0.5) - 0.5) * pitch;
-  return 1.0 - smoothstep(0.45, 0.45 + 1.0 / PX_SCALE, d);
-}
+uniform float travel, stopped;
 void main() {
   vec2 p = FRAG_PX;
-  vec2 q = p + vec2(fall * 8.0, -fall * 29.0);
-  // A second, distant grid drifts at half speed. Depth fog is blue, never black.
-  float grid = max(rule(q.x, 96.0), rule(q.y, 96.0));
-  float major = max(rule(q.x, 384.0), rule(q.y, 384.0));
-  float mist = smoothstep(0.9, 0.05, vUv.y) * 0.04 * entrance * (1.0 - hush * 0.55);
-  float a = grid * 0.025 + major * (0.035 + 0.025 * kick) + mist;
-  // Perspective construction lines point into the mouth of the vertical shaft.
-  vec2 centre = vec2(0.57, 0.44);
-  vec2 r = (vUv - centre) * vec2(1.77778, 1.0);
-  float angle = atan(r.y, r.x);
-  float rays = pxLine(abs(sin(angle * 12.0)) * length(r), 0.0, 1.0);
-  a += rays * 0.06 * entrance * (1.0 - hush * 0.7);
-  // Motion columns disappear at the dead stop; slow fog texture stays alive.
-  float n = hash12(vec2(floor(p.x / 9.0), 14.0));
-  float streak = step(0.981, n) * smoothstep(0.55, 1.0, fract(p.y / 710.0 + fall * 0.6 + n));
-  a += streak * min(speed * 0.07, 0.2) * entrance;
-  float fogGrain = snoise(vec3(p * 0.003, t * 0.07));
-  a += max(0.0, fogGrain) * 0.007;
-  fragColor = vec4(mix(ink, paper, clamp(a, 0.0, 0.2)), 1.0);
+  float fibre = hash12(floor(p * vec2(0.7, 1.9)));
+  // Printed grain is stationary on the sheet; the construction grid moves with depth.
+  vec2 q = p + vec2(travel * 24.0, travel * 170.0);
+  float gx = pxLine(abs(fract(q.x / 110.0 + 0.5) - 0.5) * 110.0, 0.0, 0.65);
+  float gy = pxLine(abs(fract(q.y / 190.0 + 0.5) - 0.5) * 190.0, 0.0, 0.65);
+  float column = step(0.982, hash11(floor(p.x / 12.0)));
+  float stripe = column * step(0.38, fract(p.y / 560.0 + travel)) * (1.0 - stopped);
+  fragColor = vec4(mix(ink, paper, fibre * 0.016 + max(gx, gy) * 0.028 + stripe * 0.11), 1.0);
 }`;
 
-const BODY_VERT = /* glsl */ `
-out vec3 vPos;
-void main() {
-  vec4 p = instanceMatrix * vec4(position, 1.0);
-  vPos = p.xyz;
-  gl_Position = projectionMatrix * modelViewMatrix * p;
-}`;
-
-const BODY_FRAG = /* glsl */ `
-in vec3 vPos;
-out vec4 fragColor;
-uniform vec3 ink, paper;
-uniform float cameraY, entrance, hush;
-void main() {
-  float dist = abs(vPos.y - cameraY);
-  float fog = exp(-dist * (0.028 + hush * 0.04));
-  float grooves = engrave(vPos.xz * 0.14, 0.23, 72.0, 0.7);
-  vec3 c = mix(ink, paper, (0.022 + grooves * 0.038) * fog);
-  fragColor = vec4(c, entrance);
-}`;
-
-const TEXT_VERT = /* glsl */ `
-out vec2 vUv;
-out float worldY;
-void main() {
-  vUv = uv;
-  vec4 p = modelMatrix * vec4(position, 1.0);
-  worldY = p.y;
-  gl_Position = projectionMatrix * viewMatrix * p;
-}`;
-
-const TEXT_FRAG = /* glsl */ `
-in vec2 vUv;
-in float worldY;
-out vec4 fragColor;
-uniform sampler2D atlas;
-uniform float cameraY, entrance, hush;
-void main() {
-  vec4 tx = texture(atlas, vUv);
-  float fog = exp(-abs(worldY - cameraY) * (0.03 + hush * 0.045));
-  fragColor = vec4(tx.rgb, tx.a * fog * entrance);
-}`;
-
-interface Projected { x: number; y: number; visible: boolean }
-
-class ShaftWorld {
-  users = 0;
-  T: DiveScore;
-  bg = new FSPass(SHAFT_BG, {
-    t: { value: 0 }, fall: { value: 0 }, entrance: { value: 0 }, hush: { value: 0 },
-    speed: { value: 0 }, kick: { value: 0 },
-    ink: { value: new THREE.Vector3(...INK) }, paper: { value: new THREE.Vector3(...PAPER) },
-  });
-  layer = new Layer2D();
-  glow = new GlowLayer();
-  lines = new LineBatch(12000, { screen2D: false, blend: 'normal', depthTest: true });
-  cursorLines = new LineBatch(1000, { screen2D: false, blend: 'normal' });
-  cam = new THREE.PerspectiveCamera(33, W / H, 0.1, 500);
-  bodies = new THREE.Scene();
-  textScene = new THREE.Scene();
-  slabs: THREE.InstancedMesh;
-  atlas = new Layer2D(ATLAS_W, ATLAS_H);
-  namePlanes: THREE.Mesh[] = [];
-  textMaterial: THREE.ShaderMaterial;
-  matrix = new THREE.Matrix4();
-  scratch = new THREE.Vector3();
-
-  constructor(ctx: SceneCtx) {
-    this.T = diveScore(ctx.audio, ctx.lyrics);
-    const material = new THREE.ShaderMaterial({
-      glslVersion: THREE.GLSL3, vertexShader: BODY_VERT,
-      fragmentShader: GLSL_COMMON + BODY_FRAG,
-      uniforms: { ink: { value: new THREE.Vector3(...INK) }, paper: { value: new THREE.Vector3(...PAPER) },
-        cameraY: { value: 0 }, entrance: { value: 0 }, hush: { value: 0 } },
-      transparent: true, depthWrite: true, toneMapped: false,
-    });
-    this.slabs = new THREE.InstancedMesh(new THREE.BoxGeometry(HALF_X * 2, 2.4, HALF_Z * 2), material, COUNT);
-    this.slabs.frustumCulled = false; this.bodies.add(this.slabs);
-    this.paintAtlas();
-    this.atlas.texture.generateMipmaps = true;
-    this.atlas.texture.minFilter = THREE.LinearMipmapLinearFilter;
-    this.atlas.texture.anisotropy = ctx.renderer.capabilities.getMaxAnisotropy();
-    this.textMaterial = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3,
-      vertexShader: TEXT_VERT, fragmentShader: TEXT_FRAG,
-      uniforms: { atlas: { value: this.atlas.upload() }, cameraY: { value: 0 },
-        entrance: { value: 0 }, hush: { value: 0 } },
-      transparent: true, toneMapped: false, depthWrite: false, side: THREE.DoubleSide });
-    for (let i = 0; i < COUNT; i++) {
-      const geo = new THREE.PlaneGeometry(13.6, 2.25);
-      const plane = new THREE.Mesh(geo, this.textMaterial);
-      plane.frustumCulled = false; this.namePlanes.push(plane); this.textScene.add(plane);
-    }
-  }
-
-  /** One scale-aware atlas contains the three actual stack frames; it is uploaded once. */
-  paintAtlas() {
-    const c = this.atlas.ctx; this.atlas.clear();
-    for (let i = 0; i < CALL_STACK.length; i++) {
-      const frame = CALL_STACK[i]!, y = i * 256;
-      label(c, `src/calendar/month.ts:${frame.line}`, 68, y + 55, 30, 0.45);
-      c.font = font(F.mono(600), 80); c.fillStyle = css('paper');
-      c.fillText(`${frame.name}()`, 64, y + 150);
-      label(c, i === 0 ? 'calendar.cells / output' : i === 1 ? 'month, year / frame' : 'month, year / bound', 66, y + 207, 27, 0.45);
-      label(c, 'CALL', 1270, y + 144, 30, 0.45);
-      c.fillStyle = css('paper', 0.14); c.fillRect(64, y + 227, 1392, 1);
-    }
-  }
-
-  project(x: number, y: number, z: number): Projected {
-    this.scratch.set(x, y, z).project(this.cam);
-    return { x: (this.scratch.x * 0.5 + 0.5) * W, y: (0.5 - this.scratch.y * 0.5) * H,
-      visible: this.scratch.z > -1 && this.scratch.z < 1 };
-  }
-
-  camera(f: Frame, ctx: SceneCtx, s: ReturnType<typeof diveState>) {
-    const T = this.T;
-    const elevator = ease.inOutCubic(span(f.t, T.frames, afterBeats(ctx.audio, T.frames, 1)));
-    const pitch = lerp(0.74, 0.19, s.entrance);
-    const yaw = lerp(-0.38, 0.25, elevator);
-    const distance = lerp(24, 22, elevator);
-    const focusY = -s.pos * PITCH;
-    // A fast final turn starts before near and has zero travel after it.
-    const approach = ease.inExpo(span(f.t, afterBeats(ctx.audio, T.near, -0.6), T.near));
-    const finalYaw = lerp(yaw, 0.03, approach);
-    const finalPitch = lerp(pitch, 0.03, approach);
-    const finalDistance = lerp(distance, 21.5, approach);
-    this.cam.fov = lerp(33, 30, approach);
-    this.cam.position.set(Math.sin(finalYaw) * Math.cos(finalPitch) * finalDistance,
-      focusY + Math.sin(finalPitch) * finalDistance, Math.cos(finalYaw) * Math.cos(finalPitch) * finalDistance);
-    this.cam.up.set(0, 1, 0); this.cam.lookAt(0.8, focusY - 0.1, 0);
-    this.cam.updateProjectionMatrix(); this.cam.updateMatrixWorld();
-  }
-
-  /** Complete overwrite of all instance matrices, UVs and visibility on every frame. */
-  stack(f: Frame, s: ReturnType<typeof diveState>, ctx: SceneCtx, out: THREE.WebGLRenderTarget) {
-    const target = s.target;
-    const start = Math.floor(s.pos) - 3;
-    const material = this.slabs.material as THREE.ShaderMaterial;
-    material.uniforms.cameraY!.value = -s.pos * PITCH;
-    material.uniforms.entrance!.value = s.entrance;
-    material.uniforms.hush!.value = s.hush;
-    const visibleCount = Math.round(lerp(COUNT, 11, s.hush));
-    this.slabs.count = visibleCount;
-    this.textMaterial.uniforms.cameraY!.value = -s.pos * PITCH;
-    this.textMaterial.uniforms.entrance!.value = s.entrance;
-    this.textMaterial.uniforms.hush!.value = s.hush;
-    this.lines.clear(); this.cursorLines.clear();
-
-    for (let i = 0; i < COUNT; i++) {
-      // After the stop a special daysIn slab occupies the exact focal depth.
-      let index = start + i;
-      const targetIndex = Math.round(target);
-      const isTarget = index === targetIndex;
-      const depth = isTarget ? target : index;
-      const y = -depth * PITCH;
-      this.matrix.makeTranslation(0, y, 0); this.slabs.setMatrixAt(i, this.matrix);
-      const plane = this.namePlanes[i]!;
-      plane.visible = i < visibleCount && s.entrance > 0.001;
-      plane.position.set(0, y, HALF_Z + 0.02);
-      const frame = isTarget ? 2 : index < target * 0.33 ? 0 : index < target * 0.72 ? 1 : 2;
-      const uv = plane.geometry.getAttribute('uv') as THREE.BufferAttribute;
-      const top = 1 - frame / 3, bottom = 1 - (frame + 1) / 3;
-      uv.setXY(0, 0, top); uv.setXY(1, 1, top); uv.setXY(2, 0, bottom); uv.setXY(3, 1, bottom);
-      uv.needsUpdate = true;
-      if (i >= visibleCount) continue;
-      const fog = Math.exp(-Math.abs(depth - s.pos) * (0.19 + 0.24 * s.hush));
-      const opacity = fog * s.entrance;
-      this.frameLines(y, opacity, isTarget && s.stopped);
-      // The clay conductor takes the cursor down the stack, not upward through it.
-      this.cursorLines.seg(-5.9, y - 1.2, HALF_Z + 0.06, -5.9, y - PITCH + 1.2, HALF_Z + 0.06,
-        1.25, ...CLAY, opacity * 0.4);
-      // Floor labels are 2D annotations tied to projected world positions.
-      const point = this.project(HALF_X + 0.9, y, HALF_Z);
-      if (point.visible && point.x < 1790 && point.y > 180 && point.y < 890 && opacity > 0.13)
-        label(this.layer.ctx, `F.${String(Math.max(0, Math.round(depth))).padStart(2, '0')}`, point.x, point.y, 17, opacity * 0.7);
-    }
-    this.slabs.instanceMatrix.needsUpdate = true;
-    // Four load-bearing rails extend past the visible floors to suggest an unbounded stack.
-    for (const x of [-HALF_X, HALF_X]) for (const z of [-HALF_Z, HALF_Z])
-      this.lines.seg(x, -(start - 2) * PITCH, z, x, -(start + COUNT + 2) * PITCH, z, 0.9, ...PAPER, 0.14 * s.entrance);
-    ctx.renderer.setRenderTarget(out); ctx.renderer.clearDepth();
-    ctx.renderer.render(this.bodies, this.cam);
-    this.lines.render(ctx.renderer, out, this.cam);
-    ctx.renderer.render(this.textScene, this.cam);
-    this.cursorLines.render(ctx.renderer, out, this.cam);
-    void f;
-  }
-
-  frameLines(y: number, alpha: number, hot: boolean) {
-    const l = this.lines;
-    const segment = (a: [number, number, number], b: [number, number, number], width = 1, opacity = 1) =>
-      l.seg(...a, ...b, width, ...PAPER, alpha * opacity);
-    for (const z of [-HALF_Z, HALF_Z]) {
-      segment([-HALF_X, y - 1.2, z], [HALF_X, y - 1.2, z], 1.2, 0.65);
-      segment([-HALF_X, y + 1.2, z], [HALF_X, y + 1.2, z], 1.2, 0.65);
-      segment([-HALF_X, y - 1.2, z], [-HALF_X, y + 1.2, z], 1, 0.7);
-      segment([HALF_X, y - 1.2, z], [HALF_X, y + 1.2, z], 1, 0.7);
-    }
-    for (const x of [-HALF_X, HALF_X]) for (const dy of [-1.2, 1.2])
-      segment([x, y + dy, -HALF_Z], [x, y + dy, HALF_Z], 0.8, 0.3);
-    // Fine lamination on the side walls reads as engraved depth, not shiny material.
-    for (let j = 0; j < 12; j++) {
-      const z = lerp(-HALF_Z, HALF_Z, j / 11);
-      for (const x of [-HALF_X, HALF_X])
-        segment([x, y - 1.2, z], [x, y + 1.2, z], 0.6, 0.22);
-    }
-    for (const x of [-6.8, 6.8]) {
-      segment([x - 0.12, y, HALF_Z + 0.04], [x + 0.12, y, HALF_Z + 0.04], 0.8, 0.6);
-      segment([x, y - 0.12, HALF_Z + 0.04], [x, y + 0.12, HALF_Z + 0.04], 0.8, 0.6);
-    }
-    if (hot) this.cursorLines.seg(-6.1, y - 1.18, HALF_Z + 0.06, 6.1, y - 1.18, HALF_Z + 0.06,
-      1.1, ...CLAY, 0.55);
-  }
-
-  breathe(f: Frame, s: ReturnType<typeof diveState>) {
-    const c = this.layer.ctx;
-    const fade = 1 - s.entrance;
-    if (fade <= 0) return;
-    const y = 586 + s.breath * 5;
-    const pose = Clawd.pose(null, { beat: f.beat, beat0: f.beat, p: 0 });
-    Clawd.draw(c, 872, y, pose, { px: PX, alpha: fade });
-    Clawd.draw(this.glow.ctx, 872, y, pose, { px: PX, alpha: fade, eye: css('clay', 0) });
-    // The residual rails of the collision recede, leaving room to breathe.
-    for (let i = 0; i < 3; i++) {
-      c.fillStyle = css('paper', 0.09 * fade * fade);
-      c.fillRect(105 + i * 57, 374 + i * 104, 580 - i * 130, 1);
-      c.fillRect(1310 + i * 47, 352 + i * 104, 360 - i * 60, 1);
-    }
-  }
-
-  plumb(f: Frame, s: ReturnType<typeof diveState>, ctx: SceneCtx) {
-    if (s.entrance <= 0) return;
-    const y = -s.pos * PITCH - 0.35;
-    const top = this.project(-5.9, y + 5.7, HALF_Z + 0.15);
-    const head = this.project(-5.9, y - 0.48, HALF_Z + 0.15);
-    if (!head.visible) return;
-    const pts: [number, number][] = [[top.x, top.y], [head.x, head.y]];
-    drawTrail(this.layer.ctx, pts, 1, { width: 1.4, alpha: s.entrance });
-    drawTrail(this.glow.ctx, pts, 1, { width: 2.8, alpha: 0.4 * s.entrance });
-    const cursor = { x: head.x - 8, y: head.y, h: 30,
-      on: s.stopped ? blink(ctx.audio.beatAt(f.t), f.t < this.T.near + 0.2) : s.entrance };
-    drawCursor(this.layer.ctx, cursor); drawCursor(this.glow.ctx, cursor);
-    const hero = this.project(-3.9, y + 0.55, HALF_Z + 0.3);
-    if (hero.visible) {
-      const action = s.stopped ? 'A3' : 'A11';
-      const pose = Clawd.pose(action, { beat: s.stopped ? f.beat / 3 : f.beat,
-        beat0: ctx.audio.beatAt(this.T.down), p: span(f.t, this.T.down, this.T.near), travel: 1 });
-      Clawd.draw(this.layer.ctx, hero.x - Clawd.W * PX / 2, hero.y - 5 * PX, pose, { px: PX, alpha: s.entrance });
-      Clawd.draw(this.glow.ctx, hero.x - Clawd.W * PX / 2, hero.y - 5 * PX, pose,
-        { px: PX, alpha: s.entrance, eye: css('clay', 0) });
-    }
-  }
-
-  annotations(f: Frame, s: ReturnType<typeof diveState>, ctx: SceneCtx) {
-    const c = this.layer.ctx, T = this.T;
-    label(c, 'CALL STACK', 105, 118, 20, 0.62);
-    label(c, s.stopped ? 'daysIn() / paused' : f.t < T.down ? 'pause / breathe' : 'step into / descend', 105, 158, 22, 0.85);
-    label(c, `${String(s.floor).padStart(2, '0')} / depth`, 1540, 122, 27, 0.8);
-    c.fillStyle = css('paper', 0.15); c.fillRect(105, 188, 370, 1);
-    // Lyric is the shaft's inspection strip: plot each word against a moving depth rule.
-    const line = machineLine(ctx.lyrics, f.t, T.down - 0.2, T.end);
-    if (line) {
-      c.save(); c.translate(108, 974);
-      label(c, 'inspect >', 0, -58, 20, 0.55, 'clay');
-      inscribe(c, line, f.t, 0, 0, 38, 100, 'paper', 'paper', true);
-      c.fillStyle = css('paper', 0.18); c.fillRect(0, 22, 1688, 1);
-      const p = span(f.t, line.start, line.end);
-      drawCursor(c, { x: p * 1688, y: 26, h: 9 }); c.restore();
-    }
-    if (s.stopped) {
-      const point = this.project(0, -s.target * PITCH - 1.8, HALF_Z + 0.1);
-      const x = 362, y = Math.max(693, point.y + 88);
-      c.save(); c.globalAlpha = s.reveal;
-      // Only the clay marker glows; the actual source line stays crisp paper.
-      const code = MONTH_SOURCE[41]!;
-      label(c, '42', x, y, 33, 1, 'clay');
-      label(c, code.trim(), x + 94, y, 28, 0.95);
-      c.fillStyle = css('clay'); c.fillRect(x + 94, y + 16, 716, 2);
-      label(c, 'month.ts / bound under inspection', x + 94, y + 53, 18, 0.45);
-      drawCursor(c, { x: x + 825, y: y + 5, h: 34, on: blink(f.beat) });
-      c.restore();
-      // No paper glyph is copied into this layer: clay alone receives HDR amplification.
-      const glow = this.glow.ctx;
-      glow.fillStyle = css('clay', 0.45 * s.reveal); glow.fillRect(x + 94, y + 16, 716, 2);
-      drawCursor(glow, { x: x + 825, y: y + 5, h: 34, on: blink(f.beat) * s.reveal });
-    }
-  }
-
-  dispose() {
-    this.bg.mat.dispose(); this.layer.texture.dispose(); this.glow.layer.texture.dispose();
-    this.atlas.texture.dispose(); this.textMaterial.dispose();
-    this.slabs.geometry.dispose(); (this.slabs.material as THREE.Material).dispose();
-    for (const plane of this.namePlanes) plane.geometry.dispose();
-    for (const l of [this.lines, this.cursorLines]) { l.geo.dispose(); l.mat.dispose(); }
-  }
+function path(c: CanvasRenderingContext2D, points: Point[]) {
+  c.beginPath(); c.moveTo(points[0]!.x, points[0]!.y);
+  for (const p of points.slice(1)) c.lineTo(p.x, p.y);
+  c.closePath();
+}
+function segment(c: CanvasRenderingContext2D, a: Point, b: Point) {
+  c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
 }
 
-let world: ShaftWorld | undefined;
+class World {
+  users = 0;
+  T: DiveScore;
+  voice: Voice;
+  bg = new FSPass(BG, { ink: { value: new THREE.Vector3(...lin('ink')) },
+    paper: { value: new THREE.Vector3(...lin('paper')) }, travel: { value: 0 }, stopped: { value: 0 } });
+  layer = new Layer2D();
+  walls = new Layer2D();
+  plate = new Plate(1200, 300);
+  glow = new GlowLayer();
+  constructor(ctx: SceneCtx) {
+    this.T = diveScore(ctx.audio, ctx.lyrics);
+    this.voice = new Voice(ctx.lyrics, ctx.audio);
+    const c = this.walls.ctx;
+    // Four engraved uprights: open centres are never filled by solid slabs.
+    const strips = [
+      [{ x: -65, y: -90 }, { x: 64, y: -90 }, { x: 820, y: 1120 }, { x: 794, y: 1120 }],
+      [{ x: 1590, y: -90 }, { x: 1668, y: -90 }, { x: 1070, y: 1120 }, { x: 1034, y: 1120 }],
+      [{ x: 1872, y: -90 }, { x: 1912, y: -90 }, { x: 1097, y: 1120 }, { x: 1070, y: 1120 }],
+    ];
+    for (const [id, points] of strips.entries()) {
+      c.save(); path(c, points); c.clip();
+      c.fillStyle = css('paper', 0.04); c.fillRect(0, 0, W, H);
+      c.strokeStyle = css('paper', 0.38); c.lineWidth = 0.7;
+      for (let i = -500; i < 2300; i += 4) {
+        const a = { x: i + hash(i, id) * 2, y: -50 };
+        segment(c, a, { x: VP.x + (i - VP.x) * 0.14, y: 1100 });
+      }
+      c.fillStyle = css('paper', 0.34);
+      for (let i = 0; i < 5000; i++) c.fillRect(hash(i, id, 1) * W, hash(i, id, 2) * H, 1.3, 1.8);
+      c.restore(); c.strokeStyle = css('paper', 0.6); c.lineWidth = 1.3; path(c, points); c.stroke();
+    }
+    c.lineWidth = 0.7;
+    for (let i = 0; i < 32; i++) {
+      const x = i * 67 - 140;
+      c.strokeStyle = css(i % 9 === 0 ? 'clay' : 'paper', i % 9 === 0 ? 0.65 : 0.18);
+      segment(c, { x, y: -70 }, { x: VP.x + (x - VP.x) * 0.18, y: 1060 });
+    }
+  }
+  dispose() {
+    this.bg.mat.dispose(); this.layer.texture.dispose(); this.walls.texture.dispose(); this.glow.layer.texture.dispose();
+  }
+}
+let world: World | undefined;
 
 export default class S14Shaft extends Scene {
-  private w!: ShaftWorld;
-  override init() { this.w = world ??= new ShaftWorld(this.ctx); this.w.users++; }
+  private w!: World;
+  override init() { this.w = world ??= new World(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const w = this.w, s = diveState(this.ctx.audio, f.t, w.T);
-    w.layer.clear(); w.glow.clear();
-    w.camera(f, this.ctx, s);
-    const u = w.bg.u;
-    u.t!.value = f.t; u.fall!.value = s.pos; u.entrance!.value = s.entrance;
-    u.hush!.value = s.hush; u.speed!.value = s.velocity; u.kick!.value = f.a.kick * 0.15;
+    const w = this.w, T = w.T, audio = this.ctx.audio, t = f.t;
+    const s = shaftState(audio, t, T);
+    w.bg.u.travel!.value = s.travel; w.bg.u.stopped!.value = s.stopped ? 1 : 0;
     w.bg.render(this.ctx.renderer, out);
-    w.stack(f, s, this.ctx, out);
-    w.breathe(f, s); w.plumb(f, s, this.ctx); w.annotations(f, s, this.ctx);
+    w.layer.clear(); w.glow.clear();
+    const c = w.layer.ctx;
+    c.globalAlpha = s.enter; c.drawImage(w.walls.canvas, 0, 0, W, H); c.globalAlpha = 1;
+    const incoming = handoffIn(t, audio, T);
+    if (incoming.alpha > 0) {
+      c.strokeStyle = css('paper', incoming.alpha * 0.5); c.lineWidth = 1;
+      for (let i = -4; i < 30; i++) {
+        const y = i * incoming.pitch + incoming.distance;
+        segment(c, { x: 1210, y }, { x: 1830, y });
+      }
+    }
+    // Painter order supplies distance fog with discrete printed densities, no lit surfaces.
+    for (let depth = 23; depth >= 0; depth--) {
+      const points = frameAt(depth, s.travel);
+      if (points.some(p => !Number.isFinite(p.x))) continue;
+      const alpha = s.enter * Math.exp(-Math.max(0, depth - s.travel) * 0.20);
+      c.strokeStyle = css('paper', alpha * 0.75); c.lineWidth = depth < 3 ? 1.4 : 0.8;
+      path(c, points); c.stroke();
+      c.strokeStyle = css('paper', alpha * 0.19);
+      path(c, points.map(p => ({ x: p.x, y: p.y + 4 / (1 + Math.max(0, depth)) }))); c.stroke();
+      if (depth >= 0) {
+        const next = frameAt(depth + 1, s.travel);
+        for (const i of [0, 1, 2, 3]) {
+          c.strokeStyle = css('paper', alpha * 0.27); c.lineWidth = 0.75;
+          segment(c, points[i]!, next[i]!);
+        }
+      }
+    }
+    this.surfaces(f, s);
+    // Canonical cells are rotated with the shaft; their exact drawn footprint is tested.
+    const pose = Clawd.pose('A11', { beat: f.beat, beat0: audio.beatAt(T.down), p: 0, travel: 0 });
+    c.save(); c.translate(s.cx, s.cy); c.rotate(s.roll);
+    Clawd.draw(c, -8 * s.px, -2.5 * s.px, pose, { px: s.px, alpha: s.enter }); c.restore();
+    c.strokeStyle = css('clay', s.enter); c.lineWidth = 1.6;
+    segment(c, { x: s.cx + 19, y: -30 }, { x: s.cx + 14, y: s.cy - 118 });
+    c.fillStyle = css('clay', s.enter); c.fillRect(s.cx + 4, s.cy - 135, 21, 38);
+    const line = handoffOut(t, audio, T);
+    for (const ctx of [c, w.glow.ctx]) {
+      ctx.save(); ctx.translate((line.x0 + line.x1) / 2, line.y); ctx.rotate(line.roll);
+      ctx.strokeStyle = css('clay', ctx === c ? 1 : 0.45); ctx.lineWidth = ctx === c ? 3 : 5;
+      segment(ctx, { x: -(line.x1 - line.x0) / 2, y: 0 }, { x: (line.x1 - line.x0) / 2, y: 0 }); ctx.restore();
+    }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    w.glow.composite(this.ctx, out, 1.32);
-    return { ...postFor('ink'), hud: 0, bloom: 0.32, vignette: 0.13, grain: 0.035,
-      shake: [0, 0] as [number, number] };
+    w.glow.composite(this.ctx, out, 1.15);
+    return { ...postFor('ink'), hud: 0, frame: 0, bloom: 0.25, bloomThreshold: 1.06,
+      grain: 0.035, vignette: 0, shake: [0, 0] as [number, number] };
+  }
+
+  private surfaces(f: Frame, state: ReturnType<typeof shaftState>) {
+    const w = this.w, T = w.T, t = f.t, v = w.voice;
+    const line = this.ctx.lyrics.lastLine(t);
+    // Includes the S13 phrase still being sung at the first cut, without restarting its words.
+    const presence = line ? v.presence(line, t, line.i === v.line('Frame by frame, and the bug is near').i ? T.end - line.end : 0.6) : 0;
+    const forms = line ? v.forms(line, t) : [];
+    const count = Math.max(3, forms.length);
+    for (let depth = count - 1; depth >= 0; depth--) {
+      const q = frameAt(depth, state.travel), a = q[0]!, b = q[1]!, d = q[3]!;
+      const c = w.plate.ctx; w.plate.clear();
+      c.fillStyle = css('paper', 0.55);
+      if (depth < 3) {
+        fillRun(c, varRun(String(3 - depth).padStart(2, '0'), LYRIC_SIZE, { wdth: 100, wght: 900 }), 24, 94);
+        // Two surface metadata labels; all other ornament / HUD labels were removed.
+        if (depth < 2) {
+          c.font = font(F.mono(500), TYPE_LEVELS.label);
+          c.fillText(depth === 0 ? 'render()' : 'buildMonth()', 24, 143);
+        }
+        c.fillRect(24, 166, 220, 1);
+      }
+      if (presence > 0) {
+        if (state.stopped && depth === 0) {
+          // On near the complete phrase freezes on the nearest surface, two lyric-tier rows.
+          const rows = [forms.slice(0, 3), forms.slice(3)];
+          rows.forEach((row, i) => drawSet(c, setLine(row, LYRIC_SIZE, { space: 0.2 }), 255, 125 + i * 125,
+            { on: 'ink', alpha: presence }));
+        } else if (!state.stopped && forms[depth]) {
+          const form = forms[depth]!;
+          drawSet(c, setLine([form], LYRIC_SIZE), 24, 280, { on: 'ink', alpha: presence });
+        }
+      }
+      const target = w.layer.ctx;
+      target.save(); path(target, q); target.clip();
+      // UV plate on the projected floor. Local print coordinates follow both camera axes.
+      target.transform((b.x - a.x) / 1200, (b.y - a.y) / 1200,
+        (d.x - a.x) / 300, (d.y - a.y) / 300, a.x, a.y);
+      target.globalAlpha = state.enter * Math.exp(-depth * 0.10);
+      target.drawImage(w.plate.canvas, 0, 0, 1200, 300); target.restore();
+    }
   }
 }
