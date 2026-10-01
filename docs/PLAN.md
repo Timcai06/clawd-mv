@@ -139,6 +139,9 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 - ✅ 目标清单：`docs/STORYBOARD-TARGETS.md`（只描述分镜图，不评判）。归纳出的共同规律：分镜图里最显眼的超大裁切字，有 7 场本身就是唱出来的词，正好由歌词 v3 承担。
 - ✅ 公共模块：`kit/vartype.ts`（在 24 个 Archivo 静态实例之间插值字形轮廓，宽度 62–125、字重 300–900 连续可动；已验证 1752 个字形结构一致）；`kit/lyric-moves.ts`（Voice：声音到形态；动作：网格落位、计数器、缺字方框、盖章、Plate 贴图等）；陈列页 `--gallery voice`。
 - ✅ 样片 S04、S11（A + B 一起改）：短片 `out/review/s04-v3.mp4`、`s11-v3.mp4`，并排图 `out/compare/v3-s04-s11/`。**等 T 看。** T 认可后再铺到其余 16 场（按 Opus 子代理分组）。
+- ✅ T 看样片（2026-10-01）：方向对、有优化，**设计效果和层级仍比分镜图差一点**；并强调：简单、目标明确、可验收的任务交给 Codex，Claude 额度不多。
+- ✅ 吸收 Codex 的 pdoom 源码分析（`docs/reference/pdoom-analysis-codex-20261001.md`）后定稿：TREATMENT「歌词 v3 与分镜对齐：定稿」（层级规则、每场歌词机制、17 个交接物、同步层次），交接常量 `kit/handoff.ts`。
+- 🔜 Codex 7 组并行铺开（`docs/tasks/V3-rollout.md`，`tools/v3_dispatch.sh`）：A S01–S04 · B S05–S07 · C S08 S13 · D S09–S12 · E S14–S15 · F S16–S17 · G S18。C 审查合并后出整片预览 v2。
 - 待清理：`scenes/parts/s11-storm.ts` 已不被 S11 使用，只剩 `tests/scene-d.test.ts` 引用，铺开时一起删。
 
 ### C. 小事
