@@ -6,8 +6,8 @@ import * as THREE from 'three';
 import { FSPass } from '../engine/gl';
 import { lin } from '../theme';
 
-/** Flip to false to render the day (v4b) versions of the trial scenes for comparison. */
-export const NIGHT = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('day') === null : true;
+/** Off by default (Tim 2026-10-02: the colour was not the problem). `?night` renders the trial versions. */
+export const NIGHT = typeof location !== 'undefined' && new URLSearchParams(location.search).get('night') !== null;
 
 /** Night sky: near-black, a faint cool haze rising from the horizon (y = horizon in 0..1 from the bottom). */
 export class NightSky {
