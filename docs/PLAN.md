@@ -181,6 +181,7 @@ C:  架构文档 · 生图探索世界观 · Clawd 动作库 · 分镜表 · 审
 
 ## 🔜 阶段 8：v5 第二阶段（新会话）：剩余场景 + 场景交接 + 歌词
 T 2026-10-03：v5 方向对；剩下的场景继续按 v5 方法优化；**场景衔接和歌词设计都明显不如 pdoom**，下一阶段要做这两方面的全部优化。
+**分工（T 2026-10-03）**：Claude 是核心动效设计师（设计每一个效果，写设计规格，审查迭代）；具体开发交给 Codex gpt-6.1-sol（任务说明写进 `docs/tasks/`，每组一个 worktree，流程见上文「派任务的固定流程」）。
 1. **先研究，再动手**：从 pdoom 源码里系统整理两件事，写成 `docs/reference/pdoom-transitions-lyrics.md`：
    - 交接：每个条目的出口几何如何成为下一条目的入口（hook.ts 顶部的 hand-off 常量、room-shrooms.ts 两场共享的版面、loom→ilya 递归直接落在下一场第一帧、shoggoth→flatline→下一场、spacetime/fuse 火花的接力）；切点选择（timeline.ts 的 cut/after）；切点前的张力堆积。
    - 歌词：每场歌词的「载体」和逐字/逐音节同步方法（loss 沿 3D 曲线逐字、drop 沿下落轨迹、stack 的 TextPlane 和 disobey 逐字母、room 的翻牌板 planeAffine、shoggoth 刻进生物体的字、fuse 沿导火索燃烧和用真实音高弯弦、dense 的挤压与破框、loom 的 token 树和 [MASK]、prompt 的 token 概率、hook 四次升级的冲击字）。
