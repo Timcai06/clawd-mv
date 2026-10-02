@@ -33,19 +33,45 @@ void main() {
   vWorld=p.xyz;vNormal=normalize(mat3(instanceMatrix)*normal);vEnter=keyMeta.w;vSung=keySung;
   gl_Position=projectionMatrix*modelViewMatrix*p;
 }`;
+// v5: real light on the wave. The key tops follow one analytic height field (the same equation as
+// KEY_VERT and parts/s07-terrain.ts keyHeight); each fragment marches toward a low key light over that
+// field, so the wave's crests throw travelling shadows across the keys behind them (pdoom loss's
+// terrain method), and the light is printed as engraving density.
 const KEY_FRAG=/* glsl */ `
 uniform vec3 paper,ink,clay;
-uniform float opacity, glowOnly;
+uniform float opacity, glowOnly, beat, kick;
 varying vec3 vWorld,vNormal;
 varying float vEnter;
 varying float vSung;
+float H(vec2 q) {
+  return 0.48+sin(beat*3.14159265359-q.x*0.62-q.y*0.85)*0.16+sin(beat*3.14159265359*0.5+q.x*0.22)*0.055+kick*0.13*cos(q.x*0.34+q.y*0.5);
+}
+float waveShadow(vec3 p, vec3 L) {
+  float res = 1.0;
+  for (int i = 1; i <= 14; i++) {
+    float s = 0.18 * float(i) * float(i) * 0.25 + 0.12 * float(i);
+    vec3 q = p + L * s;
+    float d = q.y - H(q.xz);
+    res = min(res, smoothstep(-0.02, 0.06, d) );
+    if (res < 0.01) break;
+  }
+  return res;
+}
 void main() {
-  float top=step(0.8,vNormal.y);
-  // Two side orientations use distinct cut densities, never a light model.
-  float cuts=hatch((abs(vNormal.x)>0.5?vWorld.z:vWorld.x)*44.0+vWorld.y*5.0,0.24);
-  float cross=engrave(vWorld.xz+vec2(vWorld.y),0.28,28.0,0.6);
-  vec3 side=mix(ink,paper,max(cuts,cross*0.33)*0.78);
-  vec3 roof=mix(paper,clay,max(vEnter,vSung));
+  vec3 n = normalize(vNormal);
+  float top=step(0.8,n.y);
+  vec3 L = normalize(vec3(-0.75, 0.42, -0.5)); // low, from the far left: crests shade the keys behind them
+  float sh = waveShadow(vWorld + n * 0.01, L);
+  float lit = max(dot(n, L), 0.0) * sh;
+  float tone = 0.1 + 0.9 * lit;
+  // sides: vertical cuts whose width follows the light; deep shade adds a crossing pass
+  float u = (abs(n.x)>0.5?vWorld.z:vWorld.x)*44.0+vWorld.y*5.0;
+  float cuts=hatch(u, clamp(0.85 - 0.75 * tone, 0.1, 0.85));
+  float cross=hatch((vWorld.y*0.9+(abs(n.x)>0.5?vWorld.z:vWorld.x)*0.5)*30.0, clamp(0.6 - 0.9 * tone, 0.0, 0.5));
+  vec3 side=mix(paper,ink,max(cuts,cross)*0.85);
+  // tops: paper in the light; in a crest's shadow, fine diagonal rules
+  vec3 roof=mix(paper, ink, hatch((vWorld.x + vWorld.z * 0.6) * 22.0, (1.0 - sh) * 0.55) * 0.85);
+  roof=mix(roof,clay,max(vEnter,vSung));
   float grain=hash12(floor(vWorld.xz*260.0));
   roof=mix(roof,ink,grain*0.035);
   vec3 col = mix(side,roof,top);
