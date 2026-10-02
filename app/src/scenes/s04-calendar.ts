@@ -30,6 +30,10 @@ export const TYPE_LEVELS = { giant: 212, lyric: 50.8, label: 20 }; // cap height
 
 const PAPER = lin('paper'), INK = lin('ink'), CLAY = lin('clay'), NIGHTC = lin('night');
 const UP = new THREE.Vector3(0, 1, 0);
+/** Shared light and occluders (one uniform object for both materials, updated per frame). */
+const BOXES = { value: Array.from({ length: 32 }, () => new THREE.Vector4()) };
+const N_BOXES = { value: 0 };
+const KEY_L = { value: new THREE.Vector3(0.62, 0.5, -0.6).normalize() }; // low, from behind the 32nd: its shadow falls across the month
 
 const BLOCK_VERT = /* glsl */ `
 precision highp float;
@@ -44,20 +48,39 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * wp;
 }`;
 
-// Print values, not lighting: paper roofs, sides cut in dense vertical engraving (the storyboard's
-// woodblock city), the two visible side orientations at different densities.
+// v5: real light. One key light (the storyboard's upper right); every pixel casts a ray toward it
+// against the 32 blocks (analytic box intersection, no shadow maps), and the light is printed as
+// engraving: lit faces carry thin sparse rules, shaded faces dense and crossed (pdoom shadeWireL).
+const BOXES_GLSL = /* glsl */ `
+uniform vec4 boxes[32]; uniform float nBoxes; uniform vec3 keyL;
+float boxHit(vec3 ro, vec3 rd, vec4 b) { // ray vs block (x, z, half width, height): entry t or -1
+  vec3 lo = vec3(b.x - b.z, 0.0, b.y - b.z), hi = vec3(b.x + b.z, b.w, b.y + b.z);
+  vec3 inv = 1.0 / rd, t0 = (lo - ro) * inv, t1 = (hi - ro) * inv;
+  vec3 tn = min(t0, t1), tf = max(t0, t1);
+  float a = max(max(tn.x, tn.y), tn.z), c = min(min(tf.x, tf.y), tf.z);
+  return (c > max(a, 0.0)) ? a : -1.0;
+}
+float shadowAt(vec3 p) {
+  for (int i = 0; i < 32; i++) {
+    if (float(i) >= nBoxes) break;
+    if (boxHit(p + keyL * 0.02, keyL, boxes[i]) > 0.0) return 0.0;
+  }
+  return 1.0;
+}`;
 const BLOCK_FRAG = /* glsl */ `
 precision highp float;
 in vec3 vWorld, vNormal; in float vDate; out vec4 fragColor;
 ${GLSL_COMMON}
 uniform vec3 paper, ink, clay;
 uniform float accented, visited, kick, t;
+${BOXES_GLSL}
 void main() {
   float top = step(0.5, vNormal.y);
   float xSide = step(0.5, abs(vNormal.x));
   float along = mix(vWorld.x, vWorld.z, xSide);
-  // vertical rules: hatch across the horizontal coordinate; darker towards the ground
-  float darkness = mix(0.30, 0.52, xSide) + 0.16 * (1.0 - smoothstep(0.0, 1.4, vWorld.y));
+  float lit = max(dot(normalize(vNormal), keyL), 0.0) * shadowAt(vWorld);
+  float occ = 0.16 * (1.0 - smoothstep(0.0, 1.4, vWorld.y)); // the street's ambient occlusion
+  float darkness = clamp(0.62 - 0.5 * lit + occ, 0.08, 0.86);
   float rules = hatch(along * 7.5 + hash12(vec2(floor(vWorld.y * 1.3), vDate)) * 0.0, darkness);
   float cross = hatch((vWorld.y + along * 0.18) * 9.0, sat(darkness * 1.6 - 0.62));
   float printInk = max(rules, cross) * (1.0 - top);
@@ -65,6 +88,8 @@ void main() {
   vec3 c = mix(paper, ink, printInk * 0.86);
   float focus = float(abs(vDate - accented) < 0.1);
   float read = step(vDate, visited);
+  // roofs: paper, with fine rules only where a neighbour's shadow falls on them
+  c = mix(c, mix(paper, ink, hatch((vWorld.x + vWorld.z) * 6.0, (1.0 - shadowAt(vWorld)) * 0.6) * 0.85), top);
   c = mix(c, clay, top * focus * (0.30 + kick * 0.2));
   c = mix(c, ink, top * (1.0 - read) * 0.05);
   if (vDate > 31.5) {
@@ -80,6 +105,7 @@ in vec2 vUv; out vec4 fragColor;
 ${GLSL_COMMON}
 uniform vec3 paper, ink;
 uniform float t, kick;
+${BOXES_GLSL}
 float rule(float u, float width) {
   float d = abs(fract(u + 0.5) - 0.5);
   return pxLine(d / max(fwidth(u), 0.00001), 0.35 * width, 1.2 * width);
@@ -91,6 +117,10 @@ void main() {
   float sweep = 1.0 - smoothstep(0.0, 0.12, abs(fract(p.y * 0.03 - t * 0.35) - 0.5));
   float a = grid * (0.13 + kick * 0.06) + minor * 0.03 + sweep * grid * 0.06;
   vec3 c = mix(paper, ink, a);
+  // cast shadows: diagonal burin strokes where the key light is blocked
+  vec3 wp = vec3((vUv.x - 0.5) * 60.0, 0.0, -(vUv.y - 0.5) * 60.0 - 8.1);
+  float sh = 1.0 - shadowAt(wp);
+  c = mix(c, ink, hatch((wp.x * 0.7 + wp.z) * 5.5, 0.42) * 0.75 * sh);
   c *= 1.0 - 0.01 * fbm(p * 1.1 + vec2(t * 0.04, 0.0), 2);
   fragColor = vec4(c, 1.0);
 }`;
@@ -224,6 +254,7 @@ class CityWorld {
         paper: { value: new THREE.Vector3(...PAPER) }, ink: { value: new THREE.Vector3(...INK) }, clay: { value: new THREE.Vector3(...CLAY) },
         accented: { value: 1 }, visited: { value: 1 }, kick: { value: 0 }, t: { value: 0 },
         night: { value: new THREE.Vector3(...NIGHTC) }, lightPos: { value: new THREE.Vector3() }, lightK: { value: 0 },
+        boxes: BOXES, nBoxes: N_BOXES, keyL: KEY_L,
       }, toneMapped: false,
     });
     this.blocks = new THREE.InstancedMesh(geometry, this.blockMaterial, 32);
@@ -247,7 +278,8 @@ class CityWorld {
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: NIGHT ? FLOOR_FRAG_NIGHT : FLOOR_FRAG,
       uniforms: { paper: { value: new THREE.Vector3(...PAPER) }, ink: { value: new THREE.Vector3(...INK) }, t: { value: 0 }, kick: { value: 0 },
-        clay: { value: new THREE.Vector3(...CLAY) }, night: { value: new THREE.Vector3(...NIGHTC) }, lightPos: { value: new THREE.Vector3() }, lightK: { value: 0 } },
+        clay: { value: new THREE.Vector3(...CLAY) }, night: { value: new THREE.Vector3(...NIGHTC) }, lightPos: { value: new THREE.Vector3() }, lightK: { value: 0 },
+        boxes: BOXES, nBoxes: N_BOXES, keyL: KEY_L },
       toneMapped: false,
     });
     this.floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), this.floorMaterial);
@@ -307,6 +339,7 @@ export default class S04Calendar extends Scene {
       w.position.set(d.x, h / 2, d.z); w.scale.set(bw, h, bw);
       w.matrix.compose(w.position, w.identity, w.scale);
       w.blocks.setMatrixAt(i, w.matrix);
+      BOXES.value[i]!.set(d.x, d.z, bw / 2, h);
       // Shadow: a sheared floor quad from the block's foot towards the lower left (light upper right).
       const len = h * 0.55;
       w.position.set(d.x - len * 0.5, 0.004, d.z + len * 0.35);
@@ -322,6 +355,8 @@ export default class S04Calendar extends Scene {
     w.labels.mesh.instanceMatrix.needsUpdate = true;
     w.labels.mesh.count = s.rising ? 32 : 31;
     w.shadows.count = s.rising ? 32 : 31;
+    w.shadows.visible = false; // v5: shadows are ray-tested in the block and floor shaders
+    N_BOXES.value = s.rising ? 32 : 31;
     const d32 = DATES[31]!;
     w.labels.facade.visible = false;
     w.labels.facade.position.set(d32.x, s.roof32 * 0.64, d32.z + BLOCK / 2 + 0.008);
