@@ -1,6 +1,7 @@
 // S05 — front-elevation code ledges, three blueprint strata and a cropped filename.
 // Lyrics are the walkable source platform. No predicted (unborn) words are painted.
 import * as THREE from 'three';
+import { drawNote } from '../kit/note';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
@@ -133,6 +134,7 @@ export default class S05Platform extends Scene {
     // Filename is machine text, a documented giant-type exception, not a sung word.
     c.fillStyle=css('paper',0.6);
     printRun(c,varRun('month.ts',430,{wdth:100,wght:900}),s.title);
+    drawNote(c,{ax:s.title.x+s.title.w*0.93,ay:s.title.y+30,x:s.title.x+s.title.w*0.93+40,y:s.title.y-36,text:'48 lines',sub:'1 of them wrong',t0:T.read+0.2,on:'ink'},f.t);
     const exit=span(f.t,afterBeats(au,T.end,-1),T.end);
     drawCursor(c,{x:1045,y:724,h:50*(1-exit),on:1});
     glowDraw(c, w.glow.ctx, g => drawCursor(g, {x:1045,y:724,h:50*(1-exit),on:1}));

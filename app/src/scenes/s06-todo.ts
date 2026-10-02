@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
 // S06 — the cropped CHECK headline and a front-elevation pen-plotter sheet.
 import * as THREE from 'three';
@@ -110,6 +111,7 @@ export default class S06Todo extends Scene {
         drawTrail(c,[[strike.x0,strike.y],[strike.x1,strike.y]],visible,{width:2,color:i===0?'clay':'ink',alpha:i===0?1:0.6});
       }
     }
+    { const b=s.rows[2]!.box; drawNote(c,{ax:b.x+b.w*0.5,ay:b.y+b.h,x:b.x+b.w+24,y:b.y+b.h+46,text:'est. 1 line',t0:afterBeats(au,T.checks[2]!,0.5),on:'paper'},f.t); }
     // Pixel sprite at the third check's tip; the hop is a rigid translation only.
     const at=T.checks.filter(x=>x<=f.t).at(-1)??T.todo;
     const phase=span(f.t,at,afterBeats(au,at,0.6));

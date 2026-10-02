@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
 // S04 — October as an engraved city (storyboard v2 kf-S04, lyric typography v3).
 // The sung "thirty-second" is a day counter that runs 1 → 31 over the city: the cursor and Clawd
@@ -353,6 +354,10 @@ export default class S04Calendar extends Scene {
     const incoming = handoffIn(f.t,this.ctx.audio,w.times);
     if(incoming.alpha>0){c.fillStyle=css('paper',incoming.alpha);c.fillRect(0,0,W,H);c.save();c.globalAlpha=incoming.alpha;drawCalendar(c,incoming);c.restore();}
     this.character(f,s,c);
+    if (s.rising) {
+      const d = DATES[31]!, top = w.project([d.x + TOWER_BLOCK / 2, s.roof32, d.z]);
+      drawNote(c, { ax: top.x, ay: top.y + 30, x: top.x + 70, y: top.y - 40, text: 'Oct 32', sub: 'permit pending', t0: w.times.october + 0.35, on: 'paper' }, f.t);
+    }
     this.lyrics(f, s, c);
     const head = w.project([s.head[0], s.head[1], s.head[2]]);
     if (head.visible && head.x > 20 && head.x < W - 30 && head.y > 20 && head.y < H - 20) {

@@ -1,4 +1,5 @@
 import { PrintOverlay } from '../kit/print-overlay';
+import { drawNote } from '../kit/note';
 import { GlowLayer, postFor } from '../kit/ground';
 // S18: measured kf-S18 layout. Dawn is a binary ink/paper screen, never a colour gradient.
 import * as THREE from 'three';
@@ -188,6 +189,8 @@ export default class S18Tomorrow extends Scene {
     this.calendar(c, s.flip, singing ? 0.6 : 1);
     this.sleep(c, f, s.wave, s.shot !== 6);
     if (s.shot !== 6) this.notification(c, s.notification);
+    { const q = S18_LAYOUT.clawd;
+      drawNote(c, { ax: q.x + 8 * q.px, ay: q.y - 6, x: q.x + 8 * q.px + 40, y: q.y - 120, text: 'fig. 18', sub: 'Clawd, resting', t0: T.shots[3]!.start + 0.5, t1: T.shots[6]!.start, on: 'ink' }, f.t); }
     this.carriedLine(c, f.t);
     if (s.shot === 1) {
       const chars = Math.floor(Math.min(1, s.b / 1.5) * 6);

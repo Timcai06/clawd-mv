@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
 // S15 — an engraved solid ≤, a forty-two counter, and a carved equal-stroke cut.
 // The reference cut frame remains INK; sustained PAPER begins at the October shot.
@@ -98,6 +99,7 @@ export default class S15Line42 extends Scene {
     c.lineWidth = 1; c.beginPath(); c.moveTo(rule.x0, rule.y); c.lineTo(rule.x1, rule.y); c.stroke();
     if (!s.paper && rule.clay > 0.01) glowDraw(c, w.glow.ctx, g => { g.strokeStyle = c.strokeStyle; g.lineWidth = 1;
       g.beginPath(); g.moveTo(rule.x0, rule.y); g.lineTo(rule.x1, rule.y); g.stroke(); });
+    drawNote(c, { ax: (rule.x0 + rule.x1) / 2, ay: rule.y, x: (rule.x0 + rule.x1) / 2 + 60, y: rule.y - 64, text: 'Δ −1 char', sub: '<= → <', t0: afterBeats(audio, T.snip, 1), on: s.paper ? 'paper' : 'ink' }, t);
     c.font = font(F.mono(400), TYPE_LEVELS.label); c.fillStyle = css(s.paper ? 'ink' : 'paper', 0.6);
     c.fillText(s.paper ? 'line 42: for (let d = 0; d < days; d++)' : 'line 42: for (let d = 0; d <= days; d++)', 96, 1030);
     w.sparks.begin(c, s.paper ? undefined : w.glow.ctx, kind);

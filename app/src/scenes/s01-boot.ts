@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 // S01: frontal welcome frame, partial paper rules, clay pixels and a perspective floor.
 import type * as THREE from 'three';
 import { Lens } from '../kit/lens';
@@ -86,6 +87,8 @@ export default class S01Boot extends Scene {
     cursorSpark(c, g, w.sparks, f.t, cursorAt, { on: 'ink', from: w.T.welcome, to: frameEnd, end: w.T.ping, seed: 1 });
     const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
     drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink', glow: g });
+    { const q = cursorFromTop(handoffOut(f.t, au, w.T));
+      drawNote(c, { ax: q.x + 14, ay: q.y - 12, x: q.x + 80, y: q.y - 70, text: 'pid 1031 · idle', t0: w.T.start + 0.6, t1: w.T.welcome, on: 'ink' }, f.t); }
     this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.sparks.finish(this.ctx, out); w.glow.composite(this.ctx, out, 2.0);
     this.w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
     return { ...postFor('ink'), hud: 0, grain: 0.03, ca: 0.6, vignette: 0 };

@@ -1,5 +1,6 @@
 import { PrintOverlay } from '../kit/print-overlay';
 // S13: diagonal clay/ink print, perspective COMMIT, an upward log and colliding solid panels.
+import { drawNote } from '../kit/note';
 import type * as THREE from "three";
 import { Scene, type Frame, type SceneCtx } from "../engine/scene";
 import { Layer2D } from "../engine/gl";
@@ -143,6 +144,10 @@ export default class S13Gitfall extends Scene {
       this.panel(c, s.ci, false);
       this.splinters(c, t, T, s.arrive, s.crush);
     } else if (s.testMode) this.tests(c, t);
+    if (s.split) {
+      const q = s.ci, cx = (q[0]![0] + q[1]![0]) / 2, top = Math.min(q[0]![1], q[1]![1]);
+      drawNote(c, { ax: cx, ay: top, x: cx - 120, y: top - 70, text: 'works on: 1 machine', t0: afterBeats(au, T.collision, 0.6), on: 'ink' }, t);
+    }
     drawSprite(c, s.clawd, "clay", "ink");
     glowDraw(c, g, g => drawSprite(g, { ...s.clawd, pose: { ...s.clawd.pose, cells: s.clawd.pose.cells.filter(cell => cell.k === 'O') } }, 'clay', 'ink'), 0.25);
     const line = this.ctx.lyrics.lastLine(t);

@@ -1,4 +1,5 @@
 import { PrintOverlay } from '../kit/print-overlay';
+import { drawNote } from '../kit/note';
 // S02: one giant printed PING crossing an ink/paper split; no editor behind the headline.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -74,6 +75,7 @@ export default class S02Notify extends Scene {
       c.restore();
     }
     gridSnap(c, w.voice.forms(line, t).slice(4), { x: 720, y: 948, colW: 160, rowH: 80, cols: 7, size: 74, on: 'paper', t, alpha: w.voice.presence(line, t) });
+    drawNote(c, { ax: card.x + card.w - 30, ay: card.y, x: card.x + card.w - 250, y: card.y - 58, text: '1 unread', sub: 'priority: weird', t0: afterBeats(au, w.T.ping, 1), on: 'paper' }, t);
     // Got/a/bug can precede the bug-snapped S03 cut. Same TITLE positions on both sides.
     if (t >= w.voice.line(1).start) drawReportLyrics(c, w.voice, t);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);

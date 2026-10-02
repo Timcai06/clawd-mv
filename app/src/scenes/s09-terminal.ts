@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 // S09: the reference oscilloscope, with reconstructed afterimages and a clay scan head.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
@@ -100,6 +101,7 @@ export default class S09Terminal extends Scene {
       x += run.width + 24;
     }
     carry(c, v, t, T.terminal, 96, 427, 'ink', 96, w.glow.ctx);
+    drawNote(c, { ax: s.head, ay: SCOPE.y - 18, x: s.head + 46, y: SCOPE.y - 120, text: 'expected: pass', sub: 'actual: pending', t0: T.waiting + 0.4, on: 'ink' }, t);
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
     c.restore();

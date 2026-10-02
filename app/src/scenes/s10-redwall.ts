@@ -1,11 +1,12 @@
 import { PrintOverlay } from '../kit/print-overlay';
+import { drawNote } from '../kit/note';
 // S10: upright foreshortened glass reports, engraved thickness and beat-driven shards.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { ease, hash, lerp } from '../engine/util';
-import { span } from '../kit/time';
+import { afterBeats, span } from '../kit/time';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { Voice, setLine, drawSet, odometer } from '../kit/lyric-moves';
@@ -111,6 +112,7 @@ export default class S10Redwall extends Scene {
       { digits: 2, color: first.stress ? 'clay' : 'fail', on: 'paper', age: first.age, axes: first.axes, pitch: 98 });
     c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
     c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
+    drawNote(c, { ax: 1040, ay: 150, x: 1100, y: 112, text: '19/19 failing', sub: 'consistent, at least', t0: afterBeats(au, T.nineteen, 1), on: 'paper' }, t);
     carry(c, v, t, T.wallStart, 96, 348, 'paper');
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y + 40 * fall, crab.pose, { px: crab.px });
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);

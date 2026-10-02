@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
 // S16: the cropped GREEN slab above one foreshortened arc of nineteen engraved dominoes.
 import * as THREE from 'three';
@@ -80,6 +81,8 @@ export default class S16Green extends Scene {
         Math.min(1, s.form.born * 1.6), heatColor(s.form.stress && s.form.singing ? 'clay' : 'ink', 'paper', s.form.age));
     }
 
+    { const last = s.cards[18]!, p = last.front[1]!;
+      drawNote(c, { ax: p.x, ay: p.y, x: p.x - 210, y: p.y - 90, text: '19/19 · flaky: 0', t0: T.nineteen.start + 0.35, on: 'paper' }, t); }
     c.strokeStyle = css('ink', 0.8); c.lineWidth = 1.3;
     for (let i = 0; i < s.cards.length - 1; i++) {
       const a = s.cards[i]!.front[1]!, b = s.cards[i + 1]!.front[0]!;

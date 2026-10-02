@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
 // S17: the final commit, a human review, merging type and the front-on device/diff poster.
 import * as THREE from 'three';
@@ -85,6 +86,8 @@ export default class S17Release extends Scene {
     const line = this.w.voice.line('Then you wrote, “Looks good to me”');
     releaseLyric(c, this.w.voice, line, t, 120, 450, 1680, 'paper', [0, 3]);
     releaseLyric(c, this.w.voice, line, t, 120, 650, 1680, 'paper', [3, 7]);
+    const good = line.words.find((w) => /good/i.test(w.w))!;
+    drawNote(c, { ax: 1500, ay: 330, x: 1530, y: 400, text: 'reviewed in 4.2 s', sub: 'approved', t0: good.start + 0.3, on: 'paper' }, t);
   }
 
   private merge(c: CanvasRenderingContext2D, t: number, join: number) {
