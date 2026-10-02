@@ -51,3 +51,18 @@ export class Rig {
     return { x: (v.x / v.w * 0.5 + 0.5) * W, y: (0.5 - v.y / v.w * 0.5) * H, s: 0.5 * H * P11 / v.w, w: v.w };
   }
 }
+
+/**
+ * Canvas affine that puts canvas point (cx, cy) on world point P, canvas +x along world ux and canvas
+ * +y along world uy, at `m` world units per canvas px (pdoom room.ts planeAffine). Apply with
+ * c.setTransform(a, b, c, d, e, f) on a logical-px Layer2D context. Null if P is behind the camera.
+ */
+export function planeAffine(rig: Rig, P: P3, ux: P3, uy: P3, m: number, cx = 0, cy = 0) {
+  const d = 10;
+  const p0 = rig.proj(P.x, P.y, P.z);
+  const pa = rig.proj(P.x + ux.x * m * d, P.y + ux.y * m * d, P.z + ux.z * m * d);
+  const pb = rig.proj(P.x + uy.x * m * d, P.y + uy.y * m * d, P.z + uy.z * m * d);
+  if (!p0 || !pa || !pb) return null;
+  const a = (pa.x - p0.x) / d, b = (pa.y - p0.y) / d, c = (pb.x - p0.x) / d, dd = (pb.y - p0.y) / d;
+  return { a, b, c, d: dd, e: p0.x - a * cx - c * cy, f: p0.y - b * cx - dd * cy };
+}
