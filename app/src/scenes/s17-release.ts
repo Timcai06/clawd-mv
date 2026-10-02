@@ -15,6 +15,7 @@ import { fillRun, varRun } from '../kit/vartype';
 import { afterBeats, beatsSince, span } from '../kit/time';
 import * as Clawd from '../kit/clawd';
 import { PrintedDeviceWall } from './parts/s17-device-wall';
+import { DeviceWall3D, wallCam } from './parts/s17-world';
 import { resolveReleaseTimes, releaseState, type ReleaseTimes } from './parts/s17-release-state';
 import { DIFF_BOXES, releaseLayout } from './parts/s17-release-layout';
 import { machineLabel, releaseLyric } from './parts/s17-release-type';
@@ -33,11 +34,12 @@ class World {
   layer = new Layer2D();
   lens = new Lens();
   wall = new PrintedDeviceWall();
+  wall3 = new DeviceWall3D();
   voice: Voice;
   times: ReleaseTimes;
   diff = ['- d <= days', '+ d < days'].map(text => varRun(text, 340, { wdth: 100, wght: 900 }));
   constructor(ctx: SceneCtx) { this.voice = new Voice(ctx.lyrics, ctx.audio); this.times = resolveReleaseTimes(ctx.audio, ctx.lyrics); }
-  dispose() { this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
+  dispose() { this.sparks.dispose(); this.print.dispose(); this.wall3.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -154,8 +156,20 @@ export default class S17Release extends Scene {
       const machineLine = v.line('And it works on every machine');
       const deviceBand = t >= machineLine.start;
       if (deviceBand) {
+        // v5: the wall is real hardware in depth (parts/s17-world.ts); the camera is born on one screen
+        // and pulls back to the storyboard's front-on frame by the last shot
         const opacity = s.wall ? s.wallOpacity : span(t, machineLine.start, afterBeats(this.ctx.audio, machineLine.start, 1));
-        w.wall.draw(c, v, t, s.wall ? Math.max(0.75, opacity) : opacity);
+        if (!s.wall) w.wall.draw(c, v, t, opacity);
+        else {
+          const sc = w.wall3.screenCtx; sc.clearRect(0, 0, 512, 384);
+          const forms = v.forms(machineLine, t).slice(-2), set = setLine(forms, 150);
+          sc.save(); sc.translate(24, 240); sc.scale(Math.min(1, 464 / Math.max(1, set.width)), 1);
+          for (const x of set.words) if (x.form.born > 0) { sc.fillStyle = heatColor(x.form.stress ? 'ink' : 'paper', 'clay', x.form.age); fillRun(sc, x.run, x.x, 0); }
+          sc.restore();
+          const every = this.ctx.lyrics.get('And it works on every machine').words.find((x) => /every/i.test(x.w))!.start;
+          w.wall3.setCam(wallCam(span(t, every, afterBeats(this.ctx.audio, T.release.at(-1)!.end, -0.4))));
+          w.wall3.render(this.ctx.renderer, out, Math.pow(0.5, (f.beat % 1) / 0.15));
+        }
         this.graph(c, f, s);
         Clawd.draw(c, s.clawd.x, s.clawd.y, Clawd.pose(null, { beat: f.beat, beat0: 0, p: 0 }), { px: s.clawd.px });
       }
