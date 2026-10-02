@@ -1,4 +1,5 @@
 // Dry ink, sharp engraved slab sides and flat hatched shadows. Shared only within F.
+import { NIGHT } from '../../kit/night';
 import { hash } from '../../engine/util';
 import { css } from '../../theme';
 import { F, font } from '../../engine/type';
@@ -50,24 +51,24 @@ export function printRun(c: CanvasRenderingContext2D, run: VarRun, box: Rect,
 export function drawDomino(c: CanvasRenderingContext2D, card: Domino, inkAlpha = 0.6) {
   const { front: p, side, i, passed, face: b } = card;
   // A projected shadow made of horizontal engraving strokes (no soft lighting).
-  c.save(); c.strokeStyle = css('ink', 0.35); c.lineWidth = 0.8;
+  c.save(); c.strokeStyle = NIGHT ? 'rgba(0,0,0,0.6)' : css('ink', 0.35); c.lineWidth = 0.8;
   for (let j = 0; j < 22; j++) {
     const y = p[3]!.y + card.thickness * j / 22;
     c.beginPath(); c.moveTo(p[3]!.x - b.h * 0.5, y); c.lineTo(p[2]!.x, y - 9); c.stroke();
   }
-  polygon(c, side); c.fillStyle = css('ink'); c.fill(); c.clip();
-  c.strokeStyle = css('paper', 0.75); c.lineWidth = 0.75;
+  polygon(c, side); c.fillStyle = css(NIGHT ? 'night' : 'ink'); c.fill(); c.clip();
+  c.strokeStyle = css('paper', NIGHT ? 0.35 : 0.75); c.lineWidth = 0.75;
   for (let x = b.x - b.h; x < b.x + b.w + b.h; x += 3) {
     c.beginPath(); c.moveTo(x, b.y); c.lineTo(x + b.h * 0.4, b.y + b.h + 35); c.stroke();
   }
   c.restore();
-  c.save(); polygon(c, p); c.fillStyle = css('paper'); c.fill(); c.clip();
-  c.fillStyle = css('ink', 0.08);
+  c.save(); polygon(c, p); c.fillStyle = NIGHT ? css('ink', 0.75) : css('paper'); c.fill(); c.clip();
+  c.fillStyle = css(NIGHT ? 'paper' : 'ink', 0.08);
   for (let j = 0; j < 100; j++) c.fillRect(b.x + hash(i, j, 1) * b.w, b.y + hash(i, j, 2) * b.h, 1, 2);
   // Map the plate's square to the front's affine basis, preserving the slanted typography.
   c.transform(p[1]!.x - p[0]!.x, p[1]!.y - p[0]!.y,
     p[3]!.x - p[0]!.x, p[3]!.y - p[0]!.y, p[0]!.x, p[0]!.y);
-  c.fillStyle = css('ink', inkAlpha); c.font = font(F.mono(600), 20 / Math.max(1, b.h));
+  c.fillStyle = css(NIGHT ? 'paper' : 'ink', inkAlpha); c.font = font(F.mono(600), 20 / Math.max(1, b.h));
   // Non-sung serial numbers have one annotation size, compensated for foreshortening.
   c.save(); c.scale(b.h / Math.max(1, p[1]!.x - p[0]!.x), 1);
   c.fillText(String(i + 1).padStart(2, '0'), 0.1 * (p[1]!.x - p[0]!.x) / b.h, 0.1); c.restore();

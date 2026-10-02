@@ -1,4 +1,5 @@
 import { PrintOverlay } from '../kit/print-overlay';
+import { NIGHT, NightSky, ChromaGlow } from '../kit/night';
 import { drawNote } from '../kit/note';
 // S10: upright foreshortened glass reports, engraved thickness and beat-driven shards.
 import type * as THREE from 'three';
@@ -22,17 +23,19 @@ const polygon = (c: CanvasRenderingContext2D, pts: Point[]) => {
 };
 class World {
   print = new PrintOverlay();
+  sky = new NightSky();
+  chroma = new ChromaGlow();
   ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
   hatch: CanvasPattern;
   constructor(ctx: SceneCtx) {
     this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
     const tile = document.createElement('canvas'); tile.width = tile.height = 48;
-    const c = tile.getContext('2d')!; c.fillStyle = css('paper'); c.fillRect(0, 0, 48, 48);
-    c.strokeStyle = css('ink', 0.9); c.lineWidth = 1;
+    const c = tile.getContext('2d')!; c.fillStyle = css(NIGHT ? 'night' : 'paper'); c.fillRect(0, 0, 48, 48);
+    c.strokeStyle = NIGHT ? css('paper', 0.32) : css('ink', 0.9); c.lineWidth = 1;
     for (let i = -48; i < 96; i += 4) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i + 48, 48); c.stroke(); }
     this.hatch = this.layer.ctx.createPattern(tile, 'repeat')!;
   }
-  dispose() { this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.sky.dispose(); this.chroma.dispose(); this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: World | undefined;
 export default class S10Redwall extends Scene {
@@ -42,7 +45,8 @@ export default class S10Redwall extends Scene {
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, T = w.times, au = this.ctx.audio, t = f.t, v = w.voice;
     const s = glassState(au, t, T), hand = handoffOut(t, au, T), leaving = exitBeat(au, t, T.wallEnd);
-    w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0.12 });
+    if (NIGHT) w.sky.render(this.ctx.renderer, out, 0.42, 1);
+    else w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0.12 });
     w.layer.clear(); const c = w.layer.ctx;
     const line = v.line('Nineteen red, and they’re shattering like glass');
     const set = setLine(v.forms(line, t).slice(1), 96, { space: 0.2 });
@@ -69,23 +73,23 @@ export default class S10Redwall extends Scene {
           c.moveTo(cx - r, bottom + 5); c.lineTo(cx, tip); c.lineTo(cx + r, bottom + 5); c.closePath();
         }
       };
-      face(); c.fillStyle = css('paper'); c.fill('evenodd');
-      c.strokeStyle = css('ink', 0.65); c.lineWidth = 1.4; c.stroke();
+      face(); c.fillStyle = NIGHT ? css('ink', 0.55) : css('paper'); c.fill('evenodd');
+      c.strokeStyle = NIGHT ? css('paper', 0.55) : css('ink', 0.65); c.lineWidth = 1.4; c.stroke();
       c.save(); face(); c.clip('evenodd');
       // Low-density face engraving, distinct from densely engraved sides and shards.
-      c.strokeStyle = css('ink', 0.13); c.lineWidth = 0.8;
+      c.strokeStyle = NIGHT ? css('paper', 0.07) : css('ink', 0.13); c.lineWidth = 0.8;
       for (let i = -p.h; i < p.w; i += 6) {
         c.beginPath(); c.moveTo(p.x + i, p.y); c.lineTo(p.x + i + p.h, p.y + p.h); c.stroke();
       }
       const cx = p.x + p.w * 0.55, cy = p.y + 85 / p.depth, r = 21 / Math.sqrt(p.depth);
-      c.strokeStyle = css('fail', 0.6); c.lineWidth = 7 / Math.sqrt(p.depth);
+      c.strokeStyle = css('fail', NIGHT ? 1 : 0.6); c.lineWidth = 7 / Math.sqrt(p.depth);
       c.beginPath(); c.moveTo(cx - r, cy - r); c.lineTo(cx + r, cy + r);
       c.moveTo(cx + r, cy - r); c.lineTo(cx - r, cy + r); c.stroke();
       c.save(); c.translate(p.x + 24 / p.depth, p.y + 142 / p.depth); c.rotate(0.12);
       c.scale(1 / Math.sqrt(p.depth), 1 / Math.sqrt(p.depth));
-      mono(c, CALENDAR_TESTS[p.row]!, 0, 0, 18); c.restore();
+      mono(c, CALENDAR_TESTS[p.row]!, 0, 0, 18, NIGHT ? 'paper' : 'ink'); c.restore();
       // The lyric is a single engraved strip crossing the plate faces; the gaps cut the words.
-      drawSet(c, set, 96, 676, { on: 'paper' }); c.restore();
+      drawSet(c, set, 96, 676, { on: NIGHT ? 'ink' : 'paper' }); c.restore();
     }
     // Sharp triangular fragments from the bottom of each face, with solid engraved edge thickness.
     for (const p of s.plates) for (let piece = 0; piece < 8; piece++) {
@@ -98,25 +102,26 @@ export default class S10Redwall extends Scene {
       const source = glassTriangles(p.row)[piece]!;
       const cx = source.reduce((n, v) => n + v[0], 0) / 3, cy = source.reduce((n, v) => n + v[1], 0) / 3;
       const pts: Point[] = source.map(([x, y]) => [(x - cx) / 170 * r * 2, (y - cy) / 620 * r * 2]);
-      polygon(c, pts.map(([x, y]) => [x + 4, y + 4])); c.fillStyle = css('ink'); c.fill();
+      polygon(c, pts.map(([x, y]) => [x + 4, y + 4])); c.fillStyle = css(NIGHT ? 'night' : 'ink'); c.fill();
       polygon(c, pts); c.fillStyle = w.hatch; c.fill();
-      c.strokeStyle = css('ink', 0.8); c.lineWidth = 1; c.stroke();
+      c.strokeStyle = NIGHT ? css(piece % 3 ? 'paper' : 'fail', piece % 3 ? 0.6 : 0.9) : css('ink', 0.8); c.lineWidth = 1; c.stroke();
       c.clip();
       // Torn letter portions move with the same shard as the toner that carried them.
-      drawSet(c, set, 96 - x, 676 - y, { on: 'paper' }); c.restore();
+      drawSet(c, set, 96 - x, 676 - y, { on: NIGHT ? 'ink' : 'paper' }); c.restore();
     }
     c.restore();
     const n = handoffIn(t, au, T), first = v.form(line.words[0]!, t);
     if (t < line.start) counter19(c, n.x, n.baseline, n.capH, 'fail');
     else if (first.born > 0) odometer(c, 19 * first.sung, n.x, n.baseline, 196,
-      { digits: 2, color: first.stress ? 'clay' : 'fail', on: 'paper', age: first.age, axes: first.axes, pitch: 98 });
-    c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
+      { digits: 2, color: first.stress ? 'clay' : 'fail', on: NIGHT ? 'ink' : 'paper', age: first.age, axes: first.axes, pitch: 98 });
+    c.font = font(F.mono(700), 180); c.fillStyle = css('fail', NIGHT ? 0.9 : 0.6); c.fillText('failed', 386, 204);
     c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
-    drawNote(c, { ax: 1040, ay: 150, x: 1100, y: 112, text: '19/19 failing', sub: 'consistent, at least', t0: afterBeats(au, T.nineteen, 1), on: 'paper' }, t);
-    carry(c, v, t, T.wallStart, 96, 348, 'paper');
+    drawNote(c, { ax: 1040, ay: 150, x: 1100, y: 112, text: '19/19 failing', sub: 'consistent, at least', t0: afterBeats(au, T.nineteen, 1), on: NIGHT ? 'ink' : 'paper' }, t);
+    carry(c, v, t, T.wallStart, 96, 348, NIGHT ? 'ink' : 'paper');
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y + 40 * fall, crab.pose, { px: crab.px });
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    w.print.render(this.ctx.renderer, out);
-    return { ...postFor('paper'), hud: 0, bloom: 0 };
+    if (NIGHT) w.chroma.composite(this.ctx.renderer, w.layer.texture, out, 0.55);
+    else w.print.render(this.ctx.renderer, out);
+    return NIGHT ? { ...postFor('ink'), hud: 0, vignette: 0.35, ca: 0.6 } : { ...postFor('paper'), hud: 0, bloom: 0 };
   }
 }

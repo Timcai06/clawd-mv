@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { SCALE, scaleContext2D } from '../../engine/gl';
 import { F, font } from '../../engine/type';
 import { css, lin } from '../../theme';
+import { NIGHT } from '../../kit/night';
 
 export class DateLabels {
   scene = new THREE.Scene();
@@ -54,7 +55,7 @@ export class DateLabels {
       fragmentShader: `precision highp float;
         in vec2 vUv; in float vDate; out vec4 fragColor;
         uniform sampler2D atlas;
-        uniform vec3 ink, clay;
+        uniform vec3 ink, clay, paper; uniform float night;
         uniform float accented, visited, pulse;
         void main() {
           float i = vDate - 1.0;
@@ -62,7 +63,7 @@ export class DateLabels {
           float a = texture(atlas, q).a;
           if (a < 0.003) discard;
           float hot = float(abs(vDate - accented) < 0.1 && vDate < 31.5);
-          vec3 c = mix(ink, clay, hot);
+          vec3 c = night > 0.5 ? mix(paper * 0.62, clay * 2.4, hot) : mix(ink, clay, hot);
           float dim = hot > 0.5 ? 1.0 : 0.6;
           fragColor = vec4(c, a * dim);
         }`,
@@ -70,6 +71,7 @@ export class DateLabels {
         atlas: { value: this.atlas },
         ink: { value: new THREE.Vector3(...lin('ink')) },
         clay: { value: new THREE.Vector3(...lin('clay')) },
+        paper: { value: new THREE.Vector3(...lin('paper')) }, night: { value: NIGHT ? 1 : 0 },
         accented: { value: 1 }, visited: { value: 1 }, pulse: { value: 0 },
       },
       transparent: true, depthWrite: false, depthTest: true,

@@ -1,6 +1,7 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
+import { NIGHT, NightSky } from '../kit/night';
 // S04 — October as an engraved city (storyboard v2 kf-S04, lyric typography v3).
 // The sung "thirty-second" is a day counter that runs 1 → 31 over the city: the cursor and Clawd
 // follow it street by street and each roof lights clay as it is counted. On the S04-2 downbeat the
@@ -27,7 +28,7 @@ import { drawCalendar } from './parts/s03-form';
 import { printInBox } from './parts/s01-print';
 export const TYPE_LEVELS = { giant: 212, lyric: 50.8, label: 20 }; // cap heights in logical px
 
-const PAPER = lin('paper'), INK = lin('ink'), CLAY = lin('clay');
+const PAPER = lin('paper'), INK = lin('ink'), CLAY = lin('clay'), NIGHTC = lin('night');
 const UP = new THREE.Vector3(0, 1, 0);
 
 const BLOCK_VERT = /* glsl */ `
@@ -105,8 +106,81 @@ void main() {
   fragColor = vec4(ink, h * 0.7);
 }`;
 
+// ---- Night version (kit/night.ts): white-line engraving lit by the 32nd tower, which has its lights on.
+const BLOCK_FRAG_NIGHT = /* glsl */ `
+precision highp float;
+in vec3 vWorld, vNormal; in float vDate; out vec4 fragColor;
+${GLSL_COMMON}
+uniform vec3 paper, ink, clay, night, lightPos;
+uniform float accented, visited, kick, t, lightK;
+void main() {
+  vec3 n = normalize(vNormal);
+  float top = step(0.5, n.y);
+  float xSide = step(0.5, abs(n.x));
+  float along = mix(vWorld.x, vWorld.z, xSide);
+  vec3 Lv = lightPos - vWorld; float d2 = dot(Lv, Lv);
+  float tower = lightK * max(dot(n, Lv * inversesqrt(d2)), 0.0) * 70.0 / (d2 + 25.0);
+  float moon = 0.012 + 0.05 * max(dot(n, normalize(vec3(-0.5, 0.8, 0.45))), 0.0);
+  float lit = moon + tower;
+  // white lines on black: the lit faces carry more and brighter lines
+  float cov = clamp(0.05 + 0.6 * lit, 0.04, 0.6) * (1.0 - 0.35 * smoothstep(1.2, 0.0, vWorld.y));
+  float rules = hatch(along * 7.5, cov);
+  float cross = hatch((vWorld.y + along * 0.18) * 9.0, sat(cov * 1.4 - 0.45));
+  float lines = max(rules, cross) * (1.0 - top);
+  vec3 c = night * 1.5 + clay * tower * 0.18;
+  c += paper * lines * min(1.0, 0.05 + 1.6 * lit) * 0.8;
+  float focus = float(abs(vDate - accented) < 0.1);
+  float read = step(vDate, visited);
+  // roofs: dim paper, warmed by the tower; the counted roof burns
+  float roofLines = hatch((vWorld.x + vWorld.z) * 6.0, clamp(0.04 + 0.4 * lit, 0.03, 0.4));
+  c = mix(c, night * 1.3 + paper * roofLines * 0.12 * min(1.0, 0.05 + 1.5 * lit) + clay * (tower * 0.55 + 0.02 * read), top);
+  c += clay * top * focus * (2.2 + kick * 0.6);
+  if (vDate > 31.5) {
+    // the impossible building: dark, its windows lit
+    float wx = fract(along * 1.55), wy = fract(vWorld.y * 2.1);
+    vec2 cell = floor(vec2(along * 1.55, vWorld.y * 2.1));
+    float win = step(0.3, wx) * step(wx, 0.72) * step(0.28, wy) * step(wy, 0.74) * (1.0 - top);
+    float on = step(0.3, hash12(cell + vec2(7.0, 3.0)));
+    c = night * 1.3 + paper * hatch(along * 7.5, 0.08) * 0.12 * (1.0 - top);
+    c += clay * win * on * lightK * (2.4 + 0.8 * hash12(cell));
+    c += clay * top * lightK * 1.2;
+  }
+  fragColor = vec4(c, 1.0);
+}`;
+
+const FLOOR_FRAG_NIGHT = /* glsl */ `
+precision highp float;
+in vec2 vUv; out vec4 fragColor;
+${GLSL_COMMON}
+uniform vec3 paper, ink, clay, night, lightPos;
+uniform float t, kick, lightK;
+float rule(float u, float width) {
+  float d = abs(fract(u + 0.5) - 0.5);
+  return pxLine(d / max(fwidth(u), 0.00001), 0.35 * width, 1.2 * width);
+}
+void main() {
+  vec2 p = vUv * vec2(60.0, 60.0);
+  vec2 xz = vec2((vUv.x - 0.5) * 60.0, -(vUv.y - 0.5) * 60.0 - 8.1);
+  float grid = max(rule(p.x / 3.6, 1.0), rule(p.y / 3.6, 1.0));
+  vec2 dl = xz - lightPos.xz;
+  float pool = lightK * exp(-dot(dl, dl) / 55.0);
+  float far = exp(-max(0.0, length(xz - vec2(0.0, -7.0)) - 10.0) / 14.0);
+  vec3 c = night * 1.2 + ink * 0.12 * far;
+  c += paper * grid * (0.045 + 0.02 * kick + 0.25 * pool) * far;
+  c += clay * pool * 0.22;
+  fragColor = vec4(c, 1.0);
+}`;
+
+const SHADOW_FRAG_NIGHT = /* glsl */ `
+precision highp float;
+in vec3 vWorld; out vec4 fragColor;
+${GLSL_COMMON}
+uniform vec3 ink;
+void main() { fragColor = vec4(vec3(0.0), 0.55); }`;
+
 class CityWorld {
   print = new PrintOverlay();
+  sky = new NightSky();
   sparks = new SparkLines();
   users = 0;
   ground = new Ground();
@@ -145,10 +219,11 @@ class CityWorld {
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     geometry.setAttribute('date', new THREE.InstancedBufferAttribute(Float32Array.from({ length: 32 }, (_, i) => i + 1), 1));
     this.blockMaterial = new THREE.RawShaderMaterial({
-      glslVersion: THREE.GLSL3, vertexShader: BLOCK_VERT, fragmentShader: BLOCK_FRAG,
+      glslVersion: THREE.GLSL3, vertexShader: BLOCK_VERT, fragmentShader: NIGHT ? BLOCK_FRAG_NIGHT : BLOCK_FRAG,
       uniforms: {
         paper: { value: new THREE.Vector3(...PAPER) }, ink: { value: new THREE.Vector3(...INK) }, clay: { value: new THREE.Vector3(...CLAY) },
         accented: { value: 1 }, visited: { value: 1 }, kick: { value: 0 }, t: { value: 0 },
+        night: { value: new THREE.Vector3(...NIGHTC) }, lightPos: { value: new THREE.Vector3() }, lightK: { value: 0 },
       }, toneMapped: false,
     });
     this.blocks = new THREE.InstancedMesh(geometry, this.blockMaterial, 32);
@@ -158,7 +233,7 @@ class CityWorld {
     const shadowGeo = new THREE.PlaneGeometry(1, 1);
     shadowGeo.setAttribute('date', new THREE.InstancedBufferAttribute(Float32Array.from({ length: 32 }, (_, i) => i + 1), 1));
     this.shadows = new THREE.InstancedMesh(shadowGeo, new THREE.RawShaderMaterial({
-      glslVersion: THREE.GLSL3, vertexShader: BLOCK_VERT, fragmentShader: SHADOW_FRAG,
+      glslVersion: THREE.GLSL3, vertexShader: BLOCK_VERT, fragmentShader: NIGHT ? SHADOW_FRAG_NIGHT : SHADOW_FRAG,
       uniforms: { ink: { value: new THREE.Vector3(...INK) } }, transparent: true, depthWrite: false, toneMapped: false,
     }), 32);
     this.shadows.frustumCulled = false;
@@ -170,8 +245,9 @@ class CityWorld {
         in vec3 position; in vec2 uv; out vec2 vUv;
         uniform mat4 modelViewMatrix, projectionMatrix;
         void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: FLOOR_FRAG,
-      uniforms: { paper: { value: new THREE.Vector3(...PAPER) }, ink: { value: new THREE.Vector3(...INK) }, t: { value: 0 }, kick: { value: 0 } },
+      fragmentShader: NIGHT ? FLOOR_FRAG_NIGHT : FLOOR_FRAG,
+      uniforms: { paper: { value: new THREE.Vector3(...PAPER) }, ink: { value: new THREE.Vector3(...INK) }, t: { value: 0 }, kick: { value: 0 },
+        clay: { value: new THREE.Vector3(...CLAY) }, night: { value: new THREE.Vector3(...NIGHTC) }, lightPos: { value: new THREE.Vector3() }, lightK: { value: 0 } },
       toneMapped: false,
     });
     this.floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), this.floorMaterial);
@@ -187,7 +263,7 @@ class CityWorld {
     return { x: (v.x * 0.5 + 0.5) * W, y: (0.5 - v.y * 0.5) * H, visible: v.z > -1 && v.z < 1 };
   }
 
-  dispose() { this.sparks.dispose(); this.print.dispose();
+  dispose() { this.sky.dispose(); this.sparks.dispose(); this.print.dispose();
     this.blocks.geometry.dispose(); this.blockMaterial.dispose();
     this.shadows.geometry.dispose(); (this.shadows.material as THREE.Material).dispose();
     this.floor.geometry.dispose(); this.floorMaterial.dispose();
@@ -257,6 +333,12 @@ export default class S04Calendar extends Scene {
     w.blockMaterial.uniforms.t!.value = f.t;
     w.floorMaterial.uniforms.t!.value = f.t;
     w.floorMaterial.uniforms.kick!.value = f.a.kick;
+    // night: the 32nd tower is the light source (it switches on as it erupts)
+    const d32l = DATES[31]!;
+    for (const mat of [w.blockMaterial, w.floorMaterial]) {
+      (mat.uniforms.lightPos!.value as THREE.Vector3).set(d32l.x, s.roof32 * 0.55, d32l.z + TOWER_BLOCK * 0.5 + 0.6);
+      mat.uniforms.lightK!.value = s.rising ? Math.min(1, s.lift) * (1 + 0.25 * f.a.kick) : 0;
+    }
   }
 
   private survey(s: ReturnType<typeof cityState>, out: THREE.WebGLRenderTarget) {
@@ -268,7 +350,7 @@ export default class S04Calendar extends Scene {
     const dist = s.travel * STREETS.total;
     for (let i = 1; i < STREETS.points.length; i++) {
       const a = STREETS.points[i - 1]!, b = STREETS.points[i]!;
-      seg(a, b, 0.7, INK, 0.07);
+      seg(a, b, 0.7, NIGHT ? PAPER : INK, NIGHT ? 0.05 : 0.07);
       if (STREETS.lengths[i - 1]! >= dist) continue;
       const k = Math.min(1, (dist - STREETS.lengths[i - 1]!) / (STREETS.lengths[i]! - STREETS.lengths[i - 1]!));
       seg(a, [lerp(a[0], b[0], k), a[1], lerp(a[2], b[2], k)], 3.2, CLAY, 1);
@@ -279,7 +361,7 @@ export default class S04Calendar extends Scene {
       for (let j = 0; j < 9; j++) {
         const x = d.x - BLOCK * 0.65 + (j / 8) * BLOCK * 1.3, z = d.z - BLOCK * 0.55 - hash(j, 3) * 0.6;
         const y0 = h * (0.15 + 0.5 * hash(j, 5)), y1 = h + 1.2 + 2.6 * hash(j, 7);
-        seg([x, y0, z], [x, y1, z], 0.9, INK, 0.55 * k);
+        seg([x, y0, z], [x, y1, z], 0.9, NIGHT ? [CLAY[0] * 1.6, CLAY[1] * 1.6, CLAY[2] * 1.6] as [number, number, number] : INK, 0.55 * k);
       }
     }
     lb.render(this.ctx.renderer, out, this.w.camera);
@@ -306,10 +388,10 @@ export default class S04Calendar extends Scene {
     const cx = lerp(96, 1752, fly), cy = lerp(312, 196, fly), size = lerp(300, 28, fly);
     const over = s.rising;
     c.save(); c.translate(cx, cy); c.scale(breath, breath);
-    if (forms[2]!.born > 0) odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : 'ink', on: 'paper', age: forms[2]!.age, axes: { wdth: 75, wght: 900 } });
+    if (forms[2]!.born > 0) odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : NIGHT ? 'paper' : 'ink', on: NIGHT ? 'ink' : 'paper', age: forms[2]!.age, axes: { wdth: 75, wght: 900 } });
     c.restore();
     if (fly > 0.98) {
-      c.strokeStyle = css('ink', 0.85); c.lineWidth = 1.2;
+      c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.5 : 0.85); c.lineWidth = 1.2;
       c.beginPath(); c.moveTo(1752, 214); c.lineTo(1888, 214); c.stroke();
       c.beginPath(); c.moveTo(1560, 150); c.lineTo(1560, 420); c.stroke();
 
@@ -319,7 +401,7 @@ export default class S04Calendar extends Scene {
     const pre = forms.slice(0, -1);
     const lead = setLine(pre, 74, { space: 0.24 });
     const leadAlpha = slam ? Math.max(0, 1 - ease.outCubic(span(t, T.october, T.october + 0.18))) : 1;
-    if (leadAlpha > 0) drawSet(c, lead, 92, 420, { on: 'paper', alpha: leadAlpha });
+    if (leadAlpha > 0) drawSet(c, lead, 92, 420, { on: NIGHT ? 'ink' : 'paper', alpha: leadAlpha });
 
     // OCTOBER: slams down cropped by the frame on the onset, then stretches with the held note.
     if (slam) {
@@ -328,16 +410,16 @@ export default class S04Calendar extends Scene {
       const drop = k < 0.1 ? lerp(-150, 10, ease.inQuad(k / 0.1)) : lerp(10, 0, ease.outCubic(clamp((k - 0.1) / 0.14)));
       const run = varRun('OCTOBER', 286, { wdth: ox.axes.wdth, wght: Math.max(760, ox.axes.wght) });
       const pres = Math.max(0.6, v.presence(line, t));
-      c.save(); c.globalAlpha = pres; c.fillStyle = heatColor('ink', 'paper', october.age);
+      c.save(); c.globalAlpha = pres; c.fillStyle = NIGHT ? heatColor('paper', 'ink', october.age) : heatColor('ink', 'paper', october.age);
       c.translate(-26, 212 + drop); c.scale(breath, breath);
       printInBox(c, run, {x:0,y:-242,w:1215,h:242});
       c.restore();
       const lab = ease.outExpo(span(t, october.t0 + 0.12, october.t0 + 0.5));
       if (lab > 0) {
         c.globalAlpha = lab;
-        c.strokeStyle = css('ink', 0.8); c.lineWidth = 1.2;
+        c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.5 : 0.8); c.lineWidth = 1.2;
         c.beginPath(); c.moveTo(72, 300); c.lineTo(72 + 620 * lab, 300); c.stroke();
-        c.font = font(F.mono(), 20); c.fillStyle = css('ink',0.6);
+        c.font = font(F.mono(), 20); c.fillStyle = css(NIGHT ? 'paper' : 'ink',0.6);
         c.fillText('01—31', 72, 282);
         c.globalAlpha = 1;
       }
@@ -345,7 +427,7 @@ export default class S04Calendar extends Scene {
 
     // "So I crack…": the next line takes the focus in the grid at the foot of the frame.
     const next = v.line('So I crack my claws and read it all over');
-    if (t >= next.start) drawSet(c, setLine(v.forms(next, t), 74, { space: 0.24 }), 92, 420, { on: 'paper' });
+    if (t >= next.start) drawSet(c, setLine(v.forms(next, t), 74, { space: 0.24 }), 92, 420, { on: NIGHT ? 'ink' : 'paper' });
   }
 
   private annotations(f: Frame, s: ReturnType<typeof cityState>, out: THREE.WebGLRenderTarget) {
@@ -356,12 +438,12 @@ export default class S04Calendar extends Scene {
     this.character(f,s,c);
     if (s.rising) {
       const d = DATES[31]!, top = w.project([d.x + TOWER_BLOCK / 2, s.roof32, d.z]);
-      drawNote(c, { ax: top.x, ay: top.y + 30, x: top.x + 70, y: top.y - 40, text: 'Oct 32', sub: 'permit pending', t0: w.times.october + 0.35, on: 'paper' }, f.t);
+      drawNote(c, { ax: top.x, ay: top.y + 30, x: top.x + 70, y: top.y - 40, text: 'Oct 32', sub: 'permit pending', t0: w.times.october + 0.35, on: NIGHT ? 'ink' : 'paper' }, f.t);
     }
     this.lyrics(f, s, c);
     const head = w.project([s.head[0], s.head[1], s.head[2]]);
     if (head.visible && head.x > 20 && head.x < W - 30 && head.y > 20 && head.y < H - 20) {
-      w.sparks.begin(c, undefined, 'paper');
+      w.sparks.begin(c, undefined, NIGHT ? 'ink' : 'paper');
       const at = (tb: number) => {
         const state = cityState(this.ctx.audio, tb, w.times);
         const v = new THREE.Vector3(...state.head).project(projectionCamera(this.ctx.audio, tb, w.times));
@@ -374,7 +456,7 @@ export default class S04Calendar extends Scene {
           return p.visible ? p : null;
         }, { from: w.times.start, width: 3.2, knots: w.streetKnots, alpha: sparkFade(f.t, w.times.end) });
         cursorSpark(c, undefined, w.sparks, f.t, at,
-          { on: 'paper', from: w.times.start, to: w.times.end-1/60, end: w.times.end, seed: 4 });
+          { on: NIGHT ? 'ink' : 'paper', from: w.times.start, to: w.times.end-1/60, end: w.times.end, seed: 4 });
       } else drawCursor(c, { x: head.x - 7, y: head.y + 6, h: 24, on: blink(f.beat, !s.rising) });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.overlay.upload(), out);
@@ -383,7 +465,8 @@ export default class S04Calendar extends Scene {
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, s = cityState(this.ctx.audio, f.t, w.times);
     this.camera(f, s); this.buildings(f, s);
-    w.ground.render(this.ctx.renderer, out, {
+    if (NIGHT) w.sky.render(this.ctx.renderer, out, 0.6, s.rising ? s.lift : 0);
+    else w.ground.render(this.ctx.renderer, out, {
       kind: 'paper', t: f.t, camX: w.camera.position.x * 34, camY: w.camera.position.z * 30,
       zoom: 1, cell: 76, grid: 0.5, kick: f.a.kick, halftone: 0.3, pitch: 12, haze: 0,
     });
@@ -392,9 +475,9 @@ export default class S04Calendar extends Scene {
     r.render(w.scene, w.camera);
     r.render(w.labels.scene, w.camera);
     this.survey(s, out); this.annotations(f, s, out);
-    w.print.render(this.ctx.renderer, out);
+    if (!NIGHT) w.print.render(this.ctx.renderer, out);
     return {
-      ...postFor('paper'), hud: 0, grain: 0.03,
+      ...postFor(NIGHT ? 'ink' : 'paper'), hud: 0, grain: 0.03, ...(NIGHT ? { vignette: 0.35, ca: 0.6 } : {}),
     };
   }
 }

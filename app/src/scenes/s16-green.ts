@@ -1,4 +1,5 @@
 import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { NIGHT, NightSky, ChromaGlow } from '../kit/night';
 import { drawNote } from '../kit/note';
 import { PrintOverlay } from '../kit/print-overlay';
 // S16: the cropped GREEN slab above one foreshortened arc of nineteen engraved dominoes.
@@ -24,6 +25,8 @@ export const TYPE_LEVELS = { giant: 510, lyric: 63.112, label: 20 };
 
 class World {
   print = new PrintOverlay();
+  sky = new NightSky();
+  chroma = new ChromaGlow();
   sparks = new SparkLines();
   users = 0;
   ground = new Ground();
@@ -32,7 +35,7 @@ class World {
   times: GreenTimes;
   voice: Voice;
   constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+  dispose() { this.sky.dispose(); this.chroma.dispose(); this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
 
@@ -65,11 +68,12 @@ export default class S16Green extends Scene {
     const lens = { zoom, fx: lerp(cx, 960, Math.max(open, arrive)), fy: lerp(cy, 540, Math.max(open, arrive)),
       ax: lerp(cx, 960, Math.max(open, arrive)), ay: lerp(cy, 540, Math.max(open, arrive)),
       rot: (0.01 * nudge - 0.02 * hit) * (1 - open) };
-    w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, halftone: 0.08, pitch: 7, haze: 0 });
+    if (NIGHT) w.sky.render(this.ctx.renderer, out, 0.3, 0.5);
+    else w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, halftone: 0.08, pitch: 7, haze: 0 });
     w.layer.clear(); const c = w.layer.ctx;
 
     // Registration rules carry no extra annotation text.
-    c.strokeStyle = css('ink', 0.55); c.lineWidth = 1;
+    c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.3 : 0.55); c.lineWidth = 1;
     c.beginPath(); c.moveTo(96, 500); c.lineTo(96, 1080);
     c.moveTo(1530, 0); c.lineTo(1530, 655); c.moveTo(1530, 278); c.lineTo(1920, 278);
     c.moveTo(0, 820); c.lineTo(620, 820); c.stroke();
@@ -77,20 +81,20 @@ export default class S16Green extends Scene {
       const run = varRun('GREEN', 740, { wdth: s.form.axes.wdth, wght: Math.max(820, s.form.axes.wght) });
       // The reference's headline is INK. A stressed attack briefly prints clay, then
       // becomes the persistent ink title rather than disappearing between greens.
-      printRun(c, run, s.headline, s.form.stress && s.form.singing ? 'clay' : 'ink', 16,
-        Math.min(1, s.form.born * 1.6), heatColor(s.form.stress && s.form.singing ? 'clay' : 'ink', 'paper', s.form.age));
+      printRun(c, run, s.headline, s.form.stress && s.form.singing ? 'clay' : NIGHT ? 'paper' : 'ink', 16,
+        Math.min(1, s.form.born * 1.6), heatColor(s.form.stress && s.form.singing ? 'clay' : NIGHT ? 'paper' : 'ink', 'paper', s.form.age));
     }
 
     { const last = s.cards[18]!, p = last.front[1]!;
-      drawNote(c, { ax: p.x, ay: p.y, x: p.x - 210, y: p.y - 90, text: '19/19 · flaky: 0', t0: T.nineteen.start + 0.35, on: 'paper' }, t); }
-    c.strokeStyle = css('ink', 0.8); c.lineWidth = 1.3;
+      drawNote(c, { ax: p.x, ay: p.y, x: p.x - 210, y: p.y - 90, text: '19/19 · flaky: 0', t0: T.nineteen.start + 0.35, on: NIGHT ? 'ink' : 'paper' }, t); }
+    c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.4 : 0.8); c.lineWidth = 1.3;
     for (let i = 0; i < s.cards.length - 1; i++) {
       const a = s.cards[i]!.front[1]!, b = s.cards[i + 1]!.front[0]!;
       c.beginPath(); c.moveTo(a.x + 2, a.y - 24);
       c.quadraticCurveTo((a.x + b.x) / 2, Math.min(a.y, b.y) - 55, b.x - 4, b.y - 28); c.stroke();
       c.beginPath(); c.moveTo(b.x - 8, b.y - 31); c.lineTo(b.x - 4, b.y - 28); c.lineTo(b.x - 3, b.y - 34); c.stroke();
     }
-    w.sparks.begin(c, undefined, 'paper');
+    w.sparks.begin(c, undefined, NIGHT ? 'ink' : 'paper');
     const waveEnd = T.triggers.at(-1)!;
     const wavePath = (tb: number) => {
       const i = Math.max(0, Math.min(s.cards.length-2, T.triggers.filter(at=>at<=tb).length-1));
@@ -102,7 +106,7 @@ export default class S16Green extends Scene {
     };
     if (t>=Math.max(T.triggers[0]!,T.incomingEnd) && t<waveEnd && sparkFade(t,T.outgoingStart)>0)
       cursorSpark(c,undefined,w.sparks,t,tb=>({...wavePath(tb),h:24}),
-        {on:'paper',from:Math.max(T.triggers[0]!,T.incomingEnd),to:waveEnd,end:T.outgoingStart,seed:16});
+        {on:NIGHT ? 'ink' : 'paper',from:Math.max(T.triggers[0]!,T.incomingEnd),to:waveEnd,end:T.outgoingStart,seed:16});
     if (t>=T.incomingEnd && sparkFade(t,T.outgoingStart)>0) for(let i=0;i<s.cards.length-1;i++) {
       const a=s.cards[i]!.front[1]!, b=s.cards[i+1]!.front[0]!;
       heatTrail(w.sparks,t,tb=>{
@@ -121,8 +125,8 @@ export default class S16Green extends Scene {
       c.save(); polygon(c, card.front); c.clip();
       const run = varRun(form.text.replace(/[,!]/g, ''), 92, form.axes);
       printRun(c, run, { x: card.face.x + 5, y: card.face.y + card.face.h * 0.72,
-        w: card.face.w * 0.78, h: TYPE_LEVELS.lyric }, form.stress ? 'clay' : 'ink', 100 + card.i,
-        presence * Math.min(1, form.born * 1.6), heatColor(form.stress ? 'clay' : 'ink', 'paper', form.age)); c.restore();
+        w: card.face.w * 0.78, h: TYPE_LEVELS.lyric }, form.stress ? 'clay' : NIGHT ? 'paper' : 'ink', 100 + card.i,
+        presence * Math.min(1, form.born * 1.6), heatColor(form.stress ? 'clay' : NIGHT ? 'paper' : 'ink', NIGHT ? 'ink' : 'paper', form.age)); c.restore();
     }
 
     // Numeric words belong to the faces; GREEN is the headline. Connecting words
@@ -131,21 +135,21 @@ export default class S16Green extends Scene {
     if (line && line.start < T.end && line.end >= T.start) {
       const words = v.forms(line, t).filter(x => !/^(green\W*|one|two\W*|three|nineteen)$/i.test(x.text));
       const latest = words.filter(x => x.born > 0).at(-1);
-      if (latest) drawSet(c, setLine([latest], 92), 1570, 205, { on: 'paper', alpha: v.presence(line, t) });
+      if (latest) drawSet(c, setLine([latest], 92), 1570, 205, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(line, t) });
     }
     const previous = v.line('Snip the extra line and set October free');
     if (v.presence(previous, t) > 0) drawSet(c, setLine(v.forms(previous, t).slice(-2), 92),
-      120, 1010, { on: 'paper', alpha: v.presence(previous, t) });
+      120, 1010, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(previous, t) });
 
     const cl = s.clawd;
     Clawd.draw(c, cl.x, cl.y, Clawd.pose('A7', { beat: f.beat, beat0: 0, p: 0 }), { px: cl.px });
-    c.strokeStyle = css('ink', 0.6); c.lineWidth = 1;
+    c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.35 : 0.6); c.lineWidth = 1;
     for (let i = 0; i < 5; i++) {
       c.beginPath(); c.moveTo(1515 + i * 18, 448); c.lineTo(1515 + i * 18, 492 + (i % 3) * 25); c.stroke();
     }
     const final = v.form(T.nineteen, t);
     if (final.born > 0) {
-      odometer(c, 18 + final.sung, 1570, 500, 92, { digits: 2, color: final.stress ? 'clay' : 'pass', on: 'paper', age: final.age, pitch: 51 });
+      odometer(c, 18 + final.sung, 1570, 500, 92, { digits: 2, color: final.stress ? 'clay' : 'pass', on: NIGHT ? 'ink' : 'paper', age: final.age, pitch: 51 });
       c.font = font(F.mono(500), 20); c.fillStyle = css('pass', 0.6); c.fillText('/19 passed', 1675, 499);
       drawCursor(c, { x: 1808, y: 500, h: 24 });
     } else {
@@ -153,8 +157,9 @@ export default class S16Green extends Scene {
       c.fillText(`${s.passed}/19 passed`, 1570, 500); drawCursor(c, { x: 1808, y: 500, h: 24 });
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    w.print.render(this.ctx.renderer, out);
+    if (NIGHT) w.chroma.composite(this.ctx.renderer, w.layer.texture, out, 0.55);
+    else w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer, finalOut, lens);
-    return { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035 };
+    return NIGHT ? { ...postFor('ink'), hud: 0, frame: 0, vignette: 0.35, ca: 0.6 } : { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035 };
   }
 }
