@@ -28,7 +28,6 @@ export { cursorAt } from './parts/s10-glass';
 import { exitEnvelope } from '../kit/handoff';
 import { drawCarry } from '../kit/carry';
 import { glyphPath, varRun } from '../kit/vartype';
-import { heatColor } from '../kit/lyric-moves';
 import { counter19 } from './parts/s09-type';
 import { PLATES, PW, PH, TH, ROW_DIR, ROW_STEP, plateToWorld, shardTri, shardMotion, rot, stampAt, CLAWD_AT, CLAWD_VOX, CLAWD_YAW } from './parts/s10-world';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
@@ -83,18 +82,21 @@ void main() {
         float y = 0.12 + 0.05 * float(k);
         col = mix(col, ink, 0.35 * (1.0 - smoothstep(0.0, fwidth(vUv.y) * 1.2, abs(vUv.y - y))) * step(0.1, vUv.x) * step(vUv.x, 0.9));
       }
-      // the lyric strip, printed across the whole row (in rest-world coordinates)
-      float s = dot(vRest - rowO, rowD) / stripLen, v = vRest.y / ${PH.toFixed(2)};
-      if (s > 0.0 && s < 1.0 && v > 0.30 && v < 0.42) {
-        vec4 lt = texture(strip, vec2(s, (v - 0.30) / 0.12));
-        col = mix(col, lt.rgb / max(lt.a, 1e-3), lt.a);
-      }
       vec2 e = min(vUv, 1.0 - vUv) * vec2(${PW.toFixed(2)}, ${PH.toFixed(2)});
       col = mix(col, ink, (1.0 - smoothstep(0.035, 0.035 + fwidth(e.x) * 1.5, min(e.x, e.y))) * 0.7);
     } else col *= 0.86;
     // cracks: the shard edges show just before the slab goes
     float b = min(vBary.x, min(vBary.y, vBary.z));
     col = mix(col, ink, (1.0 - smoothstep(0.0, fwidth(b) * 1.6, b)) * crack * 0.9);
+  }
+  // the lyric strip, printed across the whole row (in rest-world coordinates)
+  float s = dot(vRest - rowO, rowD) / stripLen, v = vRest.y / ${PH.toFixed(2)};
+  if (face < 0.5 && s > 0.0 && s < 1.0 && v > 0.30 && v < 0.42) {
+    vec4 lt = texture(strip, vec2(s, (v - 0.30) / 0.12));
+    // CanvasTexture stores straight RGB: coverage changes opacity, never the print colour.
+    // Stop glass engraving beneath the glyph, including the 8% transmitted base.
+    float glyphCoverage = clamp(lt.a / 0.92, 0.0, 1.0);
+    col = mix(mix(col, paper, glyphCoverage), lt.rgb, lt.a);
   }
   fragColor = vec4(col, 1.0);
 }`;
@@ -230,7 +232,7 @@ export default class S10Redwall extends Scene {
       const axes=v.form(g.word,t).axes,run=varRun(g.ch,100,axes);
       sc.save(); sc.translate(g.s/STRIP_LEN*STRIP_W,STRIP_H*(1-(STRIP_BASE/PH-0.30)/0.12));
       sc.scale(STRIP_W/STRIP_LEN*STRIP_CAP/run.capH,STRIP_H/(PH*0.12)*STRIP_CAP/run.capH);
-      sc.fillStyle=heatColor(g.word.w==='shattering'?'clay':'paper','ink',t-g.t0);
+      sc.globalAlpha=0.92;sc.fillStyle=css(g.word.w==='shattering'?'clay':'ink');
       sc.fill(glyphPath(run,run.glyphs[0]!));sc.restore();
     }
     w.stripLayer.upload();

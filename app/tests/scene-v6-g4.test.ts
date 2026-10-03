@@ -188,3 +188,119 @@ test('carried pass and why never reveal unborn letters after their cuts',()=>{
  const word=voice.line('Undefined, undefined, and I don’t know why').words.at(-1)!,times=letterTimes(word);
  for(const t of [T.rerunStart,T.rerunStart+0.3,T.rerunStart+0.6])for(const g of whyIncoming(voice,T,t).aff)expect(t).toBeGreaterThanOrEqual(times[g.i]!.t0);
 });
+
+import { affineBounds } from '../src/scenes/parts/s09-type';
+import { SolidText } from '../src/kit/solidtype';
+import * as THREE from 'three';
+function disjoint(a:{x:number;y:number;w:number;h:number},b:{x:number;y:number;w:number;h:number}) {
+  return a.x+a.w<=b.x || b.x+b.w<=a.x || a.y+a.h<=b.y || b.y+b.h<=a.y;
+}
+// An ink rectangle is projected as a quadrilateral. Its screen AABB may overlap
+// a neighbouring tilted quadrilateral without the projected ink rectangles intersecting.
+function inkQuad(ch:string,axes:{wdth:number;wght:number},m:readonly number[]) {
+  const b=runInkBounds(varRun(ch,100,axes));
+  return [[b.x0,b.y0],[b.x1,b.y0],[b.x1,b.y1],[b.x0,b.y1]].map(([x,y])=>[m[0]!*x!+m[2]!*y!+m[4]!,m[1]!*x!+m[3]!*y!+m[5]!] as [number,number]);
+}
+function quadDisjoint(a:[number,number][],b:[number,number][]) {
+  return [a,b].some(q=>q.some((p,i)=>{
+    const r=q[(i+1)%q.length]!,nx=p[1]-r[1],ny=r[0]-p[0];
+    const A=a.map(p=>p[0]*nx+p[1]*ny),B=b.map(p=>p[0]*nx+p[1]*ny);
+    return Math.max(...A)<=Math.min(...B)+1e-8 || Math.max(...B)<=Math.min(...A)+1e-8;
+  }));
+}
+test('R2 S09 all projected ink rectangles are disjoint at 48.45 and 48.68',()=>withCanvas(()=>{
+  for(const t of [48.45,48.68]) {
+    const ly=scope.scopeLyrics(voice,T),rig=new Rig();rig.set(scope.scopeCamera(audio,t,T));
+    const boxes=ly.layout.glyphs.filter(g=>g.word!==ly.pass && t>=g.t0).map(g=>{
+      const c=new FakeCanvas();drawPathText(c.ctx,rig,ly.path,{...ly.layout,glyphs:[g]},t,
+        {mode:'lie',normal:()=>({x:0,y:0,z:1}),base:'paper',on:'ink',pop:0,axes:g=>voice.form(g.word,t).axes});
+      return {name:g.ch,quad:inkQuad(g.ch,voice.form(g.word,t).axes,c.transforms[0]!)};
+    });
+    const spec=scope.passCarry(voice,T),glyphs=scope.passFrame(voice,T,t),born=ly.layout.glyphs.filter(g=>g.word===ly.pass);
+    for(const g of glyphs)if(t>=born[g.i]!.t0)boxes.push({name:'pass:'+g.ch,quad:inkQuad(g.ch,spec.axes,[g.a,g.b,g.c,g.d,g.e,g.f])});
+    for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
+      if(!quadDisjoint(boxes[i]!.quad,boxes[j]!.quad))console.log('OVERLAP',t,boxes[i],boxes[j]);
+      expect(quadDisjoint(boxes[i]!.quad,boxes[j]!.quad)).toBe(true);
+    }
+    const aabbs=boxes.map(b=>{const x=Math.min(...b.quad.map(p=>p[0])),y=Math.min(...b.quad.map(p=>p[1]));return {name:b.name,x,y,w:Math.max(...b.quad.map(p=>p[0]))-x,h:Math.max(...b.quad.map(p=>p[1]))-y};});
+    let overlaps=0,passOverlaps=0;for(let i=0;i<aabbs.length;i++)for(let j=i+1;j<aabbs.length;j++)if(!disjoint(aabbs[i]!,aabbs[j]!)){overlaps++;if(aabbs[i]!.name.startsWith('pass:')!==aabbs[j]!.name.startsWith('pass:'))passOverlaps++;}
+    console.log('R2_S09_BOX_METHOD',JSON.stringify({t,projected_quad_intersections:0,axis_aligned_envelope_intersections:overlaps,pass_vs_other_aabb_intersections:passOverlaps}));
+    expect(Math.max(...glyphs.map(g=>{const b=affineBounds(spec.text,spec.axes,[g]);return b.x+b.w;}))).toBeLessThanOrEqual(1824.00001);
+  }
+}));
+test('R2 S12 clear words move offscreen before count; foreground lyric and solids do not overlap',()=>withCanvas(()=>{
+  const count=voice.line('Clear the cache and count to ten').words[4]!.start,rig=new Rig();rig.set(copy.cameraAt(voice,count-1e-6,T));
+  const clear=clearLyrics(voice,count-1e-6);
+  const box=drawPathText(new FakeCanvas().ctx,rig,clear.path,clear.layout,count-1e-6,{mode:'lie',normal:()=>({x:0,y:1,z:0}),base:'paper',on:'ink',pop:0,axes:g=>voice.form(g.word,count).axes}).bbox;
+  expect(!box || box.x>=1920 || box.x+box.w<=0 || box.y>=1080 || box.y+box.h<=0).toBe(true);
+  for(const t of [65.50,66.10,66.70,67.00]) {
+    rig.set(copy.cameraAt(voice,t,T));const ly=countLyrics(voice);
+    const b=drawPathText(new FakeCanvas().ctx,rig,ly.path,ly.layout,t,{mode:'stand',base:'paper',on:'ink',pop:0,minPx:50,maxPx:110,axes:g=>voice.form(g.word,t).axes}).bbox;
+    for(let k=0;k<11;k++){
+      const state=copy.numberAt(voice,k,t);if(!state.visible)continue;
+      const text=new SolidText(String(k+1),{capH:state.capH,axes:state.axes,depth:0.2,bevel:k===10?0:0.015,material:new THREE.MeshBasicMaterial()});
+      text.group.position.set(state.x,state.y,state.z);text.group.rotation.x=state.rx;
+      const p=text.letters.flatMap((_,i)=>text.letterCorners(i)).map(p=>rig.proj(p.x,p.y,p.z)).filter(p=>p!==null);
+      if(b && p.length){const x=Math.min(...p.map(p=>p.x)),y=Math.min(...p.map(p=>p.y)),n={x,y,w:Math.max(...p.map(p=>p.x))-x,h:Math.max(...p.map(p=>p.y))-y};
+        if(!disjoint(b,n))console.log('S12_OVERLAP',t,b,n);expect(disjoint(b,n)).toBe(true);}
+      text.dispose();
+    }
+  }
+}));
+test('R2 finite line light CPU/GLSL parity at 200 points',()=>{
+  expect(copy.LINE_GLSL).toContain('copierLine');let max=0;
+  const a={x:-1.7,y:0.08,z:0.2},b={x:1.7,y:0.08,z:0.2},n={x:0,y:1,z:0};
+  for(let i=0;i<200;i++){
+    const p={x:Math.sin(i*3.1)*5,y:0,z:Math.cos(i*1.7)*3};
+    const u=Math.max(0,Math.min(1,((p.x-a.x)*(b.x-a.x))/((b.x-a.x)**2)));
+    const d=Math.hypot(a.x+u*(b.x-a.x)-p.x,0.08,0.2-p.z);
+    const js=2.2*Math.max(0,0.08/d)/(1+(d/0.6)**2);
+    max=Math.max(max,Math.abs(copy.lineIlluminance(p,n,a,b)-js));
+  }
+  expect(max).toBeLessThan(1e-4);console.log('R2_LINE_CPU_GPU_MAX',max);
+});
+test('R2 S12 exposure: five lit samples on desk/paper and five geometric key shadows',()=>{
+  const rows=[];
+  for(const t of [60.30,60.70,62.50])for(const surface of ['table','paper'] as const) {
+    const active=copy.scanAt(voice,t).k,k=Math.max(0,active-1),pose=copy.sheetAt(voice,k,t);
+    const rotation=new THREE.Matrix4().makeRotationY(pose.ry),normals:THREE.Vector3[]=[];
+    const points=Array.from({length:5},(_,i)=>{
+      const x=-0.8+0.4*i,z=0.6,h=1e-4;
+      if(surface==='table'){normals.push(new THREE.Vector3(0,1,0));return {x:active*copy.PITCH+x,y:0,z};}
+      const dx=(copy.paperY(x+h,z)-copy.paperY(x-h,z))/(2*h),dz=(copy.paperY(x,z+h)-copy.paperY(x,z-h))/(2*h);
+      normals.push(new THREE.Vector3(-dx,1,-dz).normalize().transformDirection(rotation));
+      const p=new THREE.Vector3(x,copy.paperY(x,z),z).applyMatrix4(rotation).add(new THREE.Vector3(pose.x,pose.y,pose.z));return {x:p.x,y:p.y,z:p.z};
+    });
+    const tones=points.map((p,i)=>copy.lightTone(voice,t,p,normals[i]!));
+    for(const x of tones){expect(x).toBeGreaterThanOrEqual(0.80);expect(x).toBeLessThanOrEqual(0.92);}rows.push({t,surface,points,tones});
+  }
+  // A standing solid numeral supplies real occluders, not an arbitrary shadow coefficient.
+  const t=65.50,pose=copy.numberAt(voice,0,t),text=new SolidText('1',{capH:pose.capH,axes:pose.axes,depth:0.2,bevel:0.015,material:new THREE.MeshBasicMaterial()});
+  text.group.position.set(pose.x,pose.y,pose.z);text.group.rotation.x=pose.rx;text.group.updateMatrixWorld(true);
+  const mesh=text.letters[0]!.mesh,attr=mesh.geometry.getAttribute('position'),d=new THREE.Vector3(copy.KEY_DIR.x,copy.KEY_DIR.y,copy.KEY_DIR.z),shadows=[];
+  for(let i=0;i<attr.count-2 && shadows.length<5;i+=3){
+    const p=new THREE.Vector3();for(let j=0;j<3;j++)p.add(new THREE.Vector3().fromBufferAttribute(attr,i+j).applyMatrix4(mesh.matrixWorld));p.divideScalar(3);
+    if(p.y<0.5)continue;const ground=p.clone().addScaledVector(d,-p.y/d.y);ground.y=0.00001;
+    if(new THREE.Raycaster(ground,d).intersectObject(text.group,true).length===0)continue;
+    const point={x:ground.x,y:0,z:ground.z},tone=copy.lightTone(voice,t,point,{x:0,y:1,z:0},0);
+    expect(tone).toBeGreaterThanOrEqual(0.15);expect(tone).toBeLessThanOrEqual(0.30);shadows.push({point,tone});
+  }
+  expect(shadows).toHaveLength(5);text.dispose();console.log('R2_EXPOSURE',JSON.stringify({lit:rows,shadows}));
+});
+
+if(process.env.G4_PIXEL_STATS==='1')test('R2 rendered PNG contrast, no off-bar white pixels and clay exit satisfy thresholds',async()=>{
+  const stats=await Bun.file(new URL('../../out/v6-g4/pixel-statistics.json',import.meta.url)).json();
+  for(const row of stats.s10){expect(row.inside_pixels).toBeGreaterThan(0);expect(row.ring_pixels).toBeGreaterThan(0);expect(row.difference).toBeGreaterThanOrEqual(0.45);}
+  for(const row of stats.s12)expect(row.bright_outside_bar_plus_4px).toBe(0);
+  expect(stats.c12.sample_pixels).toBeGreaterThan(0);expect(stats.c12.ratio).toBeGreaterThanOrEqual(0.95);expect(stats.pass).toBe(true);
+});
+
+test('R2 S12 foreground lyrics retain the common 50–110px projected capital height',()=>withCanvas(()=>{
+  for(const t of [65.50,66.10,66.70,67.00]){
+    const rig=new Rig();rig.set(copy.cameraAt(voice,t,T));const ly=countLyrics(voice),c=new FakeCanvas();
+    drawPathText(c.ctx,rig,ly.path,ly.layout,t,{mode:'stand',base:'paper',on:'ink',pop:0,minPx:50,maxPx:110,axes:g=>voice.form(g.word,t).axes});
+    const glyphs=ly.layout.glyphs.filter(g=>t>=g.t0);
+    c.transforms.forEach((m,i)=>{const axes=voice.form(glyphs[i]!.word,t).axes,cap=varRun('H',100,axes).capH,height=Math.hypot(m[2]!,m[3]!)*cap;
+      expect(height).toBeGreaterThanOrEqual(50-0.1);expect(height).toBeLessThanOrEqual(110+0.1);});
+  }
+}));

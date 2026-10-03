@@ -10,37 +10,53 @@ import { SolidText, solidLetterGeometry } from '../kit/solidtype';
 import { Rig } from '../kit/rig';
 import { drawPathText } from '../kit/pathtext';
 import { drawCarry } from '../kit/carry';
-import { exitEnvelope } from '../kit/handoff';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
 import { mono } from './parts/s09-type';
-import { SHEET, copies, sheetAt, scanAt, scraperX, numberAt, paperY, PAPER_GLSL, cameraAt, slotCorners, cursorWorld, numberTimes } from './parts/s12-world';
+import { SHEET, copies, sheetAt, scanAt, scraperX, numberAt, paperY, PAPER_GLSL, cameraAt, slotCorners, cursorWorld, numberTimes, KEY_INTENSITY, AMBIENT_TONE, LINE_GLSL, LINE_INTENSITY } from './parts/s12-world';
 import { clearLyrics, countLyrics, whyIncoming } from './parts/s12-layout';
 import { drawCopy, TEX_W, TEX_H } from './parts/s12-copy';
 export { cursorAt } from './parts/s12-world';
 export const TYPE_LEVELS={giant:null,lyric:66,label:18};
+// Scene-local light hook: evaluate a finite line in world space before engraveTone.
+// It is illumination, never emission; the standard key shadow term is retained.
+function lineLit(mat:THREE.MeshLambertMaterial,u:Record<string,THREE.IUniform>) {
+  const compile=mat.onBeforeCompile;
+  mat.onBeforeCompile=(shader,renderer)=>{
+    compile.call(mat,shader,renderer);Object.assign(shader.uniforms,u);
+    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 copierWorld;')
+      .replace('#include <project_vertex>','copierWorld=(modelMatrix*vec4(transformed,1.0)).xyz;\n#include <project_vertex>');
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
+      varying vec3 copierWorld;uniform vec3 copierA,copierB;uniform float copierI;${LINE_GLSL}`)
+      .replace('float engraveFace =','engraveL=min(0.92,engraveL+copierLine(copierWorld,inverseTransformDirection(normal,viewMatrix),copierA,copierB,copierI));\nfloat engraveFace =');
+  };
+  mat.customProgramCacheKey=()=> 'v6-s12-line-light';return mat;
+}
 class World {
   users=0;times:X9Times;voice:Voice;rig=new Rig();scene=new THREE.Scene();ground=new Ground();layer=new Layer2D();
   sheets:{mesh:THREE.Mesh;canvas:HTMLCanvasElement;texture:THREE.CanvasTexture}[]=[];
   numbers:SolidText[]=[];
+  lineUniforms={copierA:{value:new THREE.Vector3()},copierB:{value:new THREE.Vector3()},copierI:{value:0}};
   paper=engraveMaterial({paper:lin('paper'),ink:lin('ink'),paperMap:true,pitch:5,angle:0.6});
   table=engraveMaterial({paper:lin('ink'),ink:lin('paper'),lightLines:true,pitch:5});
   numberMat=engraveMaterial({paper:lin('paper'),ink:lin('ink'),pitch:5});
-  clay=new THREE.MeshBasicMaterial({color:new THREE.Color().setRGB(...lin('clay')),toneMapped:false});
-  scan=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.05,3.4),engraveMaterial({paper:lin('clay'),ink:lin('ink'),emissive:lin('clay'),emissiveK:2.2}));
+  clay=new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false});
+  scan=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.05,3.4),new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false}));
   scraper=new THREE.Mesh(new THREE.BoxGeometry(6,0.15,0.3),this.numberMat);
-  lights:THREE.PointLight[]=[];
+
   constructor(ctx:SceneCtx) {
     this.times=resolveX9Times(ctx);this.voice=new Voice(ctx.lyrics,ctx.audio);
     const desk=new THREE.Mesh(new THREE.PlaneGeometry(300,300),this.table);desk.rotation.x=-Math.PI/2;desk.receiveShadow=true;this.scene.add(desk);
-    const key=new THREE.DirectionalLight(0xffffff,0.5);key.position.set(5,10,4);key.castShadow=true;
+    lineLit(this.table,this.lineUniforms);lineLit(this.numberMat,this.lineUniforms);
+    this.scene.add(new THREE.AmbientLight(0xffffff,AMBIENT_TONE*Math.PI));
+    const key=new THREE.DirectionalLight(0xffffff,KEY_INTENSITY);key.position.set(5,10,4);key.castShadow=true;
     key.shadow.mapSize.set(1024,1024);Object.assign(key.shadow.camera,{left:-15,right:25,top:12,bottom:-12,near:0.1,far:50});key.shadow.bias=-0.0003;
     this.scene.add(key,key.target);
-    for(let i=0;i<3;i++){const light=new THREE.PointLight(0xffffff,2.2/3,7,2);this.lights.push(light);this.scene.add(light);}
+
     for(let k=0;k<5;k++){
       const canvas=document.createElement('canvas');canvas.width=TEX_W;canvas.height=TEX_H;
       const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=8;
-      const mat=engraveMaterial({paper:lin('paper'),ink:lin('ink'),paperMap:true,pitch:5});const compile=mat.onBeforeCompile;mat.onBeforeCompile=(shader,renderer)=>{compile.call(mat,shader,renderer);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+PAPER_GLSL).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y=paperY(position.x,position.z);');};
-      mat.customProgramCacheKey=()=> 'v6-s12-paper';mat.map=texture;mat.side=THREE.DoubleSide;
+      const mat=lineLit(engraveMaterial({paper:lin('paper'),ink:lin('ink'),paperMap:true,pitch:5}),this.lineUniforms);const compile=mat.onBeforeCompile;mat.onBeforeCompile=(shader,renderer)=>{compile.call(mat,shader,renderer);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+PAPER_GLSL).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y=paperY(position.x,position.z);');};
+      mat.customProgramCacheKey=()=> 'v6-s12-paper-line-light';mat.map=texture;mat.side=THREE.DoubleSide;
       const geo=new THREE.PlaneGeometry(SHEET.w,SHEET.h,30,42);geo.rotateX(-Math.PI/2);
       // Actual displaced mesh; same world field exported in GLSL for GPU parity / future GPU displacement.
       const pos=geo.getAttribute('position');for(let i=0;i<pos.count;i++)pos.setY(i,paperY(pos.getX(i),pos.getZ(i)));
@@ -76,7 +92,8 @@ export default class S12Rerun extends Scene {
     const scan=scanAt(v,t);w.scan.visible=scan.visible;w.scan.position.set(scan.p.x,scan.p.y,scan.p.z);
     if(t>=T.count){const head=cursorWorld(v,t);w.scan.position.set(head.x,head.y,head.z);w.scan.visible=t<numberTimes(v)[10]!+0.18;w.scan.scale.set(1,1,0.1);}else w.scan.scale.set(1,1,1);
     w.scan.rotation.y=Math.PI/2; // 3.4-world-unit light bar spans the paper's x axis; its 0.12 axis scans -z.
-    w.lights.forEach((l,i)=>{l.intensity=scan.visible?2.2/3:0;l.position.set(scan.p.x+(i-1)*1.1,0.18,scan.p.z);});
+    w.lineUniforms.copierI.value=scan.visible?LINE_INTENSITY:0;
+    w.lineUniforms.copierA.value.set(scan.p.x-1.7,scan.p.y,scan.p.z);w.lineUniforms.copierB.value.set(scan.p.x+1.7,scan.p.y,scan.p.z);
     w.scraper.visible=t>=T.clear && t<T.count;w.scraper.position.set(scraperX(v,t),0.15,0);
     for(let k=0;k<11;k++){
       const number=w.numbers[k]!,pose=numberAt(v,k,t);number.group.visible=pose.visible;
@@ -86,7 +103,7 @@ export default class S12Rerun extends Scene {
         const run=v.form(v.line('Clear the cache and count to ten').words[6]!,t).axes;
         const ref=number.letters[1];if(ref){const r10=varRun('10',100,pose.axes);ref.mesh.matrix.elements[12]=r10.glyphs[1]!.x*1.6/r10.capH;ref.mesh.matrixWorldNeedsUpdate=true;}
       }
-      if(k===10)w.clay.color.setRGB(...lin(pose.fail?'fail':'clay'));
+      if(k===10)w.clay.emissive.setRGB(...lin(pose.fail?'fail':'clay'));
     }
     const shadowEnabled=r.shadowMap.enabled,shadowType=r.shadowMap.type;
     r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFShadowMap;
@@ -99,15 +116,15 @@ export default class S12Rerun extends Scene {
       c.setLineDash([]);
     }
     const why=whyIncoming(v,T,t);if(why.draw)drawCarry(c,why.spec,why.aff);
-    if(t>=T.clear){const ly=clearLyrics(v);drawPathText(c,w.rig,ly.path,ly.layout,t,{mode:'lie',normal:()=>({x:0,y:1,z:0}),base:'paper',on:'ink',pop:0,axes:(g,at)=>v.form(g.word,at).axes});}
+    if(t>=T.clear && t<T.count){const ly=clearLyrics(v,t);drawPathText(c,w.rig,ly.path,ly.layout,t,{mode:'lie',normal:()=>({x:0,y:1,z:0}),base:'paper',on:'ink',pop:0,axes:(g,at)=>v.form(g.word,at).axes});}
     if(t>=v.line('Clear the cache and count to ten').words[3]!.start) {
-      const ly=countLyrics(v);drawPathText(c,w.rig,ly.path,ly.layout,t,{mode:'stand',base:'paper',on:'ink',pop:0,axes:(g,at)=>v.form(g.word,at).axes});
+      const ly=countLyrics(v);drawPathText(c,w.rig,ly.path,ly.layout,t,{mode:'stand',base:'paper',on:'ink',pop:0,minPx:50,maxPx:110,axes:(g,at)=>v.form(g.word,at).axes});
     }
     if(t>=copies(v)[0]!.start && t<T.clear) {
       const k=copies(v).reduce((a,w,i)=>t>=w.start?i:a,0),p=w.rig.proj(k*2.4+1.15,0.1,0);
       if(p)mono(c,'gen 1 → gen '+(k+1),p.x,p.y,18,'paper',1);
     }
     this.ctx.comp.draw(r,w.layer.upload(),out);
-    return {...postFor('ink'),hud:0,ca:0,bloom:0.3,exposure:exitEnvelope(t,T.end).gain};
+    return {...postFor('ink'),hud:0,ca:0,bloom:0,shoulder:0,vignette:0,exposure:1};
   }
 }

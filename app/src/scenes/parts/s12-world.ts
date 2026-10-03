@@ -30,7 +30,7 @@ float paperY(float x,float z) {
 }
 `;
 export function scraperX(v:Voice,t:number) {
-  const line=v.line('Clear the cache and count to ten');return lerp(-5,24,ease.inOutQuad(span(t,line.words[0]!.start,line.words[2]!.end)));
+  const line=v.line('Clear the cache and count to ten');return lerp(-5,24,ease.inOutQuad(span(t,line.words[0]!.start,line.words[2]!.end)))+Math.max(0,t-line.words[2]!.end)*100;
 }
 export function collisionAt(v:Voice,k:number) {
   const line=v.line('Clear the cache and count to ten'),u=clamp((k*PITCH-3+5)/29);
@@ -52,14 +52,21 @@ export function scanAt(v:Voice,t:number) {
 export function numberAt(v:Voice,k:number,t:number) {
   const at=numberTimes(v)[k]!,capH=1.6*(k===10?1.15:1);
   const axes={wdth:k===9?Math.round(v.form(v.line('Clear the cache and count to ten').words[6]!,t).axes.wdth*2)/2:75,wght:900};
-  return {at,visible:t>=at,x:(k-5)*NUM_PITCH,y:0,z:-3,capH,axes,
+  return {at,visible:t>=at,x:(k-5)*NUM_PITCH,y:0,z:k===10?-2.94:-3,capH,axes,
     rx:-Math.PI/2*(1-ease.outBack(clamp((t-at)/0.18))),fail:k===10 && t>=at+0.18 && t<at+0.18+2/60};
 }
 export function rightStem(v:Voice) {
   const r=varRun('11',100,{wdth:75,wght:900}),g=r.glyphs[1]!;
-  // The right vertical edge is the rightmost straight contour in the second glyph (no bevel).
-  const xs=[] as number[];for(let i=0;i<g.o.xy.length;i+=2)xs.push(g.o.xy[i]!);
-  return {x:5*NUM_PITCH+(g.x+Math.max(...xs)*0.1)*1.84/r.capH,z:-2.8,h:1.84};
+  // Find the right edge of the long vertical STEM, excluding the bottom foot of Archivo's 1.
+  const segments:{x:number;y0:number;y1:number}[]=[];let j=0,px=0,py=0;
+  for(const type of g.o.types){
+    if(type==='Z')continue;
+    const count=type==='C'?6:type==='Q'?4:2,x=g.o.xy[j+count-2]!,y=g.o.xy[j+count-1]!;j+=count;
+    if(type==='L' && Math.abs(x-px)<1e-6 && Math.abs(y-py)>300)segments.push({x,y0:Math.min(-y,-py),y1:Math.max(-y,-py)});
+    px=x;py=y;
+  }
+  const edge=segments.reduce((a,b)=>a.x>b.x?a:b),m=1.84/r.capH;
+  return {x:5*NUM_PITCH+(g.x+edge.x*0.1)*m,z:-2.74,h:1.84,y0:edge.y0*0.1*m,y1:edge.y1*0.1*m};
 }
 export function cameraAt(v:Voice,t:number,T:X9Times) {
   t=Math.min(t,T.end-0.1);
@@ -79,7 +86,7 @@ export function cameraAt(v:Voice,t:number,T:X9Times) {
   const shake=landings.reduce((sum,age)=>sum+(age>=0&&age<0.1?0.025*Math.exp(-age/0.03)*Math.sin(age*110):0),0);
   low.pos.y+=shake;low.tgt.y+=shake;
   const exitStart=afterBeats(v.audio,T.end,-1),edge=rightStem(v),roll=Math.atan2(250,1080),dist=0.14,px=1766.2604/dist;
-  const target=p3(edge.x+75/px*Math.cos(roll),edge.h*0.5+75/px*Math.sin(roll),edge.z);
+  const target=p3(edge.x+75/px*Math.cos(roll),(edge.y0+edge.y1)*0.5+75/px*Math.sin(roll),edge.z);
   const end={pos:p3(target.x,target.y,target.z+dist),tgt:target,fov:34,roll};
   return mixCam(low,end,ease.inCubic(span(t,exitStart,T.end-0.1)));
 }
@@ -104,7 +111,7 @@ export function entryPrim(v:Voice,t:number,T:X9Times):Prim {
 }
 export function exitPrim(v:Voice,t:number,T:X9Times):Prim {
   const rig=new Rig();rig.set(cameraAt(v,t,T));const e=rightStem(v);
-  const a=rig.proj(e.x,0,e.z)!,b=rig.proj(e.x,e.h,e.z)!;
+  const a=rig.proj(e.x,e.y0,e.z)!,b=rig.proj(e.x,e.y1,e.z)!;
   const x=(y:number)=>a.x+(b.x-a.x)*(y-a.y)/(b.y-a.y);
   return {kind:'line',x0:x(0),y0:0,x1:x(1080),y1:1080,w:2};
 }
@@ -115,4 +122,29 @@ export function cursorWorld(v:Voice,t:number) {
 }
 export function cursorAt(v:Voice,t:number,T:X9Times) {
   const rig=new Rig();rig.set(cameraAt(v,t,T));const p=cursorWorld(v,t);return rig.proj(p.x,p.y,p.z);
+}
+
+// Normalized Lambert illumination: three's irradiance is divided by pi.
+export const KEY_DIR=p3(5/Math.sqrt(141),10/Math.sqrt(141),4/Math.sqrt(141));
+export const AMBIENT_TONE=0.20,KEY_INTENSITY=(0.86-AMBIENT_TONE)*Math.PI/KEY_DIR.y,LINE_INTENSITY=2.2;
+export function lineIlluminance(p:P3,n:P3,a:P3,b:P3,intensity=LINE_INTENSITY) {
+  const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,den=dx*dx+dy*dy+dz*dz;
+  const u=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy+(p.z-a.z)*dz)/Math.max(den,1e-8));
+  const x=a.x+u*dx-p.x,y=a.y+u*dy-p.y,z=a.z+u*dz-p.z,d=Math.hypot(x,y,z);
+  return intensity*Math.max(0,(n.x*x+n.y*y+n.z*z)/Math.max(d,1e-8))/(1+(d/0.6)**2);
+}
+export const LINE_GLSL=`
+float copierLine(vec3 p,vec3 n,vec3 a,vec3 b,float I) {
+ vec3 ab=b-a;float u=clamp(dot(p-a,ab)/max(dot(ab,ab),1e-8),0.0,1.0);
+ vec3 delta=a+u*ab-p;float d=length(delta);
+ return I*max(0.0,dot(n,delta/max(d,1e-8)))/(1.0+pow(d/0.6,2.0));
+}`;
+export function lightTone(v:Voice,t:number,p:P3,n:P3,shadow=1) {
+  const scan=scanAt(v,t),a=p3(scan.p.x-1.7,scan.p.y,scan.p.z),b=p3(scan.p.x+1.7,scan.p.y,scan.p.z);
+  const key=KEY_INTENSITY/Math.PI*Math.max(0,n.x*KEY_DIR.x+n.y*KEY_DIR.y+n.z*KEY_DIR.z)*shadow;
+  return Math.min(0.92,AMBIENT_TONE+key+(scan.visible?lineIlluminance(p,n,a,b):0));
+}
+export function scanCorners(v:Voice,t:number) {
+  const {p}=scanAt(v,t);
+  return [-1,1].flatMap(x=>[-1,1].flatMap(y=>[-1,1].map(z=>p3(p.x+x*1.7,p.y+y*0.025,p.z+z*0.06))));
 }

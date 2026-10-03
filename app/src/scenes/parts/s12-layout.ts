@@ -10,9 +10,10 @@ import { cameraAt, copies, SHEET, scraperX } from './s12-world';
 import { varRun } from '../../kit/vartype';
 import type { X9Times } from '../s09-z-shared';
 export { copies as COPIES, numberTimes, entryPrim, exitPrim, cameraAt, cursorAt } from './s12-world';
-export function clearLyrics(v:Voice) {
+export function clearLyrics(v:Voice,t=0) {
   const words=v.line('Clear the cache and count to ten').words.slice(0,3);
-  const path=path3([p3(-4,0.028,1),p3(24,0.028,1)]);
+  const push=Math.max(0,scraperX(v,t)-24);
+  const path=path3([p3(-4+push,0.028,1),p3(24+push,0.028,1)]);
   const a=words[0]!.start,b=words[2]!.end;
   const notBefore=(s:number)=>{
     const u=clamp((s-4+5+3)/29);
@@ -22,7 +23,7 @@ export function clearLyrics(v:Voice) {
 }
 export function countLyrics(v:Voice) {
   const words=v.line('Clear the cache and count to ten').words.slice(3,6);
-  return {path:path3([p3(-6,0,0),p3(18,0,0)]),layout:layoutPath(words,{capH:0.66,axes:w=>v.form(w,w.end).axes})};
+  return {path:path3([p3(-6,0,1.8),p3(18,0,1.8)]),layout:layoutPath(words,{capH:0.66,axes:w=>v.form(w,w.end).axes})};
 }
 export function whyIncoming(v:Voice,T:X9Times,t:number) {
   const spec=whyCarry(v),base=carryLayout(spec),a=whyFrame(v,t),at=copies(v)[0]!.start,rig=new Rig();rig.set(cameraAt(v,t,T));

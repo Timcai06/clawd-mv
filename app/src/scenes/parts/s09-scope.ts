@@ -47,12 +47,12 @@ export function scopeHead(t: number, T: X9Times) {
 }
 
 import { CUT, type Prim } from '../../kit/handoff';
-import { carryDrift, type CarrySpec } from '../../kit/carry';
-import { layoutPath, path3 } from '../../kit/pathtext';
+import { carryDrift, carryLayout, lerpAffines, type CarrySpec } from '../../kit/carry';
+import { layoutPath, path3, runInkBounds } from '../../kit/pathtext';
 import { Rig, p3 } from '../../kit/rig';
 import { Voice } from '../../kit/lyric-moves';
 import { clamp, ease } from '../../engine/util';
-import { afterBeats } from '../../kit/time';
+import { afterBeats, span } from '../../kit/time';
 import { varRun } from '../../kit/vartype';
 import { cameraAt, wx, wy } from './s09-world';
 import { affineBounds, pathAffines } from './s09-type';
@@ -74,14 +74,36 @@ export function lastScan(audio: AudioData,T: X9Times,s: number,t: number) {
   const phase=clamp((96+s*100)/1920), b=audio.beatAt(t)-audio.beatAt(T.waiting);
   return afterBeats(audio,T.waiting,Math.floor(b-phase)+phase);
 }
+const lyricCache=new WeakMap<Voice,{T:X9Times,value:{layout:ReturnType<typeof layoutPath>;path:ReturnType<typeof path3>;pass:import('../../engine/lyrics').Word}}>();
 export function scopeLyrics(v: Voice,T: X9Times) {
+  const cached=lyricCache.get(v);if(cached?.T===T)return cached.value;
   const words=v.line('So I run the tests, I’m waiting for a pass').words;
   const layout=layoutPath(words,{capH:0.66,space:0.23,axes:w=>v.form(w,w.end).axes,
     notBefore:s=>scanArrival(v.audio,T,s)});
-  const pass=words.at(-1)!, gs=layout.glyphs.filter(g=>g.word===pass), left=gs[0]!.s;
-  const width=layout.s1-left, target=(1824-96)/100-width;
-  for(const g of gs) g.s+=target-left;
-  return {layout,path:path3([p3(wx(96),wy(427),0),p3(wx(96)+40,wy(427),0)]),pass};
+  const pass=words.at(-1)!, gs=layout.glyphs.filter(g=>g.word===pass);
+  // Keep the full line on the glass; pass follows a with 0.32 em of ink clearance.
+  const before=layout.glyphs.filter(g=>g.word!==pass), last=before.at(-1)!;
+  const prevRun=varRun(last.ch,100,v.form(last.word,last.word.end).axes);
+  const passRun=varRun(pass.w,100,v.form(pass,pass.end).axes),m=0.66/passRun.capH;
+  const target=last.s+runInkBounds(prevRun).x1*m+0.32*100*m-runInkBounds(varRun(gs[0]!.ch,100,v.form(pass,pass.end).axes)).x0*m;
+  const delta=target-gs[0]!.s;for(const g of gs)g.s+=delta;layout.s1+=delta;
+  const rig=new Rig();rig.set(scopeCamera(v.audio,T.terminalEnd-1/60,T));
+  let start=wx(96);
+  // Translate the whole row, never scale the letters, to preserve the right safety margin.
+  for(let i=0;i<24;i++){
+    const path=path3([p3(start,wy(427),0),p3(start+40,wy(427),0)]);
+    const own=layoutPath([pass],{capH:0.66,axes:v.form(pass,pass.end).axes});
+    own.glyphs.forEach(g=>g.s+=gs[0]!.s);
+    const aff=pathAffines(rig,path,own,v.form(pass,pass.end).axes,p3(0,0,1));
+    const box=affineBounds(pass.w,v.form(pass,pass.end).axes,aff);
+    const run=varRun(pass.w,100,v.form(pass,pass.end).axes),ink=runInkBounds(run),size=Math.abs(aff[0]!.d)*run.capH;
+    let right=Math.max(box.x+box.w,box.x+(ink.x1-ink.x0)*size/run.capH);
+    const moving=new Rig();for(const t of [48.45,48.68]){moving.set(scopeCamera(v.audio,t,T));const b=affineBounds(pass.w,v.form(pass,pass.end).axes,pathAffines(moving,path,own,v.form(pass,pass.end).axes,p3(0,0,1)));right=Math.max(right,b.x+b.w);}
+    const excess=right-1824;if(excess<=1e-7)break;
+    const p=rig.proj(start+gs[0]!.s,wy(427),0)!,q=rig.proj(start+gs[0]!.s+0.01,wy(427),0)!;
+    start-=excess/((q.x-p.x)/0.01);
+  }
+  const value={layout,path:path3([p3(start,wy(427),0),p3(start+40,wy(427),0)]),pass};lyricCache.set(v,{T,value});return value;
 }
 export function passCarry(v: Voice,T: X9Times): CarrySpec {
   const {layout,path,pass}=scopeLyrics(v,T), axes=v.form(pass,pass.end).axes;
@@ -89,7 +111,8 @@ export function passCarry(v: Voice,T: X9Times): CarrySpec {
   for(const g of own.glyphs)g.s+=s;
   const rig=new Rig();rig.set(scopeCamera(v.audio,T.terminalEnd-1/60,T));
   const aff=pathAffines(rig,path,own,axes,p3(0,0,1)),box=affineBounds(pass.w,axes,aff);
-  return {text:pass.w,size:box.h,axes,x:box.x,y:box.y+box.h,color:'clay'};
+  const run=varRun(pass.w,100,axes),size=Math.abs(aff[0]!.d)*run.capH;
+  return {text:pass.w,size,axes,x:box.x,y:aff[0]!.f,color:'clay'};
 }
 export function passWorldAffines(v: Voice,T: X9Times,t: number) {
   const {layout,path,pass}=scopeLyrics(v,T), axes=v.form(pass,pass.end).axes;
@@ -106,4 +129,10 @@ export function machineCarry(v: Voice,t: number,T:X9Times) {
 export function cursorAt(audio: AudioData,t: number,T: X9Times) {
   const rig=new Rig();rig.set(scopeCamera(audio,t,T));const x=t<T.waiting?0:scanHead(audio,t,T);
   return rig.proj(wx(x),wy(handoffIn(t,audio,T).y),0)!;
+}
+
+/** Exactly the affines used by the pass renderer and its geometric acceptance. */
+export function passFrame(v:Voice,T:X9Times,t:number) {
+  const start=afterBeats(v.audio,T.terminalEnd,-0.5);
+  return lerpAffines(passWorldAffines(v,T,t),carryLayout(passCarry(v,T)),ease.inOutCubic(span(t,start,T.terminalEnd-0.1)));
 }

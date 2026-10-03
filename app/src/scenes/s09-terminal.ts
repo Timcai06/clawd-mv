@@ -17,9 +17,9 @@ import { scopeState, handoffIn, handoffOut, SCOPE } from './parts/s09-scope';
 import { Rig } from '../kit/rig';
 import { ridgeY, ridgeZ, RIDGES, wx, wy } from './parts/s09-world';
 import { drawPathText } from '../kit/pathtext';
-import { drawCarry, carryLayout, lerpAffines } from '../kit/carry';
+import { drawCarry } from '../kit/carry';
 import { exitEnvelope } from '../kit/handoff';
-import { scopeCamera, scanHead, scopeLyrics, lastScan, passCarry, passWorldAffines, machineCarry, cursorAt } from './parts/s09-scope';
+import { scopeCamera, scanHead, scopeLyrics, lastScan, passCarry, passFrame, machineCarry, cursorAt } from './parts/s09-scope';
 export { cursorAt } from './parts/s09-scope';
 // 19 is a machine counter, capH=140 (reference + nineteen09), not a ≥200px giant.
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
@@ -117,7 +117,7 @@ export default class S09Terminal extends Scene {
     if(t<startCarry) drawPathText(c,rig,ly.path,{...ly.layout,glyphs:ly.layout.glyphs.filter(g=>g.word===ly.pass)},t,
       {mode:'lie',normal:()=>({x:0,y:0,z:1}),base:'clay',on:'ink',pop:0,axes:(g,at)=>v.form(g.word,at).axes,offset:()=>({alpha:0.65+0.35*blink(f.beat)})});
     else {
-      const spec=passCarry(v,T), aff=lerpAffines(passWorldAffines(v,T,t),carryLayout(spec),ease.inOutCubic(span(t,startCarry,T.terminalEnd-0.1)));
+      const spec=passCarry(v,T), aff=passFrame(v,T,t);
       if(t>=ly.pass.start)drawCarry(c,spec,aff.filter(g=>t>=ly.layout.glyphs.filter(h=>h.word===ly.pass)[g.i]!.t0),exitEnvelope(t,T.terminalEnd).still?1:0.65+0.35*blink(f.beat));
     }
     const machine=machineCarry(v,t,T); if(machine.alpha)drawCarry(c,machine.spec,machine.aff,machine.alpha);
