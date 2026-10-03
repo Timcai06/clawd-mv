@@ -202,7 +202,16 @@ T 2026-10-03：v5 方向对；剩下的场景继续按 v5 方法优化；**场�
 - ✅ 已发给 T 的短片：`out/review/v6-S01-S03.mp4`、`v6-S04-S08.mp4`、`v6-S09-S12.mp4`、`v6-S13.mp4`。
 - 🔜 打磨轮 V6-P1（gpt-6-astra，`docs/tasks/V6-P1.md`）→ 第二轮打磨（S16 的 GREEN 出画等，`V6-polish.md`）→ 整片预览 v6。
 
-## ⏳ 阶段 9：渲染和发布（T 决定）
+### 阶段 8 结论（2026-10-03）：v6 整体回退
+- T 看完 v6 的短片：「S16–S17 不好看，不要为了 3D 而 3D」「S13 也是，不如原来的好看」，随后「全部回退吧，这一版本的 3D 我不满意」。
+- 已做：`app/`、`storyboard/` 恢复到 v5（`d50ec9b`），277 项测试通过；v6 的全部代码打了标签 `v6-attempt`（含公共部件 `kit/pathtext.ts`、`wordplane.ts`、`carry.ts`、`solidtype.ts`、`engrave-mat.ts`，需要时 `git show v6-attempt:<路径>` 取回）。
+- 保留的文档：`docs/reference/pdoom-transitions-lyrics.md`（研究，结论仍然成立）、`docs/tasks/V6-*.md`（作为记录，不再执行）。
+- 教训：① 3D 只在承载歌词含义时用（pdoom 里 hook、prompt、bureau、dense 的挤压都是平面版式）；② Codex 的设计还原能力不够，场景的设计和开发不交给它；③ 改一场 T 看过的画面前，先出新旧并排图。
+
+## 🔜 阶段 9：Claude 直接设计和开发（新会话，云上）
+T 2026-10-03：下一阶段 Claude 做核心设计，并亲自开发部分章节的优化，不交给 Codex；继续模仿 pdoom 的质感。开场提示词见 `docs/HANDOFF.md`。
+
+## ⏳ 阶段 10：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。
 - 先出 1080p60 完整版给 T 整片过一遍，满意再出 4K（加 `--scale 2`，估计一个多小时）。发不发、发到哪里，都由 T 决定。
 - 成片之后可选的衍生物（T 决定做不做）：给短视频平台的竖版 9:16（引擎目前固定 16:9，要改引擎，得提前决定）；封面图（可以用生图）；制作花絮（这个项目「代码画每一帧」本身就是素材）。
