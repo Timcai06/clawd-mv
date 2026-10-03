@@ -47,3 +47,15 @@ export function ridgeY(k: number, sx: number) {
   return wy(SCOPE.y) + (wy(scopeY(local)) - wy(SCOPE.y)) * amp;
 }
 
+
+/** The seeded per-ridge constants feed both CPU and the GLSL formula. */
+export function ridgeConstants(k:number) {return {ph:hash(k,9,1)*0.6,variation:k===0?1:0.6+0.7*hash(k,9,2)};}
+export const RIDGE_GLSL=`
+float ridgeY(float k,float sx,float ph,float variation) {
+ float hill=1.0+1.9*exp(-pow((sx-1010.0)/430.0,2.0))*min(1.0,k/3.0);
+ float amp=variation*hill*exp(-k*0.02);
+ float local=fract((sx-108.0-26.0)/208.0+ph);
+ float wave=-145.0*exp(-pow((local-0.83)/0.07,2.0))+70.0*exp(-pow((local-0.4)/0.15,2.0));
+ return -0.35-wave*amp/100.0;
+}
+`;

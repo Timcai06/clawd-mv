@@ -69,3 +69,24 @@ export function handoffBoxes(h: { cx: number; cy: number; w: number; n: number }
   const pitch = (h.w + 16) / h.n;
   return Array.from({ length: h.n }, (_, i) => ({ x: h.cx - h.w / 2 + i * pitch, y: h.cy - 40, w: pitch - 16, h: 80 }));
 }
+
+// V6 affine projection helpers, shared only inside the owned scene group.
+import { Rig, planeAffine, type P3 } from '../../kit/rig';
+import { pathAt, runInkBounds, type Path3, type PathLayout } from '../../kit/pathtext';
+import type { GlyphAffine } from '../../kit/carry';
+export function pathAffines(rig: Rig, path: Path3, lay: PathLayout, axes: { wdth: number; wght: number }, normal: P3): GlyphAffine[] {
+  const ref = varRun('H', 100, axes), m = lay.capH / ref.capH;
+  return lay.glyphs.map((g, i) => {
+    const a = planeAffine(rig, pathAt(path, g.s), { x: 1, y: 0, z: 0 },
+      { x: 0, y: -normal.z, z: normal.y }, m);
+    return { ...(a ?? { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 }), ch: g.ch, i };
+  });
+}
+export function affineBounds(text: string, axes: { wdth: number; wght: number }, aff: GlyphAffine[]): Rect {
+  const run = varRun(text, 100, axes), pts: [number, number][] = [];
+  for (const g of aff) {
+    const b = runInkBounds({ ...run, glyphs: [{ ...run.glyphs[g.i]!, x: 0 }] });
+    for (const x of [b.x0, b.x1]) for (const y of [b.y0, b.y1]) pts.push([g.a*x+g.c*y+g.e,g.b*x+g.d*y+g.f]);
+  }
+  return union(pts);
+}

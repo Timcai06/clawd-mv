@@ -1,3 +1,5 @@
+import { Voice } from '../src/kit/lyric-moves';
+import { numberTimes } from '../src/scenes/parts/s12-world';
 import { describe, expect, test } from 'bun:test';
 import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
@@ -51,14 +53,13 @@ describe('D group source geometry and print materials', () => {
     expect(Math.max(...particles.map(p => p.z)) - Math.min(...particles.map(p => p.z))).toBeGreaterThan(70);
     const p = deepParticle(37, 5); deepParticle(37, 100); expect(deepParticle(37, 5)).toEqual(p);
   });
-  test('all six cached copies increase real toner dropout, feed drag, bands and grain', () => {
-    const copies = Array.from({ length: 6 }, (_, gen) => xeroxSettings(gen));
-    for (let i = 1; i < copies.length; i++) for (const key of ['drift', 'dropout', 'bands', 'grain'] as const)
+  test('five V6 generations increase toner density, blur, enlargement and rotation', () => {
+    const copies = Array.from({ length: 5 }, (_, gen) => xeroxSettings(gen));
+    for (let i = 1; i < copies.length; i++) for (const key of ['density', 'blur', 'scale', 'rotation'] as const)
       expect(copies[i]![key]).toBeGreaterThan(copies[i - 1]![key]);
   });
-  test('the extra eleven holds through the scene end', () => {
-    expect(rerunState(audio, afterBeats(audio, T.eleven, 1), T).number).toBe(11);
-    expect(rerunState(audio, T.end - 1 / 60, T).number).toBe(11);
-    expect(audio.beatAt(T.end) - audio.beatAt(T.eleven)).toBeGreaterThanOrEqual(1.5 - 1e-6);
+  test('the V6 extra eleven uses the held ten midpoint', () => {
+    const lyrics=new Lyrics(lyricsJSON),voice=new Voice(lyrics,audio),ten=lyrics.get('Clear the cache and count to ten').words[6]!;
+    expect(numberTimes(voice)[10]).toBe(ten.start+0.55*(ten.end-ten.start));
   });
 });
