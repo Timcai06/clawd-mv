@@ -373,3 +373,14 @@ export default class S14Shaft extends Scene {
 
 /** Handoff geometry at the end of S14 (for tests): the lit line lands on HANDOFF.line14. */
 export function handoffOut() { return { ...HANDOFF.line14 }; }
+
+/** Actual drawn cursor centre; query the existing camera without changing the live S14 world. */
+export function cursorScreenAt(t: number, S: StackScore) {
+  const cam = new THREE.PerspectiveCamera(34, W / H, 0.1, 600), depth = stackPos(t, S);
+  const camera = Reflect.get(S14Shaft.prototype, 'camera') as (this: unknown, t: number, pos: number) => { ph: ReturnType<typeof stackPhase>; dist: number };
+  const { ph, dist } = camera.call({ w: { S, cam } }, t, depth);
+  const stop = ph.id === 'stop', k = stop ? ease.outCubic(clamp((t - S.near) / 0.35)) : 0;
+  const y = stop ? -S.steps.length * P + lerp(CALL_Y - 0.3, BUG_Y, k) : -depth * P + CALL_Y - 0.3;
+  const v = new THREE.Vector3(MX, y, HZ + 0.02).project(cam), h = clamp(34 * 14 / dist, 12, 40);
+  return { x: (v.x * 0.5 + 0.5) * W + h * 0.005, y: (0.5 - v.y * 0.5) * H + h / 2, r: 8, w: h * 0.55, h };
+}

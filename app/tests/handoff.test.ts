@@ -6,6 +6,25 @@ import './kit-pathtext.test';
 // Scene tasks register their exported pure primitives here; no scene is migrated by V6-K.
 export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim };
 export const CUTS: RegisteredCut[] = [];
+// g5 owns only C12's entry: the outgoing line below is the shared design contract,
+// not a measurement of the still-unmigrated S12 on main.
+import audioJSON from '../../data/audio.json';
+import lyricsJSON from '../../data/lyrics.json';
+import { Lyrics } from '../src/engine/lyrics';
+import { CUT } from '../src/kit/handoff';
+import { chorusScore } from '../src/scenes/parts/s13-score';
+import { entryPrim as towerIn, exitPrim as towerOut } from '../src/scenes/parts/s13-world';
+import { cursorScreenAt } from '../src/scenes/s14-shaft';
+import { stackScore } from '../src/scenes/parts/s14-stack';
+const g5Audio = new AudioData(audioJSON), g5Lyrics = new Lyrics(lyricsJSON);
+const g5Score = chorusScore(g5Audio, g5Lyrics), shaftScore = stackScore(g5Audio, g5Lyrics);
+const p14 = cursorScreenAt(g5Score.end, shaftScore);
+CUTS.push({ id: 'C12-entry-contract', out: 'S12 design contract', in: 'S13', cut: g5Score.start,
+  exitPrim: () => ({ kind: 'line', ...CUT.diag13, w: 2 }), entryPrim: t => towerIn(t, g5Audio, g5Score) });
+CUTS.push({ id: 'C13', out: 'S13', in: 'S14', cut: g5Score.end,
+  exitPrim: t => towerOut(t, p14), entryPrim: t => {
+    const p = cursorScreenAt(t, shaftScore); return { kind: 'point', x: p.x, y: p.y, r: 8 };
+  } });
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
     const out = cut.exitPrim(cut.cut-(1-i/4)/60), incoming = cut.entryPrim(cut.cut+i/4/60), err = primError(out,incoming);
