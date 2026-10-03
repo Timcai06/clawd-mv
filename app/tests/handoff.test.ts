@@ -49,3 +49,46 @@ test('accelerando reads variable beat intervals and changes from eighths to sixt
   expect(accelerando(audio,2,3,1)).toEqual([]); expect(accelerando(audio,0,10,1.1)).toEqual([0,0.25,0.5,0.8]);
   expect(accelerando(audio,0,-1,0.5)).toEqual([0,0.125,0.25,0.375]);
 });
+
+// G4 owns the C8 incoming / C12 outgoing sides. C12's canonical incoming contract is used until
+// the independently owned S13 migration supplies its actual entryPrim; the unchanged v5 S13
+// still opens from eleven12 (rect), and must not be misreported as runtime continuity.
+import { audio as g4Audio,lyrics as g4Lyrics,voice as g4Voice,T as g4T } from './scene-v6-g4.test';
+import * as g4Scope from '../src/scenes/parts/s09-scope';
+import * as g4Glass from '../src/scenes/parts/s10-glass';
+import * as g4Rain from '../src/scenes/parts/s11-layout';
+import * as g4Copy from '../src/scenes/parts/s12-world';
+import { CUT } from '../src/kit/handoff';
+import { commitScore, handoffOut as hashOut } from '../src/scenes/parts/s08-layout';
+import { afterBeats } from '../src/kit/time';
+import { deepParticle } from '../src/scenes/parts/s11-deep';
+import * as THREE from 'three';
+const g4Commit=commitScore(g4Audio,g4Lyrics);
+function shardVelocityPrim(t:number):Prim {
+  const q={x:0,y:2,z:0},a=g4Glass.shardScreen(g4Audio,g4T,0,0,t,q)!,tb=afterBeats(g4Audio,t,0.00001);
+  const b=g4Glass.shardScreen(g4Audio,g4T,0,0,tb,q)!;
+  return {kind:'line',x0:0,y0:0,x1:(b.x-a.x)/0.00001,y1:(b.y-a.y)/0.00001,w:1};
+}
+function rainVelocityPrim(t:number):Prim {
+  const view=g4Rain.rainView(t,g4Audio,g4T),cam=new THREE.PerspectiveCamera(52,1920/1080,0.1,200);
+  cam.position.set(0,0,view.z);cam.up.set(Math.sin(view.roll),Math.cos(view.roll),0);cam.lookAt(0,0,-20);cam.updateMatrixWorld();
+  const project=(d:number)=>{const p=deepParticle(37,d);return new THREE.Vector3(p.x,p.y,p.z).project(cam);};
+  const a=project(0),b=project(220*0.00001);
+  return {kind:'line',x0:0,y0:0,x1:(b.x-a.x)*960/0.00001,y1:-(b.y-a.y)*540/0.00001,w:1};
+}
+CUTS.push(
+ {id:'C8-g4-entry',out:'S08',in:'S09',cut:g4T.terminal,exitPrim:t=>{const h=hashOut(t,g4Audio,g4Commit);return {kind:'line',x0:h.x0,y0:h.y,x1:h.x1,y1:h.y,w:2};},entryPrim:g4Scope.entryPrim},
+ {id:'C9',out:'S09',in:'S10',cut:g4T.wallStart,exitPrim:g4Scope.exitPrim,entryPrim:g4Glass.entryPrim},
+ {id:'C10-motion',out:'S10',in:'S11',cut:g4T.rainStart,exitPrim:shardVelocityPrim,entryPrim:rainVelocityPrim},
+ {id:'C11',out:'S11',in:'S12',cut:g4T.rerunStart,exitPrim:g4Rain.exitPrim,entryPrim:t=>g4Copy.entryPrim(g4Voice,t,g4T)},
+ {id:'C12-g4-exit-contract',out:'S12',in:'S13-contract',cut:g4T.end,exitPrim:t=>g4Copy.exitPrim(g4Voice,t,g4T),
+   entryPrim:()=>({kind:'line',...CUT.diag13,w:2})},
+);
+test('G4 registers five owned cut contracts (C12 incoming implementation is external)',()=>{
+ const own=CUTS.filter(c=>c.id.startsWith('C8')||c.id==='C9'||c.id.startsWith('C10')||c.id==='C11'||c.id.startsWith('C12'));
+ expect(own.length).toBe(5);
+ for(const cut of own){
+  const errors=Array.from({length:5},(_,i)=>primError(cut.exitPrim(cut.cut-(1-i/4)/60),cut.entryPrim(cut.cut+i/4/60)));
+  console.log('G4_CUT',cut.id,JSON.stringify({px:Math.max(...errors.map(e=>e.px)),size:Math.max(...errors.map(e=>e.size))}));
+ }
+});
