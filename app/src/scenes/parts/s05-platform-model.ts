@@ -113,9 +113,21 @@ export function handoffIn(t: number, audio: AudioData, T: PlatformTimes) {
   return { x: lerp(HANDOFF.clawd04.x, 906 + walk, k), y: lerp(HANDOFF.clawd04.y, 566, k), px: lerp(HANDOFF.clawd04.px, 18.5, k) };
 }
 
-export function handoffOut(t: number, audio: AudioData, T: PlatformTimes) {
+/**
+ * Stage 9 ②: the sung line is a line of source on the walk level. Its letters stand on the ledge
+ * Clawd walks (cap tops on y = READ_LINE.top, so Clawd walks on them), at x = READ_LINE.x − offset
+ * (they scroll out with the platform), and the read cursor's clay underline develops them.
+ */
+export const READ_LINE = { x: 270, top: 664, size: 78, measure: 1550, under: 14 } as const;
+/**
+ * The read cursor's underline: `from` is where the scene's underline is (from the line start to
+ * the scan head); over the last beat it flies to S06's first strike-through (C5), still for the
+ * last 0.1 s. Without `from` (font-free callers: the C5 check, which samples the last 0.1 s only)
+ * a fixed stand-in under the line is used.
+ */
+export function handoffOut(t: number, audio: AudioData, T: PlatformTimes, from = { x0: 270, x1: 1020, y: 734 }) {
   const k = ease.inOutCubic(span(t, afterBeats(audio, T.end, -1), T.end - 0.1));
-  return { x0: lerp(270, HANDOFF.strike05.x0, k), x1: lerp(1020, HANDOFF.strike05.x1, k), y: lerp(712, HANDOFF.strike05.y, k) };
+  return { x0: lerp(from.x0, HANDOFF.strike05.x0, k), x1: lerp(from.x1, HANDOFF.strike05.x1, k), y: lerp(from.y, HANDOFF.strike05.y, k) };
 }
 
 /** S05's camera: arrive pushed in on Clawd (S04's push, continued), pull out over 1.5 beats, a punch

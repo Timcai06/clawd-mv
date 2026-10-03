@@ -11,7 +11,8 @@ import { drawCursor, drawTrail, trailHead } from '../kit/cursor';
 import { postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
-import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice } from '../kit/lyric-moves';
+import { drawPlot, plotRest, plotRows, type PlotWord } from './parts/s06-plot';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { cam06, checkFinish, checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
@@ -35,7 +36,9 @@ class TodoWorld {
   bg=new FSPass(PAPER,{paper:{value:new THREE.Vector3(...lin('paper'))},ink:{value:new THREE.Vector3(...lin('ink'))}});
   times: CTimes;
   voice: Voice;
+  private plotted?: PlotWord[];
   constructor(ctx: SceneCtx) { this.times=resolveCTimes(ctx.audio,ctx.lyrics); this.voice=new Voice(ctx.lyrics,ctx.audio); }
+  plot() { return this.plotted ??= plotRows(this.voice, this.times.plan); }
   dispose() { this.sparks.dispose(); this.print.dispose(); this.bg.mat.dispose(); this.layer.texture.dispose(); }
 }
 let world: TodoWorld | undefined;
@@ -70,6 +73,10 @@ export default class S06Todo extends Scene {
     c.strokeStyle=css('ink',0.6); c.lineWidth=1.4;
     c.beginPath();c.moveTo(424,460);c.lineTo(424,1080);
     for(const y of [612,750]) {c.moveTo(424,y);c.lineTo(1920,y);}c.stroke();
+    // Stage 9 ②: the sung rows are plotted by the pen that ticks the boxes; the pen head is the cursor.
+    const plot=w.plot(), penHead=drawPlot(c,w.voice,T.plan,plot,f.t);
+    const penWriting=plot.some(p=>f.t>=p.times[0]![0] && f.t<p.times.at(-1)![1]);
+    const rest=penHead??plotRest();
     for(let i=0;i<3;i++) {
       const row=s.rows[i]!,b=row.box;
       const forms=w.voice.forms(T.plan,f.t).slice(i===0?0:3,i===0?3:6);
@@ -77,8 +84,7 @@ export default class S06Todo extends Scene {
         c.strokeStyle=css('ink',0.6);c.lineWidth=i===2?4:2;
         c.strokeRect(b.x,b.y,b.w,b.h);
       }
-      if(i<2) drawSet(c,setLine(forms,row.size,{space:0.4}),row.x,row.y,{on:'paper'});
-      else { // This is a machine task, never a sung/predicted word.
+      if(i===2) { // This is a machine task, never a sung/predicted word.
         c.fillStyle=css('ink',0.6);c.font=font(F.mono(500),row.size);c.fillText('Fix October',row.x,row.y);
       }
       // Plotter strokes remain single strokes. Vocal check onsets start the pen;
@@ -112,7 +118,10 @@ export default class S06Todo extends Scene {
     const hop=-10*Math.sin(phase*Math.PI);
     const pose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(at),p:0,travel:0});
     Clawd.draw(c,s.clawd.x,s.clawd.y+hop,pose,{px:s.clawd.px});
-    if (!writing) drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
+    // Before the first check the cursor is the plotter pen: on the stroke being written, then resting
+    // where the text ends; from the first check on it is the check pen (resting at the third box).
+    if (f.t < T.checks[0]!) drawCursor(c,{x:rest.x+4,y:rest.y,h:27,on:penWriting?1:undefined});
+    else if (!writing) drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
     // "Claws on the keys" belongs to S07 since the cut moved to the line break (R1).
     c.restore();
     w.bg.render(this.ctx.renderer,out);

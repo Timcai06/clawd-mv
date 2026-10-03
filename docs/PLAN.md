@@ -225,7 +225,10 @@ T 2026-10-03：下一阶段 Claude 做核心设计，并亲自开发部分章节
 - ✅ 第 1 批：`kit/inscribe.ts`（逐字母书写）、`kit/impact.ts`（冲击），样板 S03 打字机、S09 骑在波形上（做法见 CONTEXT）。新测试 `kit-inscribe`、`scene-s09-ride`。改前/改后并排图：`out/wip/s03-compare.png`、`out/wip/s09-compare.png`。
 - ✅ T 2026-10-03：「方向是对的」，已推送（18951c5）。
 - ✅ 第 2 批：三次 COMMIT 逐次升级（`kit/hookslam.ts`；S08 第 1 级、S13 第 2 级、S17 第 3 级，做法见 CONTEXT）。S08 的「I」由 S07 交过来的光标长出来（光标先停 3 帧）；S08 加了 COM 一砸（MIT 时 clay 漫满），S13 自己从 COM 起就预示 COMMIT，所以不加。改前/改后并排图：`out/wip/b2-s08-s13.png`、`b2-s13b.png`、`b2-s17.png`。
-- 🔜 T 在 Mac 上看三段副歌。每场改前/改后并排看；每批跑 tsc、测试、分镜检查，问过 T 再推送，渲染在 T 的 Mac 上。
+- ✅ 已推送（130ca03），T 定继续第 3 批。
+- ✅ 第 3 批：S01、S02（含 S03 顶栏承接）、S05、S06、S07 换载体（做法见 CONTEXT「② 第 3 批」）。tsc 0 错，测试 317 过 1 跳过 0 失败，分镜检查 0 过短 0 不递增。已本地提交，待 T 看 Mac 渲染、决定是否推送。
+- ❓ S04（3D 城市）沿街铺字的方案待 T 定；S07 键帽上的字本身偏小偏浅（老问题，这批没动）。
+- 🔜 第 4 批：按 `docs/reference/polish-gaps.md` 第 4 节（S10–S17 的载体，G4 长音分步，G5 停顿与猛切，G6 细分，大字字距）。
 
 ## ⏳ 阶段 10：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。

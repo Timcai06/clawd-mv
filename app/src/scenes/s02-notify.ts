@@ -16,7 +16,7 @@ import * as Clawd from '../kit/clawd';
 import { openingTimes } from './parts/s01-timing';
 import { mono } from './parts/s01-drafting';
 import { printInBox, grain, cursorFromTop } from './parts/s01-print';
-import { notifyLayout, handoffIn, view02, drawScreenGrid, PING_BOX, WAKE_CLAWD } from './parts/s02-layout';
+import { notifyLayout, handoffIn, view02, drawCardContent, PING_BOX, WAKE_CLAWD } from './parts/s02-layout';
 export const TYPE_LEVELS = { giant: 625, lyric: 50.8, label: 20 };
 class NotifyWorld {
   print = new PrintOverlay('step(edge, p.x)', { edge: { value: 0 } }, 'uniform float edge;');
@@ -60,16 +60,10 @@ export default class S02Notify extends Scene {
     Clawd.draw(c, pos.x, pos.y, Clawd.pose('A14', { beat: f.beat, beat0: ping0, p: span(t, w.T.ping, w.T.screen), look, startle: ping0 }), { px: pos.px, alpha: 1 - s.exit });
     c.fillStyle = css('paper'); c.fillRect(card.x, card.y, card.w, card.h);
     c.strokeStyle = css('ink', 0.6); c.lineWidth = 1.5; c.strokeRect(card.x, card.y, card.w, card.h);
-    mono(c, 'Issue #1031 · calendar', card.x + 24, card.y + card.h * 0.65, 20, 'ink', 0.6);
-    drawCursor(c, { x: card.x + card.w - 42, y: card.y + card.h * 0.65, h: 28 });
+    drawCardContent(c, w.voice, t, card);
     if (t < afterBeats(au,w.T.ping,1)) drawCursor(c, { ...cursorFromTop(handoffIn(t, au, w.T)), on: 1-span(t,w.T.ping,afterBeats(au,w.T.ping,1)) });
-    for (const left of [true, false]) {
-      const edge = s.edge * (1-s.exit);
-      c.save(); c.beginPath(); c.rect(left?0:edge,0,left?edge:1920-edge,1080); c.clip();
-      drawSet(c,setLine(w.voice.forms(line,t).slice(0,3),74),96,1008,{on:left?'ink':'paper',alpha:w.voice.presence(line,t)});
-      c.restore();
-    }
-    drawScreenGrid(c, w.voice, t);
+    // Stage 9 ②: "on my screen" is typed into the card itself (it is the screen, drawCardContent);
+    // the first half of the line stayed on S01's prompt, it is not repeated here.
     drawNote(c, { ax: card.x + card.w - 30, ay: card.y, x: card.x + card.w - 250, y: card.y - 58, text: '1 unread', sub: 'priority: weird', t0: afterBeats(au, w.T.ping, 1), on: 'paper' }, t);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.print.pass.u.edge!.value = s.edge * (1 - s.exit);

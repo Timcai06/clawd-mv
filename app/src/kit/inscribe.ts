@@ -145,3 +145,39 @@ export function drawStrikeGuide(c: CanvasRenderingContext2D, ins: Inscription, t
 
 /** Ease helper for carriers: a step that lands hard (outExpo) over `dur` s from t0. */
 export const land = (t: number, t0: number, dur = 0.22) => ease.outExpo(clamp((t - t0) / dur));
+
+// ── Typed input (Plex Mono): the machine voice, for a lyric typed at a prompt ──────────────────
+/** Fixed-pitch layout: one cell per character (typewriter quotes), letters timed as in inscribe(). */
+export interface MonoGlyph { ch: string; form: WordForm; wi: number; col: number; t: number }
+export interface MonoInscription { glyphs: MonoGlyph[]; cols: number; size: number; adv: number }
+/** Plex Mono's advance is 0.6 em. */
+export const MONO_ADV = 0.6;
+export function inscribeMono(forms: WordForm[], size: number): MonoInscription {
+  const glyphs: MonoGlyph[] = [];
+  let col = 0;
+  forms.forEach((f, wi) => {
+    const chars = Array.from(f.text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"'));
+    const span = letterSpan(f);
+    chars.forEach((ch, i) => glyphs.push({ ch, form: f, wi, col: col + i, t: f.t0 + span * i / Math.max(1, chars.length) }));
+    col += chars.length + 1;
+  });
+  return { glyphs, cols: Math.max(0, col - 1), size, adv: size * MONO_ADV };
+}
+/** Column of the typing head (the cell after the newest typed character). */
+export function monoHead(ins: MonoInscription, t: number): number {
+  let col = 0;
+  for (const g of ins.glyphs) { if (t < g.t) break; col = g.col + 1; }
+  return col;
+}
+/** Draw the typed characters at (x, baseline y): each strikes white-hot and cools; stressed words in clay. */
+export function drawMono(c: CanvasRenderingContext2D, ins: MonoInscription, t: number, x: number, y: number, o: { on: On; font: string; alpha?: number }) {
+  c.save(); c.font = o.font; c.textBaseline = 'alphabetic';
+  for (const g of ins.glyphs) {
+    if (t < g.t) break;
+    const base = g.form.stress ? stressOn(o.on) : fgOn(o.on);
+    c.globalAlpha = o.alpha ?? 1;
+    c.fillStyle = heatColor(base, o.on, t - g.t);
+    c.fillText(g.ch, x + g.col * ins.adv, y - ins.size * 0.05 * Math.pow(0.5, (t - g.t) / 0.025));
+  }
+  c.restore();
+}

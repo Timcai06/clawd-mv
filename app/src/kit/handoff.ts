@@ -10,8 +10,10 @@ export type Rect = { x: number; y: number; w: number; h: number };
 export type Pt = { x: number; y: number };
 
 export const HANDOFF = {
-  /** S01→S02: the clay cursor (top-left of the block, height h); S02's ink→paper wipe starts at x. */
-  cursor01: { x: 950, y: 610, h: 40 },
+  /** S01→S02: the clay cursor (top-left of the block, height h); S02's ink→paper wipe starts at x.
+   *  Stage 9 ②: it is the typing head after "Nine o'clock, a" on the welcome frame's prompt line
+   *  (Plex Mono 56 px from x = 582 + 2 cells, 15 characters: 582 + 17 × 33.6). */
+  cursor01: { x: 1153.2, y: 610, h: 40 },
   /** S02→S03: the notification card lands on the issue form's top bar. */
   card02: { x: 60, y: 57, w: 1790, h: 58 } as Rect,
   /** S03→S04: the form's mini calendar = the outline of S04's opening top-down month. */

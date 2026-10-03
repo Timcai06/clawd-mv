@@ -11,12 +11,27 @@ import type { LensView } from '../../kit/lens';
 export interface OpeningTimes {
   start: number; welcome: number; ping: number; screen: number;
   issue: number; attachment: number; end: number; bug: number;
+  /** When each typed column of "Nine o'clock, a" strikes (the prompt line, stage 9 ②). */
+  typed: number[];
 }
+
+/** The welcome frame's prompt line: "> " then the typed lyric, Plex Mono (the typed-input voice). */
+export const PROMPT = { x: 582, base: 650, size: 56 };
+export const PROMPT_ADV = PROMPT.size * 0.6, PROMPT_TEXT_X = PROMPT.x + 2 * PROMPT_ADV;
 
 export function openingTimes(audio: AudioData, lyrics: Lyrics): OpeningTimes {
   const shots = resolveStoryboard(board as Storyboard, lyrics, audio).shots;
   const cut = (id: string) => shots.find(s => s.id === id)!.start;
+  // Typed columns: letters spread over each word as in kit/inscribe (80 %, at most 0.7 s); spaces
+  // take a column and strike with the next word.
+  const typed: number[] = [];
+  lyrics.lines[0]!.words.slice(0, 3).forEach((w, i) => {
+    const chars = Array.from(w.w), span = Math.min(0.8 * (w.end - w.start), 0.7);
+    if (i > 0) typed.push(w.start);
+    chars.forEach((_, j) => typed.push(w.start + span * j / chars.length));
+  });
   return {
+    typed,
     start: cut('S01-1'), welcome: cut('S01-2'), ping: cut('S02-1'),
     screen: cut('S02-2'), issue: cut('S03-1'), attachment: cut('S03-2'),
     end: cut('S04-1'), bug: wordTime(lyrics, "Got a bug report, the weirdest I’ve seen", 'bug')!,
@@ -37,10 +52,11 @@ export function bootState(audio: AudioData, t: number, T: OpeningTimes) {
 // Geometry in logical px, measured from kf-S01 (1672×941). The render consumes these values.
 export const WELCOME_BOX = { x: 480, y: 209, w: 960, h: 479 };
 export const BOOT_CLAWD = { x: 670, y: 403, px: 36.4 };
-/** The final output frame reaches the shared cursor 0.1 s before the cut and holds there (R4). */
-export function handoffOut(t: number, audio: AudioData, T: OpeningTimes) {
-  const k = ease.inOutCubic(span(t, afterBeats(audio, T.ping, -1), T.ping - 0.1));
-  return { x: lerp(952, HANDOFF.cursor01.x, k), y: lerp(619, HANDOFF.cursor01.y, k), h: lerp(34, HANDOFF.cursor01.h, k) };
+/** The terminal cursor: it waits at the prompt, then is the typing head; after "a" it rests on
+ *  the shared cursor (C1), reached before the last 0.1 s. */
+export function handoffOut(t: number, _audio: AudioData, T: OpeningTimes) {
+  const col = T.typed.filter((x) => x <= t).length;
+  return { x: PROMPT_TEXT_X + col * PROMPT_ADV, y: HANDOFF.cursor01.y, h: HANDOFF.cursor01.h };
 }
 export function bootBounds(audio: AudioData, t: number, T: OpeningTimes) {
   const s = bootState(audio, t, T);
@@ -55,8 +71,6 @@ export const CURSOR01 = { x: HANDOFF.cursor01.x, y: HANDOFF.cursor01.y, w: HANDO
 export const CURSOR01_C = { x: CURSOR01.x + CURSOR01.w / 2, y: CURSOR01.y + CURSOR01.h / 2 };
 /** S02's hit zoom on the ping; S01 pushes in to exactly this so the cut is seamless. */
 export const PING_ZOOM = 1.14;
-/** "Nine o'clock, a" sits here in both scenes (S02's bottom-left line, 74 px). */
-export const LINE01 = { x: 96, y: 1008, size: 74 };
 
 /** S01's lens: tight on the lone cursor, a long pull-back as the welcome frame draws, then a push
  *  into the cursor (inCubic over the last two beats, held for the last 0.1 s) to S02's hit zoom. */

@@ -12,7 +12,8 @@ import { impact } from '../kit/impact';
 import { Lens } from '../kit/lens';
 import * as Clawd from '../kit/clawd';
 import { openingTimes } from './parts/s01-timing';
-import { drawScreenGrid } from './parts/s02-layout';
+import { drawCardContent } from './parts/s02-layout';
+import { HANDOFF } from '../kit/handoff';
 import { mono } from './parts/s01-drafting';
 import { drawForm, drawCalendar, drawReportLyrics, handoffIn, handoffOut, view03, FORM_ROLL, REPORT_CLAWD } from './parts/s03-form';
 export const TYPE_LEVELS = { giant: 315.6, lyric: 50.8, label: 20 };
@@ -42,12 +43,12 @@ export default class S03Issue extends Scene {
       c.save();c.translate(REPORT_CLAWD.x,REPORT_CLAWD.y);c.scale(1,REPORT_CLAWD.stretchY);
       Clawd.draw(c,0,0,Clawd.pose(null,{beat:f.beat,beat0:au.beatAt(w.T.issue),p:k}),{px:REPORT_CLAWD.px});c.restore();c.restore();
     } else {
-      mono(c,'Issue #1031 · calendar',b.x+24,b.y+b.h*.65,20,'ink',.6);drawReportLyrics(c,w.voice,t);
+      drawReportLyrics(c,w.voice,t);
     }
     c.restore();
-    // C2 (R2): "screen" is still sung for 0.21 s after the cut; finish it in S02's grid, under the form.
+    // C2 (R2): "screen" is still sung for 0.21 s after the cut; it finishes on the card, now the form's top bar.
     const screen=w.voice.line(0).words.at(-1)!;
-    if(t<screen.end+0.12){c.save();c.globalCompositeOperation='destination-over';drawScreenGrid(c,w.voice,t,true);c.restore();}
+    if(t<screen.end+0.12) drawCardContent(c,w.voice,t,HANDOFF.card02);
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
     w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer,finalOut,view03(t,w.T,w.voice.line(1).words.find(x=>/weirdest/i.test(x.w))!.start));

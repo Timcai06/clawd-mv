@@ -15,7 +15,8 @@ import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
 import { cursorFromTop, printInBox } from './parts/s01-print';
 import * as Clawd from '../kit/clawd';
-import { openingTimes, bootState, handoffOut, view01, WELCOME_BOX, BOOT_CLAWD, LINE01 } from './parts/s01-timing';
+import { openingTimes, bootState, handoffOut, view01, WELCOME_BOX, BOOT_CLAWD, PROMPT, PROMPT_TEXT_X } from './parts/s01-timing';
+import { drawMono, inscribeMono } from '../kit/inscribe';
 export const TYPE_LEVELS = { giant: null, lyric: 50.8, label: 20 }; // cap heights; Archivo 74 px = 50.764 cap px
 class BootWorld { lens = new Lens();
   sparks = new SparkLines();
@@ -45,7 +46,9 @@ export default class S01Boot extends Scene {
       const base = cursorFromTop(handoffOut(tb, au, w.T));
       if (tb >= w.T.welcome && tb < frameEnd) return { x: WELCOME_BOX.x + WELCOME_BOX.w * 0.88 * bootState(au, tb, w.T).frame,
         y: WELCOME_BOX.y, h: base.h, on: 1 };
-      return { ...base, on: blink(au.beatAt(tb), tb >= afterBeats(au, w.T.ping, -1)) };
+      // solid while it types, blinking while it waits
+      const typing = tb >= w.T.typed[0]! - 0.05 && tb < w.T.typed.at(-1)! + 0.25;
+      return { ...base, on: typing ? 1 : blink(au.beatAt(tb), tb >= afterBeats(au, w.T.ping, -1)) };
     };
     if (f.t >= w.T.welcome) {
       const b = WELCOME_BOX;
@@ -66,11 +69,11 @@ export default class S01Boot extends Scene {
       c.fillText(text, 582, 376);
       // A14: awake from the first frame (the note says idle). The two eye pits arrive first, the body
       // assembles around them, and the eyes follow whatever is being written: the head along the top
-      // edge, then the title as it types. Then they face us (the canonical face) for the hold, and
-      // drop to the cursor when it starts blinking fast, one beat before the ping.
+      // edge, then the title as it types, then they face us (the canonical face) until the prompt
+      // line starts typing, and follow its cursor along the line.
       const head = cursorAt(f.t), typing = s.rows[1]! > 0 && s.rows[1]! < 1;
-      const look = f.t < frameEnd ? Clawd.gaze(BOOT_CLAWD.x, BOOT_CLAWD.y, BOOT_CLAWD.px, { x: head.x, y: head.y - head.h / 2 })
-        : typing ? -1 : f.t >= afterBeats(au, w.T.ping, -1) ? 'down' : 0;
+      const atHead = Clawd.gaze(BOOT_CLAWD.x, BOOT_CLAWD.y, BOOT_CLAWD.px, { x: head.x, y: head.y - head.h / 2 });
+      const look = f.t < frameEnd ? atHead : typing ? -1 : f.t >= w.T.typed[0]! - 0.3 ? atHead : 0;
       const p = Clawd.pose('A14', { beat: f.beat, beat0: au.beatAt(w.T.welcome), p: s.pixels, look });
       for (const cell of p.cells) if (cell.k === 'O') {
         c.strokeStyle = css('clay', 0.42); c.lineWidth = 0.8;
@@ -83,9 +86,13 @@ export default class S01Boot extends Scene {
       Clawd.draw(g, BOOT_CLAWD.x, BOOT_CLAWD.y, { ...reveal, cells: reveal.cells.filter(cell => cell.k === 'O') }, { px: BOOT_CLAWD.px, alpha: 0.25 });
     }
     cursorSpark(c, g, w.sparks, f.t, cursorAt, { on: 'ink', from: w.T.welcome, to: frameEnd, end: w.T.ping, seed: 1 });
-    // C1: "Nine o'clock, a" in the layout S02 keeps; "ping" is born giant in S02, not here.
-    const line = w.voice.line(0), forms = w.voice.forms(line, f.t).slice(0, 3);
-    drawSet(c, setLine(forms, LINE01.size), LINE01.x, LINE01.y, { on: 'ink', glow: g });
+    // Stage 9 ②: "Nine o'clock, a" is typed at the welcome frame's prompt by the terminal cursor
+    // (Plex Mono, the typed-input voice); it ends on the C1 cursor. "ping" is born giant in S02.
+    if (f.t >= frameEnd) {
+      c.font = font(F.mono(500), PROMPT.size); c.fillStyle = css('clay', 0.9); c.fillText('>', PROMPT.x, PROMPT.base);
+      const forms = w.voice.forms(w.voice.line(0), f.t).slice(0, 3);
+      drawMono(c, inscribeMono(forms, PROMPT.size), f.t, PROMPT_TEXT_X, PROMPT.base, { on: 'ink', font: font(F.mono(500), PROMPT.size) });
+    }
     { const q = cursorFromTop(handoffOut(f.t, au, w.T));
       drawNote(c, { ax: q.x + 14, ay: q.y - 12, x: q.x + 80, y: q.y - 70, text: 'pid 1031 · idle', t0: w.T.start + 0.6, t1: w.T.welcome, on: 'ink' }, f.t); }
     this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.sparks.finish(this.ctx, out); w.glow.composite(this.ctx, out, 2.0);
