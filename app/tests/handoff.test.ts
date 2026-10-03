@@ -1,3 +1,4 @@
+import './helpers/stroke-fonts';
 import { expect, test } from 'bun:test';
 import { AudioData } from '../src/engine/audio';
 import { accelerando, exitEnvelope, primError, type Cut, type Prim } from '../src/kit/handoff';
