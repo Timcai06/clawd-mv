@@ -13,6 +13,9 @@ export interface ReleaseTimes {
   hit: number;
   dawn: number;
   end: number;
+  zipStart: number;
+  zipEnd: number;
+  commitWidth?: number;
 }
 
 export function resolveReleaseTimes(audio: AudioData, lyrics: Lyrics): ReleaseTimes {
@@ -21,7 +24,8 @@ export function resolveReleaseTimes(audio: AudioData, lyrics: Lyrics): ReleaseTi
   const tomorrow = shots.filter(s => s.scene === 'S18');
   // Dawn is an editorial page turn, exactly eight measured beats into the calendar shot.
   const dawn = afterBeats(audio, tomorrow[4]!.start, 8);
-  return { release, tomorrow, hit: release[1]!.start, dawn, end: tomorrow.at(-1)!.end };
+  const merged = lyrics.get('Merged to main, and now we’re free');
+  return { release, tomorrow, hit: release[1]!.start, dawn, end: tomorrow.at(-1)!.end, zipStart: merged.words[1]!.start, zipEnd: merged.words[2]!.end };
 }
 
 export function currentShot(shots: readonly ResolvedShot[], t: number): number {
@@ -37,7 +41,7 @@ export function releaseState(audio: AudioData, t: number, times: ReleaseTimes) {
   const shot = currentShot(times.release, t), at = times.release[shot]!;
   const b = Math.max(0, beatsSince(audio, t, at.start));
   const mergeAt = times.release[5]!.start;
-  const merge = ease.inOutCubic(clamp(beatsSince(audio, t, mergeAt) / 2));
+  const merge = span(t, times.zipStart, times.zipEnd);
   const wallAt = times.release[7]!.start;
   const wallBeats = Math.max(0, beatsSince(audio, t, wallAt));
   const revealAt = times.release[8]!.start;
@@ -45,10 +49,10 @@ export function releaseState(audio: AudioData, t: number, times: ReleaseTimes) {
   const wallPull = ease.inOutCubic(span(t, wallAt, afterBeats(audio, revealAt, 0.8)));
   return {
     shot, b, p: span(t, at.start, at.end),
-    ground: shot === 1 ? 'clay' as const : 'paper' as const,
+    ground: 'paper' as const,
     impact: shot === 1 ? Math.pow(0.5, Math.max(0, beatsSince(audio, t, times.hit)) / 0.17) : 0,
     merge,
-    wallLit: shot < 7 ? 0 : Math.min(WALL_CELLS.length, Math.floor(wallBeats * WALL_CELLS.length / 2.5) + 1),
+    wallLit: shot < 7 ? 0 : WALL_CELLS.filter(c => c.k !== 'D').length,
     wallZoom: lerp(3.8, 0.82, wallPull), wallPull,
   };
 }

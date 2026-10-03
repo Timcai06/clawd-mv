@@ -5,6 +5,8 @@ import { ease } from '../../engine/util';
 import { HANDOFF, type Rect } from '../../kit/handoff';
 import { afterBeats, span, wordTime } from '../../kit/time';
 import { mixRect } from './s16-green-state';
+import { orbitCam, p3 } from '../../kit/rig';
+import { screenPoints, screenDevice, screenBounds } from './s17-swarm';
 import { WALL_CELLS, type ReleaseTimes } from './s17-release-state';
 
 export const WALL_BOX: Rect = { x: 30, y: 36, w: 1860, h: 480 };
@@ -20,14 +22,12 @@ export function wallCells() {
 
 /** Face-to-flood matching occurs only in the first measured beat. */
 export function handoffIn(t: number, audio: AudioData, T: ReleaseTimes): Rect {
-  const at = T.release[0]!.start;
-  return mixRect(HANDOFF.domino16, { x: 0, y: 0, w: 1920, h: 1080 },
-    ease.inOutCubic(span(t, at, afterBeats(audio, at, 1))));
+  return screenBounds(screenDevice(), orbitCam(p3(), 0, 0, 5, 34));
 }
 
 /** These nodes are already registered to the following star positions; no late snap. */
 export function handoffOut(t: number, audio: AudioData, T: ReleaseTimes) {
-  return HANDOFF.nodes17.map(p => ({ ...p }));
+  return screenPoints();
 }
 
 export function releaseLayout(audio: AudioData, lyrics: Lyrics, t: number, T: ReleaseTimes) {
@@ -35,7 +35,7 @@ export function releaseLayout(audio: AudioData, lyrics: Lyrics, t: number, T: Re
   const mergeLine = lyrics.get('Merged to main, and now we’re free');
   const machineLine = lyrics.get('And it works on every machine');
   const main = mergeLine.words[2]!;
-  const join = ease.inOutCubic(span(t, wordTime(lyrics, mergeLine.text, 'main')!, afterBeats(audio, main.end, 1)));
+  const join = span(t, mergeLine.words[1]!.start, main.end);
   const every = wordTime(lyrics, machineLine.text, 'every')!;
   return {
     review: t >= review.words[3]!.start && t < review.end,

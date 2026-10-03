@@ -14,7 +14,7 @@ import { wallCells } from './s17-release-layout';
 
 export const FRONT_DIST = 0.5 * 1080 / Math.tan((34 * Math.PI) / 360) / 100;
 const wx = (sx: number) => (sx - 960) / 100, wy = (sy: number) => (540 - sy) / 100;
-const ECHOES = 26; // further walls
+export const ECHOES = 26; // further walls
 
 /** Front-on at k = 1 (the storyboard frame); born close on one screen at k = 0. */
 export function wallCam(k: number): Cam {
@@ -129,4 +129,21 @@ export class DeviceWall3D {
     r.setRenderTarget(out); r.clearDepth(); r.render(this.scene, this.cam);
   }
   dispose() { this.mesh.geometry.dispose(); this.mat.dispose(); this.screenTex.dispose(); }
+}
+
+/** Read-only CPU description of the existing instance transforms. Geometry above is unchanged. */
+export function wallDevices() {
+  const q = new THREE.Quaternion(), pos = new THREE.Vector3();
+  return Array.from({ length: ECHOES + 1 }, (_, e) => {
+    const ox = e === 0 ? 0 : (hash(e, 1) - 0.5) * 120;
+    const oz = e === 0 ? 0 : -45 - hash(e, 2) * 220;
+    const oy = e === 0 ? 0 : 3 + hash(e, 3) * 16;
+    const yaw = e === 0 ? 0 : (hash(e, 4) - 0.5) * 0.6;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    return wallCells().map(c => {
+      pos.set(wx(c.x + c.w / 2), wy(c.y + c.h / 2), 0).applyQuaternion(q);
+      return { x: pos.x + ox, y: pos.y + oy, z: pos.z + oz,
+        w: c.w / 100, h: c.h / 100, d: 0.55, yaw, lit: c.k !== 'D', echo: e };
+    });
+  }).flat();
 }
