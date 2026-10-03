@@ -178,7 +178,8 @@ export default class S13Gitfall extends Scene {
       }
     }
     // Pickup level 2 (kit/hookslam): the cursor holds until the I, then one word per hit.
-    const pick = this.ctx.lyrics.find("I need one more commit")[s.second ? 3 : 2]!;
+    // The second pickup starts at pickup2 (s.second only turns true at its hit, hit2).
+    const pick = this.ctx.lyrics.find("I need one more commit")[t >= T.pickup2 ? 3 : 2]!;
     const hitK = impact(t, pickupHits(2, au, pick), T.end), swapped = s.frozen && hitK.swap;
     if (s.frozen && t < pick.words[0]!.start + 0.05) {
       const cursor = { x: 960 - 19.8, y: 576, h: 72, on: blink(au.beatAt(t)) };
