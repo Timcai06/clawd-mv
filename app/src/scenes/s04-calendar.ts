@@ -19,7 +19,9 @@ import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { blink, drawCursor } from '../kit/cursor';
 import { span } from '../kit/time';
-import { heatColor, Voice, drawSet, odometer, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, odometer } from '../kit/lyric-moves';
+import { typeWords } from '../kit/inscribe';
+import { impact } from '../kit/impact';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { BLOCK, TOWER_BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, projectionCamera, clawdRect, handoffIn, type CityTimes, type Point3 } from './parts/s04-city-model';
@@ -432,12 +434,19 @@ export default class S04Calendar extends Scene {
 
     }
 
-    // "thirty-second day in": the line, set under the counter, each word born on its onset.
-    const pre = forms.slice(0, -1);
-    const lead = setLine(pre, 74, { space: 0.24 });
-    const leadAlpha = slam ? Math.max(0, 1 - ease.outCubic(span(t, T.october, T.october + 0.18))) : 1;
-    if (leadAlpha > 0) drawSet(c, lead, 92, 420, { on: NIGHT ? 'ink' : 'paper', alpha: leadAlpha });
-
+    // Stage 9 ②: the counter is the sung "thirty-second", so the words around it are set as its
+    // lockup, typed a letter at a time: "There's a" above, "day in" on its baseline, right of the
+    // digits. When OCTOBER slams down the lockup is knocked down out of frame (not faded); the
+    // counter itself flies to the margin as before. Ground lettering was tried and read badly: the
+    // plate is still overhead (turned 90°) while "There's a" is sung, and an overlay cannot be
+    // occluded by the blocks.
+    { const on = NIGHT ? 'ink' : 'paper', push = 1100 * ease.inCubic(span(t, T.october, T.october + 0.22));
+      if (push < 1000) {
+        c.save(); c.translate(96, 312 + push); c.scale(breath, breath);
+        typeWords(c, v, line.words.slice(0, 2), t, { x: 330, y: -150, size: 74, on, seed: 41, cursor: t < line.words[2]!.start, space: 0.24 });
+        typeWords(c, v, line.words.slice(3, 5), t, { x: 330, y: 0, size: 74, on, seed: 42, cursor: !slam, space: 0.24 });
+        c.restore();
+      } }
     // OCTOBER: slams down cropped by the frame on the onset, then stretches with the held note.
     if (slam) {
       const ox = v.form(october.word, t, { minWidth: 62, maxWidth: 84, rest: 880 });
@@ -469,6 +478,18 @@ export default class S04Calendar extends Scene {
     const incoming = handoffIn(f.t,this.ctx.audio,w.times);
     if(incoming.alpha>0){c.fillStyle=css('paper',incoming.alpha);c.fillRect(0,0,W,H);c.save();c.globalAlpha=incoming.alpha;drawCalendar(c,incoming);c.restore();}
     this.character(f,s,c);
+    if (s.rising) { // the shock ring: a ground contour pushed out from the tower's footprint
+      const d = DATES[31]!, k = ease.outExpo(span(f.t, w.times.rise, w.times.rise + 0.6));
+      if (k < 1) {
+        const r = TOWER_BLOCK * 0.75 + 9 * k;
+        c.strokeStyle = css(NIGHT ? 'paper' : 'ink', 0.7 * (1 - k)); c.lineWidth = 2.5 * (1 - k) + 0.5; c.beginPath();
+        for (let i = 0; i <= 48; i++) {
+          const a = i / 48 * Math.PI * 2, p = w.project([d.x + Math.cos(a) * r, 0.07, d.z + Math.sin(a) * r]);
+          if (i) c.lineTo(p.x, p.y); else c.moveTo(p.x, p.y);
+        }
+        c.stroke();
+      }
+    }
     if (s.rising) {
       const d = DATES[31]!, top = w.project([d.x + TOWER_BLOCK / 2, s.roof32, d.z]);
       drawNote(c, { ax: top.x, ay: top.y + 30, x: top.x + 70, y: top.y - 40, text: 'Oct 32', sub: 'permit pending', t0: w.times.october + 0.35, on: NIGHT ? 'ink' : 'paper' }, f.t);
@@ -509,8 +530,10 @@ export default class S04Calendar extends Scene {
     r.render(w.labels.scene, w.camera);
     this.survey(s, out); this.annotations(f, s, out);
     if (!NIGHT) w.print.render(this.ctx.renderer, out);
+    // Stage 9 ②: the 32nd tower breaks ground on the overflow beat (ascent.ts's boom): a 10 px shake.
+    const shake = impact(f.t, [{ t: w.times.rise, shake: 10, kick: 0.02, half: 0.08 }], w.times.end).shake;
     return {
-      ...postFor(NIGHT ? 'ink' : 'paper'), hud: 0, grain: 0.03, ...(NIGHT ? { vignette: 0.35, ca: 0.6 } : {}),
+      ...postFor(NIGHT ? 'ink' : 'paper'), hud: 0, grain: 0.03, shake, ...(NIGHT ? { vignette: 0.35, ca: 0.6 } : {}),
     };
   }
 }

@@ -1,6 +1,7 @@
 // Shared timing helpers for scenes (docs/ARCHITECTURE.md). The song speeds up from ~133 to
 // ~138 BPM, so everything musical goes through the measured per-beat grid, never BPM x time.
 import type { AudioData } from '../engine/audio';
+import { ease } from '../engine/util';
 import type { SceneCtx } from '../engine/scene';
 import type { ResolvedShot } from '../storyboard';
 
@@ -48,4 +49,19 @@ export function wordTime(lyrics: { lines: { text: string; words: { w: string; st
   const w = lines[occ - 1]?.words.find((x) => norm(x.w) === norm(word));
   if (!w) return undefined;
   return syl ? w.syl?.[syl - 1]?.[0] : w.start;
+}
+
+/**
+ * Stage 9 G5, "holds, then snaps" (TREATMENT.md Tone; pdoom room.ts cuts on the beat): progress
+ * 0..1 from t0 to t1 in n equal beat segments (n = the beats in between, at least 1). Each segment
+ * opens with a snap (outExpo over `snap` s) and then holds still. Exactly 0 at t0 and 1 at t1, so
+ * it can replace a long inOutCubic drift without moving either end.
+ */
+export function beatSteps(audio: AudioData, t: number, t0: number, t1: number, snap = 0.14): number {
+  if (t <= t0) return 0;
+  if (t >= t1) return 1;
+  const B0 = audio.beatAt(t0), B1 = audio.beatAt(t1), n = Math.max(1, Math.round(B1 - B0));
+  const u = (audio.beatAt(t) - B0) / (B1 - B0) * n, k = Math.min(n - 1, Math.floor(u));
+  const at = audio.timeOfBeat(B0 + k * (B1 - B0) / n);
+  return Math.min(1, (k + ease.outExpo(Math.min(1, (t - at) / snap))) / n);
 }

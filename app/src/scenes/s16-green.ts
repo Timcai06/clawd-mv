@@ -9,7 +9,8 @@ import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { css } from '../theme';
 import { ease, lerp } from '../engine/util';
-import { span } from '../kit/time';
+import { span, beatSteps } from '../kit/time';
+import { impact } from '../kit/impact';
 import { Lens } from '../kit/lens';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
@@ -62,7 +63,7 @@ export default class S16Green extends Scene {
     // green!" lands as a hit and the frame opens to the identity for the S17 hand-off.
     const last = Math.max(0, s.passed - 1), card = s.cards[last]!;
     const cx = card.front.reduce((a, p) => a + p.x, 0) / 4, cy = card.front.reduce((a, p) => a + p.y, 0) / 4;
-    const close = 1 - ease.inOutCubic(span(t, T.triggers[2]!, T.triggers[10] ?? T.nineteen.start));
+    const close = 1 - beatSteps(this.ctx.audio, t, T.triggers[2]!, T.triggers[10] ?? T.nineteen.start, 0.1); // G5
     let nudge = 0;
     for (const at of T.triggers) if (t >= at) nudge = Math.pow(0.5, (t - at) / 0.08);
     const hit = t >= T.nineteen.start ? Math.pow(0.5, (t - T.nineteen.start) / 0.12) : 0;
@@ -174,6 +175,10 @@ export default class S16Green extends Scene {
     if (NIGHT) w.chroma.composite(this.ctx.renderer, w.layer.texture, out, 0.55);
     else w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer, finalOut, lens);
-    return NIGHT ? { ...postFor('ink'), hud: 0, frame: 0, vignette: 0.35, ca: 0.6 } : { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035 };
+    // G6: every topple is a hit, growing with the run as the triggers tighten from beats to 8ths
+    // to 16ths; "Nineteen green!" is the biggest. Still for the last 0.1 s (kit/impact).
+    const shake = impact(t, [...T.triggers.map((at, i) => ({ t: at, shake: 2 + i * 0.45, half: 0.05 })),
+      { t: T.nineteen.start, shake: 14, kick: 0.02 }], T.end).shake;
+    return NIGHT ? { ...postFor('ink'), hud: 0, frame: 0, vignette: 0.35, ca: 0.6, shake } : { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035, shake };
   }
 }

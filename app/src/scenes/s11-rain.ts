@@ -8,6 +8,7 @@ import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { glowDraw, heatColor, Voice, drawWithMissing } from '../kit/lyric-moves';
 import { affine, drawInscription, inscribe, land, type Inscription } from '../kit/inscribe';
 import { hash } from '../engine/util';
+import { impact } from '../kit/impact';
 import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { beatHit, resolveX9Times, type X9Times } from './s09-z-shared';
@@ -107,6 +108,8 @@ export default class S11Rain extends Scene {
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.glow.composite(this.ctx, out, 1.6);
-    return { ...postFor('ink'), hud: 0, ca: 0.6 };
+    // Each "Undefined" slams the frame (pdoom hook.ts shake), still for the last 0.1 s.
+    const shake = impact(t, T.impacts.map((at, i) => ({ t: at, shake: 12 + 6 * i, kick: 0.03 })), T.rainEnd).shake;
+    return { ...postFor('ink'), hud: 0, ca: 0.6, shake };
   }
 }

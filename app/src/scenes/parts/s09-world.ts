@@ -6,7 +6,7 @@
 // World units: 1 = 100 logical px on the glass. x = (sx - 960) / 100, y = (540 - sy) / 100.
 import type { AudioData } from '../../engine/audio';
 import { clamp, ease, hash } from '../../engine/util';
-import { afterBeats, beatsSince, span } from '../../kit/time';
+import { afterBeats, beatsSince, span, beatSteps } from '../../kit/time';
 import { orbitCam, mixCam, p3, Rig, type Cam } from '../../kit/rig';
 import type { X9Times } from '../s09-z-shared';
 import { SCOPE, scopeY, scopeHead } from './s09-scope';
@@ -20,7 +20,7 @@ export const RIDGES = 22;
 /** The camera: the storyboard's front view, then the crane that reveals the history. */
 export function cameraAt(audio: AudioData, t: number, T: X9Times): Cam {
   const front = orbitCam(p3(0, 0, 0), 0, 0, FRONT_DIST, 34, 0);
-  const a = ease.inOutCubic(span(t, T.terminal, T.scopeKey));
+  const a = beatSteps(audio, t, T.terminal, T.scopeKey); // G5: settles in beat steps
   const settle = orbitCam(p3(0.2, -0.15, 0), -0.03, 0.05, FRONT_DIST - 1.3, 34, 0.0);
   let c = mixCam(front, settle, a);
   const k = ease.inOutCubic(span(t, T.scopeKey - 0.2, afterBeats(audio, T.terminalEnd, -0.3)));

@@ -127,7 +127,9 @@ export class Voice {
     const held = clamp((dur - 0.18) / 0.67);
     const w0 = o.minWidth ?? 87.5, w1 = lerp(w0, o.maxWidth ?? 125, held);
     // Width follows the held note (fast at first, then creeping): a held word visibly stretches.
-    const wdth = t < w.start ? w0 : lerp(w0, w1, ease.outCubic(sung));
+    // Stage 9 G4 (pdoom shoggoth.ts LIES): a long note (≥ 0.6 s) that crosses beats steps instead,
+    // one width level per beat, each snapping in with outExpo over 0.08 s; it ends at the same w1.
+    const wdth = t < w.start ? w0 : lerp(w0, w1, this.stepped(w, t, dur) ?? ease.outCubic(sung));
     // Weight swells from light to the word's power while it is sung, with the live voice on top.
     const target = stress ? 900 : lerp(o.rest ?? 520, 820, this.power.get(w.gi) ?? 0.5);
     const swell = ease.outQuad(clamp((t - w.start) / Math.min(0.35, Math.max(0.08, dur * 0.8))));
@@ -138,6 +140,16 @@ export class Voice {
       born: t < w.start ? 0 : ease.outExpo(clamp((t - w.start) / 0.11)),
       sung, singing: t >= w.start && t < w.end, stress, held, axes: { wdth, wght },
     };
+  }
+
+  /** Stepped stretch progress (0..1) of a long note at t, or null for a short / single-beat note. */
+  stepped(w: Word, t: number, dur = w.end - w.start): number | null {
+    if (dur < 0.6) return null;
+    const b0 = Math.floor(this.audio.beatAt(w.start)), steps = Math.floor(this.audio.beatAt(w.end) - 1e-6) - b0;
+    if (steps < 1) return null;
+    const n = steps + 1, k = clamp(Math.floor(this.audio.beatAt(Math.min(t, w.end - 1e-6))) - b0, 0, steps);
+    const at = k === 0 ? w.start : this.audio.timeOfBeat(b0 + k);
+    return lerp(k / n, (k + 1) / n, ease.outExpo(clamp((t - at) / 0.08)));
   }
 
   forms(line: Line, t: number, o?: Parameters<Voice['form']>[2]): WordForm[] {

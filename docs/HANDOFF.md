@@ -2,6 +2,8 @@
 
 新会话开始时，把下面整段贴进去。
 
+> **2026-10-03 更新**：下面第二、四节记的是阶段 9 开始时的状态，已经过时。之后完成了：开场眼睛、① 切点与交接原语、② 歌词换载体第 1–5 批（工具 `kit/inscribe.ts`、`kit/impact.ts`、`kit/hookslam.ts`，`kit/time.ts` 的 `beatSteps`）。当前进度以 `docs/PLAN.md` 阶段 9 为准，各批做法见 `docs/CONTEXT.md` 决策表「② 第 1–5 批」各行，切点见 `docs/CUTS.md`，问题清单见 `docs/reference/polish-gaps.md`。第一、三、五节以后的约定仍然有效。
+
 ---
 
 你接手 clawd-mv：一支 2:40 的 MV，主角是 Clawd（Claude Code 的橙色像素小螃蟹），画面全部由代码渲染（three.js 网页程序，每一帧只由歌曲时间 t 决定）。

@@ -4,7 +4,7 @@ import { Voice } from '../../kit/lyric-moves';
 import { varRun } from '../../kit/vartype';
 import type { AudioData } from '../../engine/audio';
 import type { X9Times } from '../s09-z-shared';
-import { beatsSince } from '../../kit/time';
+import { afterBeats, beatsSince, beatSteps } from '../../kit/time';
 import { lerp } from '../../engine/util';
 import { exitBeat, enterBeat, runBox, spriteBox } from './s09-type';
 import * as Clawd from '../../kit/clawd';
@@ -20,7 +20,9 @@ export function handoffOut(t: number, audio: AudioData, T: X9Times) {
 }
 export function rainView(t: number, audio: AudioData, T: X9Times) {
   const b = Math.max(0, beatsSince(audio, t, T.rainStart));
-  return { b, z: lerp(14, 10, Math.min(1, Math.max(0, b - 1) / 13)), roll: handoffIn(t, audio, T).roll };
+  // G5: the dolly into the storm moves in beat steps (hold, snap) instead of a constant creep
+  const z = lerp(14, 10, beatSteps(audio, t, afterBeats(audio, T.rainStart, 1), afterBeats(audio, T.rainStart, 14)));
+  return { b, z, roll: handoffIn(t, audio, T).roll };
 }
 export function headlineState(v: Voice, t: number, T: X9Times) {
   const line = v.line('Undefined, undefined, and I don’t know why');

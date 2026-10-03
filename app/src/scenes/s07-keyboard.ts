@@ -127,7 +127,9 @@ class KeyboardWorld {
   private typed=new Map<number,Inscription>();
   keyWord(i: number) {
     let ins=this.typed.get(i);
-    if(!ins){const wd=this.times.claws.words[i]!;ins=inscribe([{...this.voice.form(wd,wd.end),born:1,age:0}],92);this.typed.set(i,ins);}
+    if(!ins){const wd=this.times.claws.words[i]!,f=this.voice.form(wd,wd.end);
+      // Legible at the keys' size: at least semibold, set larger and fitted to the cap's top.
+      ins=inscribe([{...f,axes:{...f.axes,wght:Math.max(700,f.axes.wght)},born:1,age:0}],128);this.typed.set(i,ins);}
     return ins;
   }
   legendAtlas=new Plate(512,512);
@@ -212,8 +214,9 @@ export default class S07Keyboard extends Scene {
       // Stage 9 ②: the word is typed into its keycap a letter at a time (a key strike per letter:
       // kick, misregistration, ink density), each letter while it is sung; nothing is predicted.
       if(form.born>0){
-        const fin=w.keyWord(i),sc=Math.min(1,340/fin.width),x0=192-fin.width*sc/2;
-        drawInscription(c,{...fin,glyphs:fin.glyphs.map(g=>({...g,form}))},f.t,{on:'clay',head:'type',scale:sc,place:(_g,x)=>affine(x0+x,132),seed:70+i});
+        const fin=w.keyWord(i),sc=Math.min(1,352/fin.width),x0=192-fin.width*sc/2;
+        // (Ink was tried: the cap's clay glow washes it out; paper stays the brightest thing on the key.)
+        drawInscription(c,{...fin,glyphs:fin.glyphs.map(g=>({...g,form}))},f.t,{on:'clay',head:'type',scale:sc,place:(_g,x)=>affine(x0+x,96+fin.capH/2),seed:70+i});
       }
       p.texture.needsUpdate=true;
       const y=keyHeight(p.key.x,p.key.z,p.key.enter,f.beat,f.a.kick,s.landing)+0.012;

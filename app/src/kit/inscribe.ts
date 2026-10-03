@@ -9,7 +9,9 @@
 // reaches them (loss.ts glyphTime).
 import { clamp, ease, hash } from '../engine/util';
 import { css, type ThemeKey } from '../theme';
-import { fgOn, heatColor, stressOn, type On, type WordForm } from './lyric-moves';
+import { fgOn, heatColor, stressOn, type On, type Voice, type WordForm } from './lyric-moves';
+import type { Word } from '../engine/lyrics';
+import { drawCursor } from './cursor';
 import { glyphPath, varRun, type VarGlyph, type VarRun } from './vartype';
 
 export interface InGlyph {
@@ -141,6 +143,29 @@ export function drawStrikeGuide(c: CanvasRenderingContext2D, ins: Inscription, t
   c.fillStyle = css('clay');
   c.beginPath(); c.moveTo(x - 8 * s, 22 * s); c.lineTo(x + 8 * s, 22 * s); c.lineTo(x, 10 * s); c.closePath(); c.fill();
   c.restore();
+}
+
+/**
+ * A run of sung words typed onto a carrier: laid out from the words' final shapes (nothing reflows),
+ * every letter striking while it is sung (type head), live heat and stress from the voice. `at`
+ * places the baseline origin (and optionally rotates it); with `cursor`, the clay cursor rides the
+ * typing head until 0.3 s after the last letter. Returns the layout (for carriers that need it).
+ */
+export function typeWords(c: CanvasRenderingContext2D, v: Voice, words: Word[], t: number,
+  o: { x: number; y: number; size: number; on: On; rot?: number; cursor?: boolean; seed?: number; glow?: CanvasRenderingContext2D; alpha?: number; space?: number; maxWidth?: number }) {
+  if (!words.length || t < words[0]!.start) return null;
+  const fin = inscribe(words.map((w) => ({ ...v.form(w, w.end), born: 1, age: 0 })), o.size, { space: o.space });
+  const sc = o.maxWidth ? fitWidth(fin, o.maxWidth) : 1;
+  const live: Inscription = { ...fin, glyphs: fin.glyphs.map((g) => ({ ...g, form: v.form(words[g.wi]!, t) })) };
+  const rot = o.rot ?? 0, cs = Math.cos(rot), sn = Math.sin(rot);
+  drawInscription(c, live, t, { on: o.on, head: 'type', scale: sc, seed: o.seed, glow: o.glow, alpha: o.alpha,
+    place: (_g, x) => affine(o.x + cs * x, o.y + sn * x, rot) });
+  if (o.cursor && t < fin.glyphs.at(-1)!.t + 0.3) {
+    const hx = headX(fin, t, sc) + 6;
+    c.save(); c.translate(o.x + cs * hx, o.y + sn * hx); c.rotate(rot);
+    drawCursor(c, { x: 0, y: 0, h: fin.capH }); c.restore();
+  }
+  return { ins: fin, scale: sc };
 }
 
 /** Ease helper for carriers: a step that lands hard (outExpo) over `dur` s from t0. */

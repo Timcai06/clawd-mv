@@ -10,11 +10,11 @@ import { F, font } from "../engine/type";
 import { hash, frameIdx, ease, lerp } from "../engine/util";
 import { css } from "../theme";
 import { GlowLayer, postFor } from "../kit/ground";
-import { glowDraw, heatColor, Voice, gridSnap } from "../kit/lyric-moves";
-import { fillRun, varRun } from "../kit/vartype";
+import { glowDraw, heatColor, Voice, stamp } from "../kit/lyric-moves";
 import { drawCursor, blink } from "../kit/cursor";
 import { afterBeats, beatsSince, span } from "../kit/time";
 import { chorusScore, chorusState, commitId, type ChorusScore } from "./parts/s13-score";
+import { inscribe, land, typeWords } from "../kit/inscribe";
 import { gitfallLayout, handoffIn, implode, implodeTarget } from "./parts/s13-layout";
 import {
   drawWarped,
@@ -163,20 +163,17 @@ export default class S13Gitfall extends Scene {
       if (!hook) {
         if (/fix a bit/i.test(line.text)) this.stack(c, t, stripGlow);
         else {
-          // One readable row below the panel collision; born words cross shot cuts unchanged.
-          const y = s.split ? 884 : 145;
-          gridSnap(c, v.forms(line, t), {
-            x: 96,
-            y,
-            colW: 144,
-            rowH: 100,
-            cols: 12,
-            size: 100,
-            on: s.split ? "ink" : "clay",
-            glow: g,
-            t,
-            alpha: v.presence(line, t, 1),
-          });
+          // Stage 9 ②: typed letter by letter with the cursor as the head. "Every test is throwing
+          // fits" runs above the test grid; "But it works on my" runs under the collision and
+          // "machine!" is stamped across the crease where local meets CI.
+          const machine = /works on my machine/i.test(line.text);
+          const words = machine ? line.words.slice(0, -1) : line.words;
+          typeWords(c, v, words, t, { x: 96, y: s.split ? 950 : 215, size: 100, on: s.split ? "ink" : "clay",
+            cursor: true, glow: g, seed: 130, alpha: v.presence(line, t, 1), space: 0.3 });
+          if (machine && s.split) {
+            const m = line.words.at(-1)!, f = v.form(m, t);
+            stamp(c, "machine!", 1050, 742, 118, { t, at: m.start, rot: -0.12, color: "clay", on: "ink", axes: f.axes, seed: 133, box: false });
+          }
         }
       }
     }
@@ -384,40 +381,21 @@ export default class S13Gitfall extends Scene {
   private stack(c: CanvasRenderingContext2D, t: number, stripGlow: (() => void)[]) {
     const v = this.w.voice,
       line = v.line("“Fix,” and “fix,” and “fix a bit”");
-    // Two singles followed by one phrase; each new fix pushes preceding records up one pitch.
-    const groups = [
-      line.words.slice(0, 2),
-      line.words.slice(2, 4),
-      line.words.slice(4),
-    ];
-    const forms = groups.map((words) => words.map((word) => v.form(word, t)));
-    const born = groups.filter((words) =>
-      words.some((w) => w.start <= t),
-    ).length;
-    forms.forEach((row, i) => {
-      const y = 530 + (i - born + 1) * 112;
-      let x = 96;
-      for (const form of row) {
-        const run = varRun(form.text, 100, form.axes);
-        if (form.born > 0) {
-          c.fillStyle = heatColor(form.stress || i === 2 ? "clay" : "paper", "ink", form.age);
-          // Clay stress stays visible on an ink print strip inside the clay half.
-          c.fillStyle = css("ink", 0.9);
-          c.fillRect(x - 8, y - 88, run.width + 16, 104);
-          c.fillStyle = heatColor(form.stress || i === 2 ? "clay" : "paper", "ink", form.age);
-          c.globalAlpha = Math.min(1, form.born * 1.6);
-          fillRun(c, run, x, y);
-          if (form.stress || i === 2) {
-            const g = this.w.glow.ctx;
-            // Defer these strip-local words until after the ground clip is restored.
-            const matrix = c.getTransform(), alpha = c.globalAlpha, xx = x;
-            stripGlow.push(() => { g.save(); g.setTransform(matrix); g.globalAlpha = alpha;
-              g.fillStyle = heatColor('clay','ink',form.age); fillRun(g,run,xx,y); g.restore(); });
-          }
-          c.globalAlpha = 1;
-        }
-        x += run.width + 26;
-      }
+    // The lyric is the newest git log (stage 9 ②): each "fix" is a commit record (hash in Mono,
+    // message typed in Archivo a letter at a time); each new record pushes the older ones up.
+    const groups = [line.words.slice(0, 2), line.words.slice(2, 4), line.words.slice(4)];
+    const born = groups.filter((words) => words[0]!.start <= t).length;
+    void stripGlow;
+    groups.forEach((words, i) => {
+      if (t < words[0]!.start) return;
+      // older records slide up one pitch as the newest lands (outExpo, 0.12 s)
+      const y = 530 + (i - born + 1) * 112 + (i < born - 1 ? 112 * (1 - land(t, groups[born - 1]![0]!.start, 0.12)) : 0);
+      const fin = inscribe(words.map((w) => ({ ...v.form(w, w.end), born: 1, age: 0 })), 100, { space: 0.26 });
+      c.fillStyle = css("ink", 0.9);
+      c.fillRect(88, y - 88, 190 + fin.width + 16, 104);
+      c.font = font(F.mono(400), 26); c.fillStyle = css("paper", 0.5);
+      c.fillText(commitId(900 + i), 104, y - 28);
+      typeWords(c, v, words, t, { x: 290, y, size: 100, on: "ink", glow: this.w.glow.ctx, seed: 140 + i, cursor: i === born - 1 });
     });
   }
 }

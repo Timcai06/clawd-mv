@@ -5,7 +5,7 @@ import type { Lyrics, Line, Word } from '../../engine/lyrics';
 import { Voice } from '../../kit/lyric-moves';
 import { HANDOFF } from '../../kit/handoff';
 import { CREDIT_LINES, type CreditsState } from '../../kit/credits';
-import { afterBeats, beatsSince, span } from '../../kit/time';
+import { afterBeats, beatsSince, span, beatSteps } from '../../kit/time';
 import { ease, lerp } from '../../engine/util';
 
 // Coordinates measured on the 1672×941 reference, scaled to logical 1920×1080.
@@ -65,7 +65,7 @@ export function starState(audio: AudioData, voice: Voice, t: number, T: OutroTim
     const word = T.ohs[i - HANDOFF.nodes17.length];
     const alpha = i < HANDOFF.nodes17.length ? 1 : T.ohs.length
       ? (word ? voice.form(word, t).born : 0)
-      : ease.outCubic(Math.min(1, Math.max(0, (b - (i - HANDOFF.nodes17.length)) / 0.8)));
+      : ease.outExpo(Math.min(1, Math.max(0, (b - (i - HANDOFF.nodes17.length)) / 0.25))); // G5: each star snaps on its beat
     return { ...point, ...(incoming[i] ?? {}), alpha };
   });
 }
@@ -76,7 +76,7 @@ export function outroState(audio: AudioData, t: number, T: OutroTimes) {
   const b = Math.max(0, beatsSince(audio, t, T.shots[shot]!.start));
   return {
     shot, b,
-    dawn: ease.inOutCubic(span(t, afterBeats(audio, T.dawn, -4), afterBeats(audio, T.dawn, 4))),
+    dawn: beatSteps(audio, t, afterBeats(audio, T.dawn, -4), afterBeats(audio, T.dawn, 4), 0.2), // G5: dawn in beat steps
     flip: ease.inOutCubic(span(t, afterBeats(audio, T.dawn, -1), afterBeats(audio, T.dawn, 1))),
     notification: ease.outCubic(span(t, T.shots[5]!.start, afterBeats(audio, T.shots[5]!.start, 1))),
     wave: shot === 3 && b < 2 ? 1 : 0,

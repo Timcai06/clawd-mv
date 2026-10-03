@@ -92,7 +92,12 @@ export interface VarRun { text: string; size: number; glyphs: VarGlyph[]; width:
  * Lay out `text` at `size` px. `axes` may be one value or a per-glyph function (a word can stretch
  * while its neighbours do not). `tracking` in px. Kerning comes from the nearest instance.
  */
-export function varRun(text: string, size: number, axes: Axes | ((i: number, ch: string) => Axes), tracking = 0): VarRun {
+/**
+ * Default tracking for display sizes (TREATMENT.md Typography: big type sets tight): 0 up to 300 px,
+ * then −1 % of the size, tightening to −3 % at 900 px and above.
+ */
+export const displayTracking = (size: number) => size <= 300 ? 0 : -size * (0.01 + 0.02 * Math.min(1, (size - 300) / 600));
+export function varRun(text: string, size: number, axes: Axes | ((i: number, ch: string) => Axes), tracking = displayTracking(size)): VarRun {
   const chars = Array.from(text);
   const s = size / (UPM || 1000);
   const glyphs: VarGlyph[] = [];

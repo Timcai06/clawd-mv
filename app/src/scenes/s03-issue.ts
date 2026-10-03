@@ -51,7 +51,7 @@ export default class S03Issue extends Scene {
     if(t<screen.end+0.12) drawCardContent(c,w.voice,t,HANDOFF.card02);
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
     w.print.render(this.ctx.renderer, out);
-    w.lens.film(this.ctx.renderer,finalOut,view03(t,w.T,w.voice.line(1).words.find(x=>/weirdest/i.test(x.w))!.start));
+    w.lens.film(this.ctx.renderer,finalOut,view03(t,w.T,w.voice.line(1).words.find(x=>/weirdest/i.test(x.w))!.start,this.ctx.audio));
     // Impacts (G3): every typed title letter knocks the frame a little; the BUG stamp hits hard.
     const line=w.voice.line(1),title=inscribe(w.voice.forms(line,t).slice(0,4),100);
     const hits=[...title.glyphs.map(g=>({t:g.t,shake:2.5,half:0.03})),{t:line.words[2]!.start,shake:22,half:0.07}];

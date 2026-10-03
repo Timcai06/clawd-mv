@@ -3,7 +3,7 @@ import type { AudioData } from '../../engine/audio';
 import { Lyrics } from '../../engine/lyrics';
 import { ease, lerp } from '../../engine/util';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
-import { afterBeats, beatsSince, span, wordTime } from '../../kit/time';
+import { afterBeats, beatsSince, span, wordTime, beatSteps } from '../../kit/time';
 import board from '../../../../storyboard/shots.json';
 import { HANDOFF, lensRect, type Prim } from '../../kit/handoff';
 import type { LensView } from '../../kit/lens';
@@ -76,7 +76,8 @@ export const PING_ZOOM = 1.14;
  *  into the cursor (inCubic over the last two beats, held for the last 0.1 s) to S02's hit zoom. */
 export function view01(t: number, audio: AudioData, T: OpeningTimes): LensView {
   const cur = handoffOut(T.start, audio, T), cy = cur.y + cur.h;
-  const back = ease.inOutCubic(span(t, afterBeats(audio, T.welcome, -1.5), afterBeats(audio, T.welcome, 3)));
+  // G5: the pull-back holds inside each beat and snaps on the next (beatSteps), not one long drift.
+  const back = beatSteps(audio, t, afterBeats(audio, T.welcome, -1.5), afterBeats(audio, T.welcome, 3));
   const p0 = afterBeats(audio, T.ping, -2);
   if (t >= p0) {
     const push = ease.inCubic(span(t, p0, T.ping - 0.1));

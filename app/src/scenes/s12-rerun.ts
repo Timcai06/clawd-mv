@@ -5,6 +5,7 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { ease, hash, lerp } from '../engine/util';
 import { afterBeats, span } from '../kit/time';
+import { impact } from '../kit/impact';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { heatColor, Voice, stamp } from '../kit/lyric-moves';
@@ -142,6 +143,10 @@ export default class S12Rerun extends Scene {
     c.restore();
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.print.render(this.ctx.renderer, out);
-    return { ...postFor('paper'), hud: 0, bloom: 0 };
+    // G6: each word of "run it again" is a hit (8th-note density), the stutter's replays re-trigger
+    // them; "clear" has none (the wipe is the gesture). Still for the last 0.1 s.
+    const runHits = runs.words.map((wd, i) => ({ t: wd.start, shake: 3 + i, half: 0.05 }));
+    const shake = impact(t, runHits, T.end).shake;
+    return { ...postFor('paper'), hud: 0, bloom: 0, shake };
   }
 }

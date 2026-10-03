@@ -49,7 +49,7 @@ interface Cut { id: string; at: number; out: (t: number) => Prim; in: (t: number
 const CUTS: Cut[] = [
   { id: 'C1 S01→S02 cursor', at: T.ping, out: (t) => exitPrim01(t, audio, T), in: (t) => entryPrim02(t, audio, T, nudges) },
   { id: 'C2 S02→S03 card bar', at: T.issue, out: (t) => exitPrim02(t, audio, T, nudges), in: (t) => entryPrim03(t, audio, T, weirdest) },
-  { id: 'C3 S03→S04 month', at: C.start, out: (t) => exitPrim03(t, T, weirdest), in: () => entryPrim04() },
+  { id: 'C3 S03→S04 month', at: C.start, out: (t) => exitPrim03(t, T, weirdest, audio), in: () => entryPrim04() },
   { id: 'C4 S04→S05 Clawd', at: P.start, out: (t) => exitPrim04(audio, t, C), in: (t) => entryPrim05(audio, lyrics, t, P) },
   { id: 'C5 S05→S06 strike', at: K.todo, out: (t) => exitPrim05(audio, lyrics, t, P), in: (t) => entryPrim06(audio, t, K) },
   { id: 'C6 S06→S07 pen/key', at: K.keyboard, out: (t) => exitPrim06(audio, t, K), in: (t) => entryPrim07(t, audio, K) },

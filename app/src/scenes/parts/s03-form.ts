@@ -2,7 +2,7 @@
 import type { AudioData } from '../../engine/audio';
 import { ease, hash } from '../../engine/util';
 import { css } from '../../theme';
-import { afterBeats, span } from '../../kit/time';
+import { afterBeats, span, beatSteps } from '../../kit/time';
 import { HANDOFF, lensRect, type Prim, type Rect } from '../../kit/handoff';
 import type { LensView } from '../../kit/lens';
 import { lerp } from '../../engine/util';
@@ -125,17 +125,18 @@ function typeHead(c: CanvasRenderingContext2D, ins: Inscription, t: number, plac
 }
 /** S03's lens: the form is read up close (a breathing push that returns to identity at both cuts),
  *  with a punch on "weirdest". */
-export function view03(t: number, T: OpeningTimes, weirdest: number): LensView {
-  const p = span(t, T.issue, T.end - 0.1);
+export function view03(t: number, T: OpeningTimes, weirdest: number, audio: AudioData): LensView {
+  // G5: the drift toward the identity frame steps on the beat (beatSteps) instead of gliding.
+  const p = beatSteps(audio, t, T.issue, T.end - 0.1);
   const punch = t >= weirdest ? Math.pow(0.5, (t - weirdest) / 0.1) : 0;
   const zoom = 1 + 0.07 * Math.sin(Math.PI * p) + 0.05 * punch;
   return { zoom, fx: lerp(820, 960, p), fy: lerp(480, 540, p), rot: -0.012 * punch * (1 - p) };
 }
 /** C2: the form unfolding from the card's bar. */
 export function entryPrim03(t: number, audio: AudioData, T: OpeningTimes, weirdest: number): Prim {
-  return { kind: 'rect', ...lensRect(view03(t, T, weirdest), handoffIn(t, audio, T)) };
+  return { kind: 'rect', ...lensRect(view03(t, T, weirdest, audio), handoffIn(t, audio, T)) };
 }
 /** C3: the attached month. */
-export function exitPrim03(t: number, T: OpeningTimes, weirdest: number): Prim {
-  return { kind: 'rect', ...lensRect(view03(t, T, weirdest), handoffOut(t)) };
+export function exitPrim03(t: number, T: OpeningTimes, weirdest: number, audio: AudioData): Prim {
+  return { kind: 'rect', ...lensRect(view03(t, T, weirdest, audio), handoffOut(t)) };
 }

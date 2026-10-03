@@ -2,7 +2,7 @@
 import type { AudioData } from '../../engine/audio';
 import type { Lyrics } from '../../engine/lyrics';
 import { ease, lerp } from '../../engine/util';
-import { afterBeats, beatsSince, span } from '../../kit/time';
+import { afterBeats, beatsSince, span, beatSteps } from '../../kit/time';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
 import { HANDOFF, cam2Point, cam2Rect, mixCam2, type Cam2, type Prim, type Rect } from '../../kit/handoff';
@@ -93,7 +93,8 @@ export function platformLayout(audio: AudioData, t: number, T: PlatformTimes) {
   // v4 motion: one continuous truck to the right across all three shots (slow in, accelerating
   // through "read it all over"), so the strata parallax the whole time instead of three still lenses.
   // It passes through the storyboard frame (offset 0) at the same 60 % sample scripts/compare.ts uses.
-  const pan = (u: number) => lerp(-260, 700, ease.inOutQuad(span(u, T.start, T.end))) + 140 * ease.inCubic(span(u, afterBeats(audio, T.end, -2), T.end));
+  // G5: the truck moves in beat steps (snap, then hold) so the read line lands still on every beat.
+  const pan = (u: number) => lerp(-260, 700, beatSteps(audio, u, T.start, T.end, 0.16)) + 140 * ease.inCubic(span(u, afterBeats(audio, T.end, -2), T.end));
   const offset = pan(t) - pan(T.scroll + (T.end - T.scroll) * 0.6);
   const ledges = SOURCE_LEDGES.map(b => ({ ...b, x: b.x - offset * b.depth }));
   const px = 18.5;
