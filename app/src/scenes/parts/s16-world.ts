@@ -13,31 +13,42 @@ import type { GreenTimes } from './s16-green-state';
 export const D = { w: 0.7, h: 2.1, d: 0.22 } as const;
 export const RADIUS = 14, ARC = 0.62, MAX_TILT = Math.PI / 2 - 0.08;
 export const FALL_SECONDS = 0.24;
+// R4: only the terminal slab turns outward. A 0.6-unit displacement has a small
+// upstream component so board 18 can still reach it before the fixed word clock.
+export const LAST_OFFSET={along:-0.3,outward:Math.sqrt(0.6**2-0.3**2)} as const;
+export const LAST_YAW=-5*Math.PI/12;
 /** Off-axis framing keeps the physical sightline aimed at the moving face centre. */
-export interface GreenCamera extends Cam { shift?: { x:number; y:number } }
+export interface GreenCamera extends Cam { shift?: { x:number; y:number }; up?:P3 }
 export class GreenRig extends Rig {
   override set(c:GreenCamera) {
     super.set(c);
+    if(c.up){
+      this.cam.up.set(c.up.x,c.up.y,c.up.z);
+      this.cam.lookAt(c.tgt.x,c.tgt.y,c.tgt.z);this.cam.rotateZ(c.roll);
+      this.cam.updateMatrixWorld(true);
+    }
     if(c.shift){
       this.cam.projectionMatrix.elements[8]!-=2*c.shift.x/1920;
       this.cam.projectionMatrix.elements[9]!+=2*c.shift.y/1080;
       this.cam.projectionMatrixInverse.copy(this.cam.projectionMatrix).invert();
-      this.vp.multiplyMatrices(this.cam.projectionMatrix,this.cam.matrixWorldInverse);
     }
+    this.vp.multiplyMatrices(this.cam.projectionMatrix,this.cam.matrixWorldInverse);
   }
 }
 export const KEY_LIGHT = p3(-Math.cos(22*Math.PI/180)/Math.sqrt(2), Math.sin(22*Math.PI/180), -Math.cos(22*Math.PI/180)/Math.sqrt(2));
 export function arcAt(i: number): P3 {
   const a = lerp(-ARC, ARC, i / 18);
-  return p3(RADIUS*Math.sin(a), 0, -RADIUS+RADIUS*Math.cos(a));
+  const out=i===18?LAST_OFFSET.outward:0,along=i===18?LAST_OFFSET.along:0;
+  return p3((RADIUS+out)*Math.sin(a)+along*Math.cos(a), 0, -RADIUS+(RADIUS+out)*Math.cos(a)-along*Math.sin(a));
 }
-export function yawAt(i: number): number { return lerp(-ARC, ARC, i / 18)+Math.PI/2; }
+export function yawAt(i: number): number { return lerp(-ARC, ARC, i / 18)+Math.PI/2+(i===18?LAST_YAW:0); }
 export function tangentAt(i: number): P3 {
-  const a = lerp(-ARC, ARC, i / 18); return p3(Math.cos(a),0,-Math.sin(a));
+  const yaw=yawAt(i);return p3(Math.sin(yaw),0,Math.cos(yaw));
 }
 // First contact: the advancing top-front corner reaches the next board's near plane.
 // The next board is rotated by the arc increment, so its near plane is evaluated exactly.
 export function hitAngle(i: number): number {
+  if(i===17)return terminalContactAngle();
   const A = arcAt(i), B = arcAt(i+1), f = tangentAt(i), n = tangentAt(i+1);
   const gap = (B.x-A.x)*n.x+(B.z-A.z)*n.z-D.d/2;
   const pivot = D.d/2*(f.x*n.x+f.z*n.z);
@@ -48,6 +59,8 @@ export function tiltAt(i: number, t: number, T: GreenTimes): number {
   if(i===18)t=Math.min(t,T.end-0.1);
   const age = t-T.triggers[i]!, duration = i === 18 ? 0.6 : FALL_SECONDS;
   if (age <= 0) return 0;
+  // R4's final slab rests flat on the floor; no rebound may lift it or cross y=0.
+  if(i===18)return Math.PI/2*ease.inQuad(clamp(age/duration));
   if (age <= duration) return MAX_TILT*ease.inQuad(age/duration);
   // A small, analytic, seek-safe rebound around the resting angle.
   return MAX_TILT+0.012*(springStep(age-duration,6,0.55)-1)*Math.min(1,(age-duration)/0.03);
@@ -59,13 +72,39 @@ export function dominoPoint(i: number, q: P3, theta: number): P3 {
 }
 export const S16_GLSL = /* glsl */ `
 const float D_W = 0.7, D_H = 2.1, D_D = 0.22;
-vec3 arcAt(float i) { float a=mix(-0.62,0.62,i/18.0); return vec3(14.0*sin(a),0.0,-14.0+14.0*cos(a)); }
-float yawAt(float i) { return mix(-0.62,0.62,i/18.0)+1.5707963267948966; }
+vec3 arcAt(float i) { float a=mix(-0.62,0.62,i/18.0), outOffset=i==18.0?${LAST_OFFSET.outward}:0.0, along=i==18.0?${LAST_OFFSET.along}:0.0; return vec3((14.0+outOffset)*sin(a)+along*cos(a),0.0,-14.0+(14.0+outOffset)*cos(a)-along*sin(a)); }
+float yawAt(float i) { return mix(-0.62,0.62,i/18.0)+1.5707963267948966+(i==18.0?${LAST_YAW}:0.0); }
 vec3 dominoPoint(float i, vec3 q, float theta) {
   vec3 b=arcAt(i); float yaw=yawAt(i), c=cos(theta), s=sin(theta);
   float Y=c*q.y-s*(q.z-D_D/2.0), Z=s*q.y+c*(q.z-D_D/2.0)+D_D/2.0;
   return b+vec3(cos(yaw)*q.x+sin(yaw)*Z,Y,-sin(yaw)*q.x+cos(yaw)*Z);
 }`;
+/** Signed separation of two rigid boxes along all fifteen OBB SAT axes. */
+function poseGap(i:number,theta:number,j:number,otherTheta:number):number {
+  const body=(index:number,angle:number)=>{
+    const origin=dominoPoint(index,p3(),angle),center=dominoPoint(index,p3(0,D.h/2,0),angle);
+    const axes=[p3(1,0,0),p3(0,1,0),p3(0,0,1)].map(q=>vector(dominoPoint(index,q,angle),origin));
+    return {center,axes};
+  };
+  const a=body(i,theta),b=body(j,otherTheta),delta=vector(b.center,a.center),half=[D.w/2,D.h/2,D.d/2];
+  const axes=[...a.axes,...b.axes,...a.axes.flatMap(x=>b.axes.map(y=>x.clone().cross(y)))];
+  return Math.max(...axes.filter(v=>v.lengthSq()>1e-16).map(v=>{
+    v.normalize();const radius=(basis:THREE.Vector3[])=>basis.reduce((sum,u,k)=>sum+half[k]!*Math.abs(u.dot(v)),0);
+    return Math.abs(delta.dot(v))-radius(a.axes)-radius(b.axes);
+  }));
+}
+let terminalAngle:number|undefined;
+function terminalContactAngle():number {
+  if(terminalAngle!==undefined)return terminalAngle;
+  // The outward terminal board is contacted on an edge, not the old parallel-face plane.
+  for(let step=1;step<=256;step++){
+    let hi=MAX_TILT*step/256;if(poseGap(17,hi,18,0)>0)continue;
+    let lo=MAX_TILT*(step-1)/256;
+    for(let it=0;it<48;it++){const mid=(lo+hi)/2;if(poseGap(17,mid,18,0)>0)lo=mid;else hi=mid;}
+    return terminalAngle=(lo+hi)/2;
+  }
+  throw new Error('Board 18 cannot reach the terminal board');
+}
 export function faceCorners(i: number, t: number, T: GreenTimes, back = true): P3[] {
   const z = (back ? -1 : 1)*D.d/2;
   return [[-D.w/2,0],[D.w/2,0],[D.w/2,D.h],[-D.w/2,D.h]].map(([x,y])=>dominoPoint(i,p3(x!,y!,z),tiltAt(i,t,T)));
@@ -124,19 +163,18 @@ export function faceCenter(i:number,t:number,T:GreenTimes):P3 {
 /** The label's baseline spans 90% of the narrow face; its basis is fixed to the print. */
 export function nineteenFrame(){
   const c=Math.cos(END_ROLL),s=Math.sin(END_ROLL);
-  return {origin:p3(0,D.h/2,-D.d/2-.003),u:p3(-c,s,0),v:p3(s,c,0),width:D.w*.9};
+  return {origin:p3(0,D.h*.78,-D.d/2-.003),u:p3(-c,s,0),v:p3(s,c,0),width:D.w*.9};
 }
 export function closingCamera(t:number,T:GreenTimes):GreenCamera {
   t=Math.min(t,T.end-0.1);
   const k=ease.inOutCubic(span(t,T.nineteen.start,T.end-0.1)),target=faceCenter(18,t,T);
-  const theta=tiltAt(18,t,T),pitch=Math.max(1.2,theta),f=tangentAt(18);
+  const theta=tiltAt(18,t,T),pitch=Math.max(1.55,theta),f=tangentAt(18);
   const dir=new THREE.Vector3(-f.x*Math.cos(pitch),Math.sin(pitch),-f.z*Math.cos(pitch));
   const X=vector(dominoPoint(18,p3(-1,0,0),theta),dominoPoint(18,p3(0,0,0),theta)).normalize();
-  const right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),dir).normalize();
-  const up=new THREE.Vector3().crossVectors(dir,right).normalize();
+  const up=new THREE.Vector3().crossVectors(dir,X).normalize();
   const fov=34,finalDistance=540/Math.tan(fov*Math.PI/360)*(D.h*Math.cos(END_ROLL)+D.w*Math.sin(END_ROLL))/HANDOFF.domino16.h;
   const distance=lerp(24,finalDistance,k),pos=new THREE.Vector3(target.x,target.y,target.z).addScaledVector(dir,distance);
-  return {pos:value(pos),tgt:target,fov,roll:Math.atan2(X.dot(up),X.dot(right))+END_ROLL,
+  return {pos:value(pos),tgt:target,fov,roll:END_ROLL,up:value(up),
     shift:{x:k*(HANDOFF.domino16.x+HANDOFF.domino16.w/2-960),y:k*(HANDOFF.domino16.y+HANDOFF.domino16.h/2-540)}};
 }
 

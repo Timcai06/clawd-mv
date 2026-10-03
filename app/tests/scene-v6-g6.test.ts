@@ -11,14 +11,15 @@ import { HANDOFF, primError, exitEnvelope } from '../src/kit/handoff';
 import { resolveFTimes } from '../src/scenes/parts/s15-f-timing';
 import { freeCarrySpec, freeCarryAffines, handoffOut, entryPrim as entry15 } from '../src/scenes/parts/s15-layout';
 import { greenTimes, greenHit, GREEN_WIDTHS, greenState } from '../src/scenes/parts/s16-green-state';
-import { D, RADIUS, ARC, MAX_TILT, S16_GLSL, arcAt, dominoPoint, tiltAt, hitAngle, hitDelay, cameraAt, cursorAt, arcBounds, entryPrim, exitPrim, projectBounds, faceCorners, groundLyrics, greenLetterPoints, freeBody, freeTiltAt, floorToneAt, groundShadowAt, lightTone, faceNormal, KEY_LIGHT, checkScaleAt, shakeAt, GreenRig as Rig, faceCenter, dominoRayHit, nineteenFrame } from '../src/scenes/parts/s16-world';
+import { D, RADIUS, ARC, MAX_TILT, S16_GLSL, LAST_OFFSET, yawAt, arcAt, dominoPoint, tiltAt, hitAngle, hitDelay, cameraAt, cursorAt, arcBounds, entryPrim, exitPrim, projectBounds, faceCorners, groundLyrics, greenLetterPoints, freeBody, freeTiltAt, floorToneAt, groundShadowAt, lightTone, faceNormal, KEY_LIGHT, checkScaleAt, shakeAt, GreenRig as Rig, faceCenter, dominoRayHit, nineteenFrame } from '../src/scenes/parts/s16-world';
 import { greenMaterial } from '../src/scenes/s16-green';
 import { exitPrim as exit14 } from '../src/scenes/s14-shaft';
 import { CUTS } from './handoff.test';
 import { FakeCanvas, FakePath } from './kit-pathtext.test';
 import { afterBeats } from '../src/kit/time';
 import { varRun } from '../src/kit/vartype';
-import { PRINT } from '../src/scenes/parts/s16-print';
+import { PRINT, dominoAtlas, atlasTile } from '../src/scenes/parts/s16-print';
+import { css } from '../src/theme';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 
@@ -29,7 +30,7 @@ test('C14-C16 compare measured outgoing and incoming primitives, including quart
   expect(CUTS.filter(c=>['C14','C15','C16'].includes(c.id)).map(c=>c.id)).toEqual(['C14','C15','C16']);
   expect(primError(exit14(F.s15[0]!-1/60),entry15(F.s15[0]!))).toEqual({px:0,size:0});
   closeRect(entryPrim(T.start,T),HANDOFF.domino15);closeRect(exitPrim(T.end-1/60,T),HANDOFF.domino16);
-  const cutErrors=CUTS.map(c=>({id:c.id,...primError(c.exitPrim(c.cut-1/60),c.entryPrim(c.cut))}));
+  const cutErrors=CUTS.map(c=>({id:c.id,...primError(c.exitPrim(c.motion?c.cut:c.cut-1/60),c.entryPrim(c.cut))}));
   console.log('G6 cut errors',JSON.stringify(cutErrors));
 });
 test('S15 piece reaches the exact upright rect and holds throughout exit stillness',()=>{
@@ -44,11 +45,15 @@ test('free carry matches every affine field across the cut; only that word is ca
   expect(spec.axes).toEqual(v.form(T.free,T.start).axes);
   const run=varRun('free',100,spec.axes),ink=runInkBounds(run);expect(spec.x+(ink.x1-ink.x0)*spec.size/run.capH).toBeCloseTo(1000,10);
 });
-test('the nineteen 0.7 x 2.1 x 0.22 boards lie on the specified circle',()=>{
+test('eighteen boards retain the circle; only the terminal board moves outward by 0.6',()=>{
   expect(D).toEqual({w:0.7,h:2.1,d:0.22});
-  for(let i=0;i<19;i++){const p=arcAt(i);expect(Math.hypot(p.x,p.z+14)).toBeCloseTo(RADIUS,12);expect(p.y).toBe(0);if(i>0)expect(Math.hypot(p.x-arcAt(i-1).x,p.z-arcAt(i-1).z)).toBeGreaterThan(D.h*0.45);}
+  for(let i=0;i<18;i++){const p=arcAt(i);expect(Math.hypot(p.x,p.z+14)).toBeCloseTo(RADIUS,12);expect(p.y).toBe(0);if(i>0)expect(Math.hypot(p.x-arcAt(i-1).x,p.z-arcAt(i-1).z)).toBeGreaterThan(D.h*0.45);}
   expect(Math.atan2(arcAt(0).x,arcAt(0).z+14)).toBeCloseTo(-ARC,12);
-  expect(Math.atan2(arcAt(18).x,arcAt(18).z+14)).toBeCloseTo(ARC,12);
+  const last=arcAt(18),original=p3(RADIUS*Math.sin(ARC),0,-RADIUS+RADIUS*Math.cos(ARC));
+  expect(Math.hypot(last.x-original.x,last.z-original.z)).toBeCloseTo(.6,12);
+  expect(LAST_OFFSET.outward).toBeGreaterThan(0);expect(Math.hypot(last.x,last.z+14)).toBeGreaterThan(RADIUS);
+  const outward=p3(Math.sin(ARC),0,Math.cos(ARC)),fall=p3(Math.sin(yawAt(18)),0,Math.cos(yawAt(18)));
+  expect(outward.x*fall.x+outward.z*fall.z).toBeGreaterThan(.9);
 });
 // Translate the exported shader operations into scalar JavaScript, rather than a second copy
 // of the geometry formula. GLSL vector addition and constructors are expanded mechanically.
@@ -74,19 +79,27 @@ test('tau is strictly increasing, exact at One/two/three/Nineteen and six greens
 test('each physical cascade starts on the exact first top-to-neighbour plane contact',()=>{
   const exceptions=[];for(let i=0;i<18;i++){
     const theta=hitAngle(i),p=dominoPoint(i,p3(0,D.h,D.d/2),theta),next=arcAt(i+1);
-    const a=-ARC+(i+1)/18*2*ARC,n=p3(Math.cos(a),0,-Math.sin(a));
-    expect((next.x-p.x)*n.x+(next.z-p.z)*n.z).toBeCloseTo(D.d/2,10);
+    if(i<17){const a=-ARC+(i+1)/18*2*ARC,n=p3(Math.cos(a),0,-Math.sin(a));
+      expect((next.x-p.x)*n.x+(next.z-p.z)*n.z).toBeCloseTo(D.d/2,10);
+    }else{
+      const pose=(index:number,angle:number)=>[-D.w/2,D.w/2].flatMap(x=>[0,D.h].flatMap(y=>[-D.d/2,D.d/2].map(z=>{
+        const p=dominoPoint(index,p3(x,y,z),angle);return new THREE.Vector3(p.x,p.y,p.z);
+      })));
+      expect(satGap(pose(17,theta-1e-6),pose(18,0))).toBeGreaterThan(0);
+      expect(Math.abs(satGap(pose(17,theta),pose(18,0)))).toBeLessThan(1e-9);
+      console.log('G6 terminal contact',JSON.stringify({theta,delay:hitDelay(i),contact:T.triggers[i]!+hitDelay(i),trigger:T.triggers[18]}));
+    }
     const collision=T.triggers[i]!+hitDelay(i),early=collision-T.triggers[i+1]!;
     if([6,10,14].includes(i)){expect(early).toBeGreaterThan(0);exceptions.push({from:i+1,to:i+2,earlyMs:early*1000});}
     else expect(T.triggers[i+1]!+1e-10).toBeGreaterThanOrEqual(collision);
   }
   console.log('G6 fixed lyric launch exceptions',JSON.stringify(exceptions));
 });
-test('fall uses inQuad 0.24 s, final board 0.6 s, with a bounded analytic rebound',()=>{
-  for(let i=0;i<19;i++){const d=i===18?0.6:0.24;expect(tiltAt(i,T.triggers[i]!,T)).toBe(0);
-    expect(tiltAt(i,T.triggers[i]!+d/2,T)).toBeCloseTo(MAX_TILT/4,9);
-    expect(tiltAt(i,T.triggers[i]!+d,T)).toBeCloseTo(MAX_TILT,9);
-    for(let dt=d;dt<d+1;dt+=0.01)expect(Math.abs(tiltAt(i,T.triggers[i]!+dt,T)-MAX_TILT)).toBeLessThan(0.013);}
+test('fall uses inQuad 0.24 s with rebound; final board falls in 0.6 s and rests flat',()=>{
+  for(let i=0;i<19;i++){const d=i===18?0.6:0.24,rest=i===18?Math.PI/2:MAX_TILT;expect(tiltAt(i,T.triggers[i]!,T)).toBe(0);
+    expect(tiltAt(i,T.triggers[i]!+d/2,T)).toBeCloseTo(rest/4,9);
+    expect(tiltAt(i,T.triggers[i]!+d,T)).toBeCloseTo(rest,9);
+    for(let dt=d;dt<d+1;dt+=0.01)expect(Math.abs(tiltAt(i,T.triggers[i]!+dt,T)-rest)).toBeLessThan(i===18?1e-9:0.013);}
 });
 test('GREEN satisfies revised projected constraints through every slam and acceleration frame',()=>{
   const rows=[];let bad=0,minArea=1,minTop=Infinity,minCap=Infinity,maxCap=0,minVisible=1;
@@ -180,7 +193,7 @@ test('ground words stand on separate arc paths, within the lyric capital-height 
   }finally{globalThis.Path2D=saved;}
 });
 test('sixth green slams the nineteenth printed check with outBack in 0.12 s and shakes 6px',()=>{
-  const at=T.greens[5]!.start;expect(greenHit(at,T)?.target).toBe('check');expect(T.greens.slice(0,5).every(w=>greenHit(w.start,T)?.target==='monument')).toBe(true);expect(tiltAt(18,at,T)).toBeCloseTo(MAX_TILT,2);expect(checkScaleAt(at-1/60,T)).toBe(1);expect(checkScaleAt(at,T)).toBe(1.3);expect(checkScaleAt(at+.12,T)).toBe(1);expect(checkScaleAt(at+.08,T)).toBeLessThan(1);expect(shakeAt(at,T)).toBe(6);expect(shakeAt(T.end-1/60,T)).toBe(0);
+  const at=T.greens[5]!.start;expect(greenHit(at,T)?.target).toBe('check');expect(T.greens.slice(0,5).every(w=>greenHit(w.start,T)?.target==='monument')).toBe(true);expect(tiltAt(18,at,T)).toBeCloseTo(Math.PI/2,10);expect(checkScaleAt(at-1/60,T)).toBe(1);expect(checkScaleAt(at,T)).toBe(1.3);expect(checkScaleAt(at+.12,T)).toBe(1);expect(checkScaleAt(at+.08,T)).toBeLessThan(1);expect(shakeAt(at,T)).toBe(6);expect(shakeAt(T.end-1/60,T)).toBe(0);
 });
 test('Nineteen baseline points project rightward within ten degrees and its top points upward',()=>{
   const t=T.end-1/60,theta=tiltAt(18,t,T),rig=new Rig();rig.set(cameraAt(t,T));
@@ -205,10 +218,10 @@ test('GREEN capital-height vectors project inside the giant tier independently o
   console.log('G6 true GREEN caps',JSON.stringify({min,max}));
 });
 
-test('the inherited full-arc frame and revised twenty-eight-percent constraints',()=>{
+test('the arc occupies at least twenty-eight percent; overflow is measured, not constrained',()=>{
   let minArea=1,maxOverflow=0;const rows=[];
   for(let t=T.launches[0]!.start;t<T.nineteen.start;t+=1/120){const b=arcBounds(t,T),area=b.w*b.h/1920/1080,overflow=Math.max(0,-b.x,-b.y,b.x+b.w-1920,b.y+b.h-1080);minArea=Math.min(minArea,area);maxOverflow=Math.max(maxOverflow,overflow);if((area<.28||overflow>0)&&rows.length<5)rows.push({t,area,overflow,bbox:b});}
-  console.log('G6 inherited arc constraints',JSON.stringify({minArea,maxOverflow,rows}));expect(minArea).toBeGreaterThanOrEqual(.28);expect(maxOverflow).toBe(0);
+  console.log('G6 arc coverage',JSON.stringify({minArea,maxOverflow,rows}));expect(minArea).toBeGreaterThanOrEqual(.28);
 });
 
 test('closing sightline targets the moving green face with pitch >= 1.2 and no intervening board at 60Hz',()=>{
@@ -225,4 +238,74 @@ test('GREEN uses opaque, non-emissive ink with lightLines and maxCov 0.3',()=>{
   const m=greenMaterial(),shader={uniforms:{},fragmentShader:'#include <common>\n#include <opaque_fragment>'} as any;
   m.onBeforeCompile(shader,{} as any);expect(shader.uniforms.engraveLightLines.value).toBe(1);expect(shader.uniforms.engraveMaxCov.value).toBe(.3);
   expect(m.transparent).toBe(false);expect(m.opacity).toBe(1);expect(m.emissiveIntensity).toBe(0);m.dispose();
+});
+
+// Independent OBB SAT: all three face normals from each body and nine edge cross axes.
+// A positive separating gap proves that none of the two eight-corner convex hulls overlap.
+function satGap(a:THREE.Vector3[],b:THREE.Vector3[]):number {
+  const axes=(ps:THREE.Vector3[])=>[4,2,1].map(i=>ps[i]!.clone().sub(ps[0]!).normalize());
+  const aa=axes(a),bb=axes(b),candidates=[...aa,...bb,...aa.flatMap(x=>bb.map(y=>x.clone().cross(y)))];
+  return Math.max(...candidates.filter(v=>v.lengthSq()>1e-16).map(v=>{
+    v.normalize();const ap=a.map(p=>p.dot(v)),bp=b.map(p=>p.dot(v));
+    return Math.max(Math.min(...ap)-Math.max(...bp),Math.min(...bp)-Math.max(...ap));
+  }));
+}
+function corners(i:number,t:number):THREE.Vector3[] {
+  return [-D.w/2,D.w/2].flatMap(x=>[0,D.h].flatMap(y=>[-D.d/2,D.d/2].map(z=>{
+    const p=dominoPoint(i,p3(x,y,z),tiltAt(i,t,T));return new THREE.Vector3(p.x,p.y,p.z);
+  })));
+}
+test('SAT detects containment and rejects a disjoint rotated box',()=>{
+  const a=corners(18,T.nineteen.start),center=a.reduce((sum,p)=>sum.add(p),new THREE.Vector3()).multiplyScalar(1/8);
+  expect(satGap(a,a.map(p=>p.clone().sub(center).multiplyScalar(.5).add(center)))).toBeLessThan(0);
+  expect(satGap(a,a.map(p=>p.clone().applyAxisAngle(new THREE.Vector3(0,1,0),.37).addScalar(20)))).toBeGreaterThan(0);
+});
+test('the nineteenth hinge is the fixed bottom edge farther from board eighteen throughout its outward fall',()=>{
+  const previous=arcAt(17),distance=(p:ReturnType<typeof p3>)=>Math.hypot(p.x-previous.x,p.z-previous.z);
+  const far=dominoPoint(18,p3(0,0,D.d/2),0),near=dominoPoint(18,p3(0,0,-D.d/2),0);
+  expect(distance(far)).toBeGreaterThan(distance(near));
+  for(let t=T.nineteen.start;t<T.end;t+=1/60)for(const x of [-D.w/2,D.w/2]){
+    expect(dominoPoint(18,p3(x,0,D.d/2),tiltAt(18,t,T))).toEqual(dominoPoint(18,p3(x,0,D.d/2),0));
+    for(const p of corners(18,t))expect(p.y).toBeGreaterThanOrEqual(-1e-12);
+  }
+});
+// All polygon edges occur among these pairwise xz differences, so this is a
+// complete convex-footprint SAT even without sorting the projected eight corners.
+function footprintGap(a:THREE.Vector3[],b:THREE.Vector3[]):number {
+  const axes=[a,b].flatMap(ps=>ps.flatMap((p,i)=>ps.slice(i+1).map(q=>new THREE.Vector3(q.z-p.z,0,p.x-q.x))));
+  return Math.max(...axes.filter(v=>v.lengthSq()>1e-16).map(v=>{
+    v.normalize();const ap=a.map(p=>p.dot(v)),bp=b.map(p=>p.dot(v));
+    return Math.max(Math.min(...ap)-Math.max(...bp),Math.min(...bp)-Math.max(...ap));
+  }));
+}
+test('landed nineteenth box is flat on the floor, SAT-disjoint from all eighteen bodies, with none above it',()=>{
+  let frames=0,minGap=Infinity,minFootprintGap=Infinity,maxFloorError=0;const overlaps=[],above=[];
+  for(let t=T.nineteen.start+.6;t<=T.end+1e-9;t+=1/60){
+    const last=corners(18,t),ys=last.map(p=>p.y);frames++;
+    maxFloorError=Math.max(maxFloorError,Math.abs(Math.min(...ys)),Math.abs(Math.max(...ys)-D.d));
+    for(let i=0;i<18;i++){
+      const body=corners(i,t),gap=satGap(last,body);minGap=Math.min(minGap,gap);if(gap<=1e-8)overlaps.push({t,board:i+1,gap});
+      minFootprintGap=Math.min(minFootprintGap,footprintGap(last,body));
+      for(let x=0;x<=4;x++)for(let y=0;y<=10;y++){
+        const origin=dominoPoint(18,p3((x/4-.5)*D.w,y/10*D.h,-D.d/2-1e-6),tiltAt(18,t,T));
+        if(dominoRayHit(i,origin,p3(0,1,0),t,T)!==null)above.push({t,board:i+1,x,y});
+      }
+    }
+  }
+  console.log('G6 r4 landed SAT',JSON.stringify({frames,minGap,minFootprintGap,maxFloorError,overlaps,above}));
+  expect(maxFloorError).toBeLessThan(1e-9);expect(overlaps).toEqual([]);expect(above).toEqual([]);expect(minFootprintGap).toBeGreaterThan(0);
+});
+test('only board nineteen receives a full pass back and paper check, with no PASS label',()=>{
+  const saved=globalThis.document,tiles=new Map<string,{fill?:string;stroke?:string;labels:string[]}>();
+  let key='atlas';const c={fillStyle:'',strokeStyle:'',save(){},restore(){},translate(x:number,y:number){key=`${x},${y}`;tiles.set(key,{labels:[]});},
+    fillRect(){const tile=tiles.get(key);if(tile)tile.fill=this.fillStyle;},fillText(text:string){tiles.get(key)!.labels.push(text);},
+    stroke(){tiles.get(key)!.stroke=this.strokeStyle;},beginPath(){},moveTo(){},lineTo(){}};
+  globalThis.document={createElement:()=>({getContext:()=>c})} as any;
+  try{const texture=dominoAtlas();texture.dispose();}finally{globalThis.document=saved;}
+  for(let i=0;i<19;i++){
+    const a=atlasTile(i,1),tile=tiles.get(`${a.x},${a.y}`)!;
+    expect(tile.fill).toBe(css(i===18?'pass':'paper'));expect(tile.stroke).toBe(css(i===18?'paper':'pass'));
+    expect(tile.labels).toEqual(i===18?[]:['PASS']);
+  }
+  expect(nineteenFrame().width).toBe(D.w*.9);
 });

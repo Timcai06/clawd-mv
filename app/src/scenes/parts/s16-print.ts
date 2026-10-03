@@ -60,11 +60,12 @@ export function dominoAtlas():THREE.CanvasTexture {
   for(let i=0;i<19;i++)for(let face=0;face<3;face++){
     const a=atlasTile(i,face);c.save();c.translate(a.x,a.y);
     if(face<2){
-      c.fillStyle=css('paper');c.fillRect(0,0,256,768);
+      const finalBack=i===18&&face===1;
+      c.fillStyle=css(finalBack?'pass':'paper');c.fillRect(0,0,256,768);
       const mono=ot(F.mono(600)),cap=mono.charToGlyph('H').getBoundingBox().y2/mono.unitsPerEm;
       c.font=font(F.mono(600),256*0.16/cap);c.fillStyle=css('ink');c.textAlign='center';
-      c.fillText(face===0?`TEST ${String(i+1).padStart(2,'0')}`:'PASS',128,82);
-      c.strokeStyle=css(face===0?'fail':'pass');c.lineWidth=256*(face===0?PRINT.stroke/D.w:.09);c.lineCap='square';c.lineJoin='miter';
+      if(!finalBack)c.fillText(face===0?`TEST ${String(i+1).padStart(2,'0')}`:'PASS',128,82);
+      c.strokeStyle=css(face===0?'fail':finalBack?'paper':'pass');c.lineWidth=256*(face===0?PRINT.stroke/D.w:.09);c.lineCap='square';c.lineJoin='miter';
       // Include the diagonal square caps in the specified total ink width.
       const half=(256*(face===0?PRINT.markWidth/D.w:.7)-c.lineWidth*Math.SQRT2)/2;c.beginPath();
       if(face===0){c.moveTo(128-half,384-half);c.lineTo(128+half,384+half);c.moveTo(128+half,384-half);c.lineTo(128-half,384+half);}

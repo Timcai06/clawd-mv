@@ -97,7 +97,7 @@ class World {
     for(const [board,word] of [[0,this.T.count[0]!],[1,this.T.count[4]!],[2,this.T.count[6]!],[18,this.T.nineteen]] as const){
       // The final print uses the narrow face's width and a fixed face-local readable basis.
       const cap=board===18?D.w*0.9:0.7,axes=this.voice.form(word,word.end).axes;
-      const plane=new WordPlane(word.w,{capH:cap,axes,ax:0.5,ay:0.5,engrave:true,texCap:180});
+      const plane=new WordPlane(word.w,{capH:cap,axes,ax:0.5,ay:0.5,engrave:board!==18,outline:board===18?0:undefined,texCap:180});
       plane.mesh.position.set(0,D.h*0.5,-D.d-0.003);plane.mesh.rotation.y=Math.PI;
       const width=board===18?nineteenFrame().width:0.61, sx=Math.min(1,width/plane.w);plane.mesh.scale.set(sx,board===18?sx:1,1);
       if(board===18){const {origin,u,v}=nineteenFrame();plane.mesh.position.set(origin.x,origin.y,origin.z-D.d/2);
@@ -132,7 +132,8 @@ export default class S16Green extends Scene {
     for(let i=0;i<19;i++){const theta=tiltAt(i,t,T);w.theta[i]!.value=theta;w.poses[i]!.rotation.x=theta;setEngrave(w.materials[i]!,{emissive:lin('pass'),emissiveK:flash});}
     for(const a of w.words){const form=w.voice.form(a.word,t),end=w.voice.form(a.word,a.word.end),sx=Math.min(1,a.width/a.plane.w);
       a.plane.mesh.visible=t>=a.word.start;a.plane.mesh.scale.x=sx*form.axes.wdth/end.axes.wdth;
-      a.plane.set({prog:a.plane.karaoke(a.word,t),aDim:0,cSung:lin('ink'),cDone:lin('ink'),done:t>=a.word.end?1:0,heat:t>=a.word.start?Math.exp(-(t-a.word.start)/0.28):0,tone:0.7});
+      const color=lin(a.board===18?'paper':'ink');
+      a.plane.set({prog:a.plane.karaoke(a.word,t),aDim:0,cSung:color,cDone:color,done:t>=a.word.end?1:0,heat:t>=a.word.start?Math.exp(-(t-a.word.start)/0.28):0,tone:0.7});
     }
     const hit=greenHit(t,T);w.green.forEach((g,i)=>{g.group.visible=hit!==null&&Math.min(4,hit.i)===i;if(hit&&Math.min(4,hit.i)===i){g.group.position.y=1.5*(1-ease.inQuad(clamp((t-T.greens[i]!.start)/0.12)));const word=T.greens[i]!;const times=letterTimes({...word,w:'GREEN'});g.letters.forEach((_,j)=>g.setLetter(j,{visible:t>=times[j]!.t0}));}});
     const cursor=cursorWorldAt(t,T);w.cursor.position.set(cursor.x,cursor.y,cursor.z);
