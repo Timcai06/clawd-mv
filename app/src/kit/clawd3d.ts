@@ -8,7 +8,9 @@ import * as THREE from 'three';
 import type { Pose } from './clawd';
 import { lin } from '../theme';
 
-const BODY_D = 4, LIMB_D = 2, PIT = 1.3;
+// PIT: a shallow recess (0.3 voxel). At 1.3 the pit walls hid its dark floor whenever the camera was
+// off-axis (S10, S15), so the eyes read as slits or vanished.
+const BODY_D = 4, LIMB_D = 2, PIT = 0.3;
 
 const VERT = /* glsl */ `
 varying vec3 vN; varying vec3 vC; varying vec3 vW;

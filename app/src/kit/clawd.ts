@@ -135,8 +135,8 @@ export function pose(action: Action | null, i: PoseInput): Pose {
       dx = Math.floor(i.beat * 16) % 2 ? 1 : -1;
       cells = eyes(cells, Math.floor(i.beat * 4) % 2 ? -1 : 1);
       break;
-    case 'A9': { // counting: eyes closed, legs lift one by one, one per beat, then all down
-      cells = eyes(cells, 'closed');
+    case 'A9': { // counting: legs lift one by one, one per beat, then all down. Eyes stay open
+      // (closed eyes are for sleep only, CONTEXT Clawd 的眼睛); pass `look` to watch the count.
       const k = Math.max(0, Math.floor(b)) % 5;
       cells = liftLegs(cells, LEGS.slice(0, k));
       break;

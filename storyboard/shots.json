@@ -73,7 +73,7 @@
   {"id": "S12-2", "scene": "S12", "t": 60.6, "anchor": {"line": "Run it again, run it again, again", "occ": 1, "word": "run", "sub": 2, "snap": "beat"}, "clawd": "A8", "camera": "更近", "visual": "第 2 次：更红。"},
   {"id": "S12-3", "scene": "S12", "t": 61.7, "anchor": {"line": "Run it again, run it again, again", "occ": 1, "word": "again", "sub": 3, "snap": "beat"}, "clawd": "A8", "camera": "极近", "visual": "第 3 次：红色占满全屏。"},
   {"id": "S12-4", "scene": "S12", "t": 62.7, "anchor": {"line": "Clear the cache and count to ten", "occ": 1, "word": "Clear", "snap": "downbeat"}, "clawd": "A3", "camera": "中景", "visual": "缓存文件被一扫而空。"},
-  {"id": "S12-5", "scene": "S12", "t": 64.4, "anchor": {"line": "Clear the cache and count to ten", "occ": 1, "word": "count", "snap": "beat"}, "clawd": "A9", "camera": "Clawd 特写", "visual": "Clawd 闭眼用腿数数，数字浮在头顶：1…10、11——「11」闪一下红（差一错误的伏笔，要让观众看清）。"},
+  {"id": "S12-5", "scene": "S12", "t": 64.4, "anchor": {"line": "Clear the cache and count to ten", "occ": 1, "word": "count", "snap": "beat"}, "clawd": "A9", "camera": "Clawd 特写", "visual": "Clawd 睁着眼盯着数字，用腿数数，数字浮在头顶：1…10、11——「11」闪一下红（差一错误的伏笔，要让观众看清）。"},
 
   {"id": "S13-1", "scene": "S13", "t": 66.4, "anchor": {"line": "I need one more commit", "occ": 3, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "第三次刹车，这次冻结的画面带一点红色残影。"},
   {"id": "S13-2", "scene": "S13", "t": 68.3, "anchor": {"line": "I need one more commit", "occ": 3, "word": "commit", "syl": 2, "snap": "none"}, "clawd": "A6", "camera": "冲击", "visual": "落拍弹出的是 git log 窗口。"},

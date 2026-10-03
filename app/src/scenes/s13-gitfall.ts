@@ -148,7 +148,7 @@ export default class S13Gitfall extends Scene {
       const q = s.ci, cx = (q[0]![0] + q[1]![0]) / 2, top = Math.min(q[0]![1], q[1]![1]);
       drawNote(c, { ax: cx, ay: top, x: cx - 120, y: top - 70, text: 'works on: 1 machine', t0: afterBeats(au, T.collision, 0.6), on: 'ink' }, t);
     }
-    drawSprite(c, s.clawd, "clay", "ink");
+    drawSprite(c, s.clawd, "clay", "pit");
     glowDraw(c, g, g => drawSprite(g, { ...s.clawd, pose: { ...s.clawd.pose, cells: s.clawd.pose.cells.filter(cell => cell.k === 'O') } }, 'clay', 'ink'), 0.25);
     const line = this.ctx.lyrics.lastLine(t);
     if (line && v.presence(line, t, 1) > 0) {

@@ -115,7 +115,7 @@ export default class S08Commit extends Scene {
       else if (s.preview) this.preview(c, f);
       else if (t >= T.quit && t < T.pick2) this.code(c, f, T);
       if (!s.frozen)
-        drawSprite(c, { ...s.clawd, x: 1560, y: 650, angle: 0 }, "clay", "ink");
+        drawSprite(c, { ...s.clawd, x: 1560, y: 650, angle: 0 }, "clay", "pit");
     }
     const line = this.ctx.lyrics.lastLine(t);
     if (line && v.presence(line, t, 1) > 0) {

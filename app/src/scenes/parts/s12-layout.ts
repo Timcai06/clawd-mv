@@ -46,7 +46,8 @@ export function countState(v: Voice, t: number, T: X9Times) {
     return { form, run, x, y, sx, sy, color: i === 10 ? 'clay' as const : 'ink' as const,
       box: runBox(run, x, y, sx, sy) };
   });
-  const pose = Clawd.pose('A9', { beat: number, beat0: 0, p: temporal.countPhase });
+  // Eyes open on the count: Clawd watches the numbers pile up to its left.
+  const pose = Clawd.pose('A9', { beat: number, beat0: 0, p: temporal.countPhase, look: -1 });
   const bounds = digits.length ? union(digits.flatMap(d => [[d.box.x, d.box.y], [d.box.x + d.box.w, d.box.y + d.box.h]] as [number, number][])) : null;
   const dominant = bounds ? { x: Math.max(0, bounds.x), y: bounds.y,
     w: Math.min(1920, bounds.x + bounds.w) - Math.max(0, bounds.x), h: bounds.h } : null;
