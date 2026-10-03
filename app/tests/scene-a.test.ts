@@ -3,9 +3,9 @@ import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { afterBeats } from '../src/kit/time';
 import { bootState, openingTimes } from '../src/scenes/parts/s01-timing';
-import { notifyLayout } from '../src/scenes/parts/s02-layout';
-import { handoffIn } from '../src/scenes/parts/s03-form';
-import { HANDOFF } from '../src/kit/handoff';
+import { exitPrim as out02 } from '../src/scenes/parts/s02-world';
+import { entryPrim as in03 } from '../src/scenes/parts/s03-world';
+import { primError } from '../src/kit/handoff';
 import { resolveStoryboard, type Storyboard } from '../src/storyboard';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
@@ -28,10 +28,8 @@ describe('group A editorial and musical landmarks', () => {
     expect(bootState(audio, afterBeats(audio, T.welcome, 5), T).rows).toEqual([1, 1, 1, 1]);
     expect(bootState(audio, T.ping, T).view.zoom).toBe(1);
   });
-  test('notification keeps its wide composition until the final handoff beat', () => {
-    expect(notifyLayout(T.screen,audio,T)).toMatchObject({exit:0,edge:624});
-    expect(notifyLayout(T.issue,audio,T).card).toEqual(HANDOFF.card02);
-    expect(handoffIn(T.issue,audio,T)).toEqual(HANDOFF.card02);
+  test('V6 notification hands its split edge to the paper, without a card', () => {
+    expect(primError(out02(T.issue-1/60),in03(T.issue)).px).toBeLessThanOrEqual(2);
   });
   test('seek order and nominal BPM do not affect state', () => {
     const other = new AudioData({ ...audioJSON, bpm: 45 });

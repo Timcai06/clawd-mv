@@ -49,3 +49,16 @@ test('accelerando reads variable beat intervals and changes from eighths to sixt
   expect(accelerando(audio,2,3,1)).toEqual([]); expect(accelerando(audio,0,10,1.1)).toEqual([0,0.25,0.5,0.8]);
   expect(accelerando(audio,0,-1,0.5)).toEqual([0,0.125,0.25,0.375]);
 });
+
+// g1 owns C1/C2 and C3's outgoing side. G2 replaces the C3 incoming
+// GRID04 contract below with S04's exported entryPrim when S04 is migrated.
+import { T as G1_T } from '../src/scenes/parts/s01-timing';
+import { exitPrim as g1Out01 } from '../src/scenes/parts/s01-world';
+import { entryPrim as g1In02, exitPrim as g1Out02 } from '../src/scenes/parts/s02-world';
+import { entryPrim as g1In03, exitPrim as g1Out03 } from '../src/scenes/parts/s03-world';
+import { CUT } from '../src/kit/handoff';
+CUTS.push(
+  {id:'C1',out:'S01',in:'S02',cut:G1_T.ping,exitPrim:g1Out01,entryPrim:g1In02},
+  {id:'C2',out:'S02',in:'S03',cut:G1_T.issue,exitPrim:g1Out02,entryPrim:g1In03},
+  {id:'C3',out:'S03',in:'S04 (GRID04 contract; G2 entry pending)',cut:G1_T.end,exitPrim:g1Out03,entryPrim:()=>({kind:'rect',...CUT.grid04})},
+);
