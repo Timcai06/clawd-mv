@@ -13,7 +13,8 @@ import { glowDraw, Voice } from '../kit/lyric-moves';
 import { affine, drawInscription, headX, inscribe, fitWidth, type Inscription } from '../kit/inscribe';
 import { varRun } from '../kit/vartype';
 import { HANDOFF } from '../kit/handoff';
-import { afterBeats, span } from '../kit/time';
+import { afterBeats, hitAfter, span } from '../kit/time';
+import { impact } from '../kit/impact';
 import { ease, lerp } from '../engine/util';
 import { drawCursor } from '../kit/cursor';
 import * as Clawd from '../kit/clawd';
@@ -83,8 +84,17 @@ export default class S05Platform extends Scene {
     w.text.clear(); w.glow.clear();
     // v4 motion: arrive pushed in on Clawd (continuing S04's push), pull out over the first beat;
     // a punch on "claws"; the last beat pushes in on the read line (the strike S06 picks up).
-    const claws = this.ctx.lyrics.get('crack my claws').words.find((x) => /claws/i.test(x.w))!;
-    c.save(); applyCam2(c, cam05(au, this.ctx.lyrics, f.t, T));
+    const lw = this.ctx.lyrics.get('crack my claws').words, kw = (q: RegExp) => lw.find((x) => q.test(x.w))!;
+    const claws = kw(/claws/i), crack = kw(/crack/i), all = kw(/^all$/i), over = kw(/over/i);
+    // The read line (laid out once); its scan head is where "read" points the camera.
+    const R = w.readLine(this.ctx), line = w.voice.line('So I crack my claws and read it all over');
+    const lx = READ_LINE.x - s.offset, base = READ_LINE.top + R.ins.capH;
+    const reveal = headX(R.ins, f.t, R.sc);
+    c.save(); applyCam2(c, cam05(au, this.ctx.lyrics, f.t, T, { x: lx + reveal, y: base - R.ins.capH / 2 }));
+    // Stage 9 ③ "all over": a clay scan line sweeps the whole frame left to right; what it passes
+    // has been read (the code lines get a clay underline once the sweep has crossed their start).
+    const sweepK = ease.outCubic(span(f.t, all.start, over.start + 0.06)), sweepX = lerp(-60, 1980, sweepK);
+    const readAt = (x: number) => f.t >= all.start && sweepX > x;
     this.tree(c, 1130 - s.offset * 0.18, 55, 1, 0.6);
     this.tree(c, 180 - s.offset * 0.22, 75, 0.43, 0.2);
     this.tree(c, 660 - s.offset * 0.55, 288, 0.43, 0.25);
@@ -99,18 +109,20 @@ export default class S05Platform extends Scene {
       hatchBlock(c, {x:b.x,y:b.y+5,w:b.depth===1?240:b.w,h:b.h-8},b.depth*0.45, b.depth===1?16:7);
     }
     c.font=font(F.mono(400),18); c.fillStyle=css('paper',0.55);
-    c.fillText("import { calendar } from './calendar';",5-s.offset*0.22,457);
-    c.fillText('export function month(date: Date) {',170-s.offset*0.55,548);
+    const code: [string, number, number][] = [["import { calendar } from './calendar';",5-s.offset*0.22,457],['export function month(date: Date) {',170-s.offset*0.55,548]];
+    for (const [text, x, y] of code) {
+      c.fillStyle = css('paper', readAt(x) ? 0.95 : 0.55); c.fillText(text, x, y);
+      if (readAt(x)) { c.fillStyle = css('clay'); c.fillRect(x, y + 6, Math.min(c.measureText(text).width, sweepX - x), 2); }
+    }
     // S05 owns one line since the cuts sit between lines (R1); "Read the code" belongs to S06.
     // The line is source: a line number in the gutter, letters standing on the walk level (cap tops
     // on READ_LINE.top), developed by the read cursor's scan head and its clay underline.
-    const R = w.readLine(this.ctx), line = w.voice.line('So I crack my claws and read it all over');
-    const lx = READ_LINE.x - s.offset, base = READ_LINE.top + R.ins.capH;
-    const reveal = headX(R.ins, f.t, R.sc);
     c.font = font(F.mono(400), 18); c.fillStyle = css('paper', 0.45); c.textAlign = 'right';
     c.fillText('36', lx - 34, base); c.textAlign = 'left';
     const live: Inscription = { ...R.ins, glyphs: R.ins.glyphs.map((g) => ({ ...g, form: w.voice.form(line.words[g.wi]!, f.t) })) };
-    drawInscription(c, live, f.t, { on: 'ink', head: 'scan', reveal, scale: R.sc, place: (_g, x) => affine(lx + x, base), glow: w.glow.ctx });
+    // "claws" jolts the line: every letter is knocked up and drops back (the claws hit the ledge).
+    const jolt = -10 * hitAfter(f.t, claws.start, 0.07);
+    drawInscription(c, live, f.t, { on: 'ink', head: 'scan', reveal, scale: R.sc, place: (_g, x) => affine(lx + x, base + jolt), glow: w.glow.ctx });
     // Clawd walks the line: after the hand-off beat he rides the word being sung (the pdoom
     // spark-on-the-curve method), hopping onto each new word, feet on its cap tops.
     const word = (wi: number) => { const g = R.ins.glyphs.filter((h) => h.wi === wi); return { x: g[0]!.x * R.sc, w: (g.at(-1)!.x + g.at(-1)!.adv - g[0]!.x) * R.sc }; };
@@ -125,9 +137,20 @@ export default class S05Platform extends Scene {
       rider.y=lerp(rider.y, READ_LINE.top-5*rider.px-26*Math.sin(Math.PI*k), k1);
     }
     // The canonical sprite is kept flat, including at the S04 match cut.
-    const armsUp=f.t>=claws.start && f.t<claws.start+0.32;
-    const pose=Clawd.pose(armsUp?'A7':'A5',{beat:f.beat,beat0:au.beatAt(T.start),p:0,travel:0});
+    // "crack": the right claw reaches out and snaps back (A10) and the tip sparks; "claws": both up.
+    const armsUp=f.t>=claws.start && f.t<claws.start+0.32, cracking = f.t >= crack.start && f.t < claws.start;
+    const pose=Clawd.pose(armsUp?'A7':cracking?'A10':'A5',{beat:f.beat,beat0:au.beatAt(cracking?crack.start:T.start),p:0,travel:0});
     Clawd.draw(c,rider.x,rider.y,pose,{px:rider.px});
+    { const k = span(f.t, crack.start, crack.start + 0.28), tip = { x: rider.x + 16.5 * rider.px, y: rider.y + 1.5 * rider.px };
+      if (k > 0 && k < 1) for (let i = 0; i < 4; i++) {
+        const a = -1.0 + i * 0.6, d = 24 + 150 * ease.outCubic(k), sz = rider.px * (1 - k) + 2;
+        c.fillStyle = css('clay'); c.fillRect(tip.x + Math.cos(a) * d - sz / 2, tip.y + Math.sin(a) * d - sz / 2, sz, sz);
+      }
+      const r = span(f.t, claws.start, claws.start + 0.45); // the claws' shock ring
+      if (r > 0 && r < 1) {
+        c.strokeStyle = css('paper', 0.7 * (1 - r)); c.lineWidth = 3 * (1 - r) + 1; c.beginPath();
+        c.arc(rider.x + 8 * rider.px, rider.y + 2.5 * rider.px, 60 + 320 * ease.outExpo(r), 0, Math.PI * 2); c.stroke();
+      } }
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, rider.x, rider.y, { ...pose, cells: pose.cells.filter(cell => cell.k === 'O') }, { px: rider.px, alpha: 0.25 }));
     const strike=handoffOut(f.t,au,T,{x0:lx,x1:lx+reveal+10,y:base+READ_LINE.under});
     c.strokeStyle=css('clay'); c.lineWidth=2;
@@ -141,6 +164,14 @@ export default class S05Platform extends Scene {
     const exit=span(f.t,afterBeats(au,T.end,-1),T.end), rc={x:lx+reveal+4,y:base,h:R.ins.capH*(1-exit),on:1};
     drawCursor(c,rc);
     glowDraw(c, w.glow.ctx, g => drawCursor(g, rc));
+    // the sweep itself, and where it stops: a deadpan look at the function S15 will fix
+    if (sweepK > 0 && sweepK < 1) {
+      c.fillStyle = css('paper', 0.07); c.fillRect(sweepX - 180, -200, 180, 1500);
+      c.fillStyle = css('clay'); c.fillRect(sweepX - 1, -200, 3, 1500);
+      glowDraw(c, w.glow.ctx, g => { g.fillStyle = css('clay'); g.fillRect(sweepX - 1, -200, 3, 1500); });
+    }
+    { const [text, x, y] = code[1]!; c.font = font(F.mono(400), 18);
+      drawNote(c, { ax: x + c.measureText(text).width + 8, ay: y - 6, x: x + c.measureText(text).width + 60, y: y - 34, text: '// line 42', sub: 'looks fine', t0: over.start, on: 'ink' }, f.t); }
     // The incoming platform starts directly below the shared Clawd rectangle.
     const entry=1-span(f.t,T.start,afterBeats(au,T.start,1));
     if(entry>0) { c.fillStyle=css('paper',0.5*entry); c.fillRect(HANDOFF.clawd04.x-30,HANDOFF.clawd04.y+30,180,1); }
@@ -148,6 +179,7 @@ export default class S05Platform extends Scene {
     w.bg.u.pan!.value=s.offset; w.bg.render(this.ctx.renderer,out);
     this.ctx.comp.draw(this.ctx.renderer,w.text.upload(),out);
     w.glow.composite(this.ctx, out, 1.6);
-    return {...postFor('ink'),hud:0,frame:0,ca:0.6,grain:0.022,vignette:0};
+    const shake = impact(f.t, [{ t: crack.start, shake: 3, half: 0.05 }, { t: claws.start, shake: 7, kick: 0.02 }], T.end).shake;
+    return {...postFor('ink'),hud:0,frame:0,ca:0.6,grain:0.022,vignette:0,shake};
   }
 }

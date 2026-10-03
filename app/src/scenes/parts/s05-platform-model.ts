@@ -134,13 +134,23 @@ export function handoffOut(t: number, audio: AudioData, T: PlatformTimes, from =
 /** S05's camera: arrive pushed in on Clawd (S04's push, continued), pull out over 1.5 beats, a punch
  *  on "claws"; the last beat eases into S06's first camera exactly (C5), so the read line's
  *  underline is S06's first strike-through on screen. Held for the last 0.1 s. */
-export function cam05(audio: AudioData, lyrics: LyricsT, t: number, T: PlatformTimes): Cam2 {
+export function cam05(audio: AudioData, lyrics: LyricsT, t: number, T: PlatformTimes, head?: { x: number; y: number }): Cam2 {
   const s = platformLayout(audio, t, T);
-  const claws = lyrics.get('crack my claws').words.find((x) => /claws/i.test(x.w))!;
+  const line = lyrics.get('crack my claws'), word = (q: RegExp) => line.words.find((x) => q.test(x.w))!;
+  const claws = word(/claws/i), crack = word(/crack/i), read = word(/read/i), all = word(/all/i);
   const tIn = ease.outCubic(span(t, T.start, afterBeats(audio, T.start, 1.5)));
   const punch = t >= claws.start ? Math.pow(0.5, (t - claws.start) / 0.09) : 0;
+  const tap = t >= crack.start ? Math.pow(0.5, (t - crack.start) / 0.08) : 0;
   const fx = lerp(s.clawd.x + 8 * s.clawd.px, 960, tIn), fy = lerp(s.clawd.y, 540, tIn);
-  const own: Cam2 = { zoom: lerp(1.45, 1, tIn) + 0.05 * punch, rot: -0.012 * punch, fx, fy, ax: fx, ay: fy };
+  const own: Cam2 = { zoom: lerp(1.45, 1, tIn) + 0.08 * punch + 0.03 * tap, rot: -0.012 * punch + 0.006 * tap, fx, fy, ax: fx, ay: fy };
+  // Stage 9 ③: "read" snaps the camera onto the read head and follows it (pdoom bureau.ts caretX);
+  // "all" snaps back to the wide frame for the sweep. Without `head` (font-free callers) no key.
+  const eR = head ? ease.outExpo(span(t, read.start - 0.02, read.start + 0.2)) * (1 - ease.outExpo(span(t, all.start - 0.02, all.start + 0.18))) : 0;
+  if (eR > 0) {
+    own.zoom *= 1 + 0.3 * eR;
+    own.fx = lerp(own.fx, head!.x, eR); own.fy = lerp(own.fy, head!.y, eR);
+    own.ax = lerp(own.ax, 760, eR); own.ay = lerp(own.ay, 560, eR);
+  }
   const exitK = ease.inCubic(span(t, afterBeats(audio, T.end, -1), T.end - 0.1));
   if (exitK <= 0) return own;
   return mixCam2(own, s06EntryCam(audio, lyrics), exitK);

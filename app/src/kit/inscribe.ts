@@ -152,7 +152,7 @@ export function drawStrikeGuide(c: CanvasRenderingContext2D, ins: Inscription, t
  * typing head until 0.3 s after the last letter. Returns the layout (for carriers that need it).
  */
 export function typeWords(c: CanvasRenderingContext2D, v: Voice, words: Word[], t: number,
-  o: { x: number; y: number; size: number; on: On; rot?: number; cursor?: boolean; seed?: number; glow?: CanvasRenderingContext2D; alpha?: number; space?: number; maxWidth?: number }) {
+  o: { x: number; y: number; size: number; on: On; rot?: number; cursor?: boolean; cursorColor?: 'clay' | 'ink' | 'paper'; seed?: number; glow?: CanvasRenderingContext2D; alpha?: number; space?: number; maxWidth?: number }) {
   if (!words.length || t < words[0]!.start) return null;
   const fin = inscribe(words.map((w) => ({ ...v.form(w, w.end), born: 1, age: 0 })), o.size, { space: o.space });
   const sc = o.maxWidth ? fitWidth(fin, o.maxWidth) : 1;
@@ -163,7 +163,7 @@ export function typeWords(c: CanvasRenderingContext2D, v: Voice, words: Word[], 
   if (o.cursor && t < fin.glyphs.at(-1)!.t + 0.3) {
     const hx = headX(fin, t, sc) + 6;
     c.save(); c.translate(o.x + cs * hx, o.y + sn * hx); c.rotate(rot);
-    drawCursor(c, { x: 0, y: 0, h: fin.capH }); c.restore();
+    drawCursor(c, { x: 0, y: 0, h: fin.capH, color: o.cursorColor }); c.restore();
   }
   return { ins: fin, scale: sc };
 }

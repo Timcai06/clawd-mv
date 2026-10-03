@@ -21,7 +21,9 @@ import { DeviceWall3D, wallCam } from './parts/s17-world';
 import { resolveReleaseTimes, releaseState, type ReleaseTimes } from './parts/s17-release-state';
 import { DIFF_BOXES, releaseLayout } from './parts/s17-release-layout';
 import { machineLabel, releaseLyric } from './parts/s17-release-type';
+import { affine, drawInscription, inscribe, typeWords } from '../kit/inscribe';
 import { printRun } from './parts/s16-print';
+import { drawPR, prActive, prHits, prTimes, type PRTimes } from './parts/s17-pr';
 
 // Capital heights. The lowercase diff's descender is included in its measured ink box;
 // its capitals are at least 201 px. 92 px Archivo has a 686/1000 cap.
@@ -39,8 +41,9 @@ class World {
   wall3 = new DeviceWall3D();
   voice: Voice;
   times: ReleaseTimes;
+  pr: PRTimes;
   diff = ['- d <= days', '+ d < days'].map(text => varRun(text, 340, { wdth: 100, wght: 900 }));
-  constructor(ctx: SceneCtx) { this.voice = new Voice(ctx.lyrics, ctx.audio); this.times = resolveReleaseTimes(ctx.audio, ctx.lyrics); }
+  constructor(ctx: SceneCtx) { this.voice = new Voice(ctx.lyrics, ctx.audio); this.times = resolveReleaseTimes(ctx.audio, ctx.lyrics); this.pr = prTimes(ctx.lyrics); }
   dispose() { this.sparks.dispose(); this.print.dispose(); this.wall3.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.wall.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
@@ -107,7 +110,19 @@ export default class S17Release extends Scene {
       c.globalAlpha = Math.min(1, s.form.born * 1.6); c.fillStyle = heatColor(s.form.stress ? 'clay' : 'ink', 'paper', s.form.age);
       fillRun(c, s.run, i === 2 ? lerp(0, s.x, join) : s.x, i === 2 ? lerp(810, 490, join) : 490);
     }
-    c.restore(); releaseLyric(c, v, line, t, 96, 960, 1728, 'paper', [3, 7]);
+    c.restore();
+    // Stage 9 ③: "and now we're" is typed; "free" breaks free: each letter, once struck, floats up
+    // out of the line and keeps rising through the held note (no fade: they leave the frame).
+    const tail = typeWords(c, v, line.words.slice(3, 6), t, { x: 96, y: 960, size: 92, on: 'paper', cursor: t < line.words[6]!.start, seed: 176 });
+    const free = line.words[6]!;
+    if (tail && t >= free.start) {
+      const fin = inscribe([{ ...v.form(free, free.end), born: 1, age: 0 }], 92), x0 = 96 + tail.ins.width + 92 * 0.26;
+      drawInscription(c, { ...fin, glyphs: fin.glyphs.map((g) => ({ ...g, form: v.form(free, t) })) }, t, { on: 'paper', head: 'type', seed: 177,
+        place: (g, x) => { const u = Math.max(0, t - g.t - 0.12); return affine(x0 + x + 18 * u * (g.gi - 1.5), 960 - 260 * u * u - 60 * u, (g.gi - 1.5) * 0.08 * u); } });
+    }
+    // Stage 9 ③: Clawd celebrates the merge, a hop on every beat through the held "free".
+    const au = this.ctx.audio, merged = line.words[0]!.start;
+    Clawd.draw(c, 1560, 960 - 5 * 11.5, Clawd.pose('A12', { beat: au.beatAt(t), beat0: au.beatAt(merged), p: 0 }), { px: 11.5 });
   }
 
   /**
@@ -123,6 +138,8 @@ export default class S17Release extends Scene {
     } else if (shot === 1) {
       const b = Math.max(0, beatsSince(au, t, T.hit));
       zoom = 1 + 0.18 * Math.exp(-b * 6) * Math.cos(b * 9); rot = 0.03 * Math.exp(-b * 5) * Math.sin(b * 11);
+    } else if (prActive(t, this.w.pr)) {
+      // the PR page keys its own camera in the canvas (crisp type); the lens rests
     } else if (shot < 7) {
       zoom = 1 + 0.06 * ease.inOutQuad(span(t, R[2]!.start, R[7]!.start)); fy = 620;
       const line = this.ctx.lyrics.lastLine(t);
@@ -189,18 +206,22 @@ export default class S17Release extends Scene {
         this.graph(c, f, s);
         Clawd.draw(c, s.clawd.x, s.clawd.y, Clawd.pose(null, { beat: f.beat, beat0: 0, p: 0 }), { px: s.clawd.px });
       }
-      if ((state.shot === 2 || state.shot === 3 || state.shot >= 7) && !s.review) {
+      // Stage 9 ③: from "Pull" until the card squashes into MERGED, the PR page (parts/s17-pr.ts)
+      // owns the frame: its own camera, Clawd, the diff and the review.
+      const pr = prActive(t, w.pr);
+      if ((state.shot === 2 || state.shot === 3 || state.shot >= 7) && !s.review && !pr) {
         for (let i = 0; i < 2; i++) printRun(c, w.diff[i]!, DIFF_BOXES[i]!, i ? 'pass' : 'fail', 171 + i, 0.6);
       }
-      if (s.review) this.review(c, t);
+      if (s.review && !pr) this.review(c, t);
       else if (s.merge) { this.merge(c, t, s.join); this.sparkJoin(c, t); }
       else if (deviceBand) {
         if (!s.wall) releaseLyric(c, v, machineLine, t, 96, 700, 1728, 'paper', [0, 4]);
-      } else {
+      } else if (!pr) {
         const line = this.ctx.lyrics.lineAt(t) ?? this.ctx.lyrics.lastLine(t);
         if (line) releaseLyric(c, v, line, t, 96, 220);
         machineLabel(c, 'PR #1031 / month.ts:42', 96, 335, 20, 'ink', 0.6);
       }
+      drawPR(c, v, this.ctx.audio, t, w.pr);
     }
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.print.render(this.ctx.renderer, out, state.ground === 'clay' ? 0.04 : 0.05);
@@ -210,7 +231,8 @@ export default class S17Release extends Scene {
     const pull = T.release[2]!.start, hook = v.line('I need one last commit');
     const hits = [...pickupHits(3, this.ctx.audio, hook), { t: T.hit, shake: 20, kick: 0.03 }];
     const still = t >= afterBeats(this.ctx.audio, pull, -1) && t < pull;
-    const shake = state.shot <= 1 && !still ? impact(t, hits).shake : [0, 0] as [number, number];
+    const shake = state.shot <= 1 && !still ? impact(t, hits).shake
+      : prActive(t, w.pr) ? impact(t, prHits(w.pr)).shake : [0, 0] as [number, number];
     return { ...postFor(state.ground), hud: 0, frame: 0, grain: 0.035, shake };
   }
 }
