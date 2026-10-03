@@ -10,7 +10,7 @@ import { Lens } from '../kit/lens';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
-import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, setLine, stamp } from '../kit/lyric-moves';
 import { drawPickup, pickupHits, strobe } from '../kit/hookslam';
 import { impact } from '../kit/impact';
 import { fillRun, varRun } from '../kit/vartype';
@@ -90,8 +90,10 @@ export default class S17Release extends Scene {
     const line = this.w.voice.line('Then you wrote, “Looks good to me”');
     releaseLyric(c, this.w.voice, line, t, 120, 450, 1680, 'paper', [0, 3]);
     releaseLyric(c, this.w.voice, line, t, 120, 650, 1680, 'paper', [3, 7]);
-    const good = line.words.find((w) => /good/i.test(w.w))!;
-    drawNote(c, { ax: 1500, ay: 330, x: 1530, y: 400, text: 'reviewed in 4.2 s', sub: 'approved', t0: good.start + 0.3, on: 'paper' }, t);
+    const good = line.words.find((w) => /good/i.test(w.w))!, me = line.words.at(-1)!;
+    drawNote(c, { ax: 1500, ay: 330, x: 1530, y: 400, text: 'reviewed in 4.2 s', t0: good.start + 0.3, on: 'paper' }, t);
+    // Stage 9 ②: the review is stamped on "me" (bureau.ts's stamp: 1.55 → 1 in 0.18 s).
+    stamp(c, 'APPROVED', 1440, 560, 96, { t, at: me.start, rot: -0.09, color: 'pass', seed: 31 });
   }
 
   private merge(c: CanvasRenderingContext2D, t: number, join: number) {

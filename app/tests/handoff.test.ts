@@ -87,3 +87,15 @@ describe('hand-off primitives (docs/CUTS.md, R3/R4)', () => {
     expect(e.px).toBeLessThanOrEqual(0.5);
   });
 });
+
+import { stutterTime } from '../src/scenes/parts/s12-layout';
+describe('S12 "again" stutter', () => {
+  test('identity outside the word, continuous at both ends, three passes from the onset', () => {
+    const s = 10, e = 11;
+    expect(stutterTime(9.9, s, e)).toBe(9.9); expect(stutterTime(11.2, s, e)).toBe(11.2);
+    expect(stutterTime(s + 1e-6, s, e)).toBeCloseTo(s, 4); expect(stutterTime(e - 1e-6, s, e)).toBeCloseTo(e, 4);
+    // each pass restarts at the onset
+    expect(stutterTime(s + 0.45 + 1e-6, s, e)).toBeCloseTo(s, 4);
+    expect(stutterTime(s + 0.78 + 1e-6, s, e)).toBeCloseTo(s, 4);
+  });
+});

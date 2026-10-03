@@ -7,14 +7,17 @@ import { ease, hash, lerp } from '../engine/util';
 import { afterBeats, span } from '../kit/time';
 import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { heatColor, Voice, stamp, drawSet, setLine } from '../kit/lyric-moves';
+import { heatColor, Voice, stamp } from '../kit/lyric-moves';
+import { affine, drawInscription, headX, inscribe, type Inscription } from '../kit/inscribe';
+import { drawCursor } from '../kit/cursor';
+import type { Line } from '../engine/lyrics';
 import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
 import { mono, enterBeat, toner, handoffBoxes } from './parts/s09-type';
 import { drawWhyLine } from './parts/s09-carry';
 import { xeroxSettings } from './parts/s12-copy';
-import { COPIES, countState, handoffIn } from './parts/s12-layout';
+import { COPIES, countState, handoffIn, stutterTime } from './parts/s12-layout';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: 385, lyric: 65.856, label: 18 };
 class World {
@@ -65,13 +68,25 @@ class World {
   }
   dispose() { this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.copies.texture.dispose(); }
 }
+/** Words [a, b) of a line typed letter by letter at (x, y) in their final shapes (stage 9 ②);
+ *  with `cursor`, the clay cursor rides the typing head while the row is being written. */
+function typeRow(c: CanvasRenderingContext2D, v: Voice, line: Line, a: number, b: number, x: number, y: number, t: number, cursor = false) {
+  const words = line.words.slice(a, b);
+  if (!words.length || t < words[0]!.start) return;
+  const fin = inscribe(words.map((w) => ({ ...v.form(w, w.end), born: 1, age: 0 })), 96);
+  const live: Inscription = { ...fin, glyphs: fin.glyphs.map((g) => ({ ...g, form: v.form(words[g.wi]!, t) })) };
+  drawInscription(c, live, t, { on: 'paper', head: 'type', place: (_g, gx) => affine(x + gx, y), seed: 12 + a });
+  if (cursor && t < fin.glyphs.at(-1)!.t + 0.25) drawCursor(c, { x: x + headX(fin, t) + 6, y, h: fin.capH });
+}
 let world: World | undefined;
 export default class S12Rerun extends Scene {
   private w!: World;
   override init() { this.w = world ??= new World(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
-    const w = this.w, t = f.t, T = w.times, v = w.voice, au = this.ctx.audio;
+    const w = this.w, T = w.times, v = w.voice, au = this.ctx.audio;
+    // The third "again" replays itself three times, faster each pass (stutterTime).
+    const again3 = v.line('Run it again, run it again, again').words.at(-1)!, t = stutterTime(f.t, again3.start, again3.end);
     w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0 });
     const entrance = enterBeat(au, t, T.rerunStart);
     // v4 motion: every "run it again" is a rewind — the lens whips back from the right and lands one
@@ -103,17 +118,17 @@ export default class S12Rerun extends Scene {
       for (let i = 0; i < 3; i++) {
         const forms = v.forms(runs, t).slice(i * 3, i * 3 + 3), lead = forms[0];
         if (!lead || lead.born <= 0) continue;
-        const x = [320, 870, 1410][i]!, y = 740;
+        const x = [330, 640, 950][i]!, y = 660 + i * 100; // stepped rows: each rerun lands lower and further right
         stamp(c, lead.text, x, y, 96, { t, at: lead.t0, axes: lead.axes,
           rot: -0.04 - i * 0.07, color: lead.stress ? 'clay' : 'ink', seed: 52 + i, box: false });
-        drawSet(c, setLine(forms.slice(1), 96), x + 130, y + 36, { on: 'paper' });
+        typeRow(c, v, runs, i * 3 + 1, i * 3 + 3, x + 130, y + 36, t);
       }
     }
-    const clear = v.line('Clear the cache and count to ten'), forms = v.forms(clear, t);
+    // "Clear the cache and / count to" typed by the cursor, letter by letter (stage 9 ②).
+    const clear = v.line('Clear the cache and count to ten');
     if (t >= T.clear) {
-      const set = setLine(forms.slice(0, 4), 96);
-      drawSet(c, set, 96, 615, { on: 'paper' });
-      if (forms[4]!.born > 0) drawSet(c, setLine(forms.slice(4, 6), 96), 1130, 740, { on: 'paper' });
+      typeRow(c, v, clear, 0, 4, 250, 615, t, true); // x 250: stays in frame while the lens settles from 1.26
+      typeRow(c, v, clear, 4, 6, 1130, 740, t, true);
     }
     const s = countState(v, t, T);
     for (const d of s.digits) {

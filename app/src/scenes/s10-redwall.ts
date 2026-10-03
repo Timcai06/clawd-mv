@@ -15,7 +15,8 @@ import { afterBeats, span } from '../kit/time';
 import { ease } from '../engine/util';
 import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { Voice, setLine, drawSet, odometer } from '../kit/lyric-moves';
+import { Voice, odometer } from '../kit/lyric-moves';
+import { affine, drawInscription, fitWidth, inscribe, type Inscription } from '../kit/inscribe';
 import * as Clawd from '../kit/clawd';
 import { CALENDAR_TESTS } from '../kit/content';
 import { PrintOverlay } from '../kit/print-overlay';
@@ -99,6 +100,15 @@ type Pt = P3;
 class World {
   print = new PrintOverlay();
   ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
+  private stripIns?: { ins: Inscription; k: number };
+  /** The strip's words after "Nineteen", laid out once in their final shapes. */
+  strip(line: ReturnType<Voice['line']>) {
+    if (!this.stripIns) {
+      const ins = inscribe(line.words.slice(1).map((w) => ({ ...this.voice.form(w, w.end), born: 1, age: 0 })), 300, { space: 0.2 });
+      this.stripIns = { ins, k: fitWidth(ins, STRIP_W - 80) };
+    }
+    return this.stripIns;
+  }
   rig = new Rig();
   scene = new THREE.Scene();
   geo = new THREE.BufferGeometry();
@@ -210,11 +220,12 @@ export default class S10Redwall extends Scene {
     // the last beat: the floor gives way to the dark the glass falls into (S11's rain)
     const dark = ease.inOutQuad(span(t, afterBeats(au, T.wallEnd, -1.6), afterBeats(au, T.wallEnd, -0.2)));
     w.ground.render(r, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0.12, flipTo: 'ink', flip: dark });
-    // the lyric strip across the row's faces (words born on their onsets; shards carry their pieces)
+    // the lyric strip across the row's faces, stamped onto the glass a letter at a time as it is
+    // sung (stage 9 ②: room.ts's per-letter stamp); the shards carry their pieces
     const line = v.line('Nineteen red, and they’re shattering like glass');
     const sc = w.stripLayer.ctx; w.stripLayer.clear();
-    { const set = setLine(v.forms(line, t).slice(1), 300, { space: 0.2 }); const k = Math.min(1, (STRIP_W - 80) / Math.max(1, set.width));
-      sc.save(); sc.translate(40, 290); sc.scale(k, 1); drawSet(sc, set, 0, 0, { on: 'paper' }); sc.restore(); }
+    { const S = w.strip(line), live: Inscription = { ...S.ins, glyphs: S.ins.glyphs.map((g) => ({ ...g, form: v.form(line.words[g.wi + 1]!, t) })) };
+      drawInscription(sc, live, t, { on: 'paper', head: 'type', scale: S.k, place: (_g, x) => affine(40 + x, 290), seed: 10 }); }
     w.stripLayer.upload();
     // the world
     w.rig.set(cameraAt(au, t, T));

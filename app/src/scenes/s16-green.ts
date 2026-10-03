@@ -13,7 +13,8 @@ import { span } from '../kit/time';
 import { Lens } from '../kit/lens';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
-import { heatColor, Voice, drawSet, setLine, odometer } from '../kit/lyric-moves';
+import { heatColor, Voice, odometer } from '../kit/lyric-moves';
+import { affine, drawInscription, inscribe, land } from '../kit/inscribe';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { greenState, greenArcCards, greenTimes, type GreenTimes } from './parts/s16-green-state';
@@ -132,15 +133,24 @@ export default class S16Green extends Scene {
         presence * Math.min(1, form.born * 1.6), heatColor(form.stress ? 'clay' : NIGHT ? 'paper' : 'ink', NIGHT ? 'ink' : 'paper', form.age)); c.restore();
     }
 
-    // Numeric words belong to the faces; GREEN is the headline. Connecting words
-    // occupy the reference's upper-right paper margin, one at a time.
+    // Numeric words belong to the faces; GREEN is the headline. Connecting words are typed into
+    // the reference's upper-right registration field, a letter at a time (stage 9 ②), and each new
+    // one feeds the field up a row like a ticker, carrying the older ones out of its top edge.
     // Only S16's own lines (R1: the previous line's held "free" is finished by drawFree below).
-    const line = this.ctx.lyrics.lineAt(t) ?? this.ctx.lyrics.lastLine(t);
-    if (line && line.start < T.end && line.start >= T.start - 0.05) {
-      const words = v.forms(line, t).filter(x => !/^(green\W*|one|two\W*|three|nineteen)$/i.test(x.text));
-      const latest = words.filter(x => x.born > 0).at(-1);
-      if (latest) drawSet(c, setLine([latest], 92), 1570, 205, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(line, t) });
-    }
+    { const joins = this.ctx.lyrics.lines.filter(l => l.start >= T.start - 0.05 && l.start < T.end)
+        .flatMap(l => l.words).filter(wd => !/^(green\W*|one|two\W*|three|nineteen)$/i.test(wd.w) && wd.start <= t);
+      if (joins.length) {
+        c.save(); c.beginPath(); c.rect(1531, 0, 389, 277); c.clip();
+        joins.forEach((wd, k) => {
+          // rows above the newest, fed up by the newest word's onset
+          let y = 205;
+          for (let j = k + 1; j < joins.length; j++) y -= 110 * land(t, joins[j]!.start, 0.1);
+          const fin = inscribe([{ ...v.form(wd, wd.end), born: 1, age: 0 }], 92), form = v.form(wd, t);
+          drawInscription(c, { ...fin, glyphs: fin.glyphs.map(g => ({ ...g, form })) }, t,
+            { on: NIGHT ? 'ink' : 'paper', head: 'type', place: (_g, x) => affine(1570 + x, y), seed: 160 + k });
+        });
+        c.restore();
+      } }
     // C15 (R2): "free" is still sung for 0.24 s after the cut; finish it where S15 left it.
     const free = v.line('Snip the extra line and set October free').words.at(-1)!;
     if (t < free.end + 0.12) drawFree(c, v.form(free, t), this.ctx.audio, t, w.f15, NIGHT ? 'ink' : 'paper');

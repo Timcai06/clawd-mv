@@ -5,7 +5,9 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D, W, H } from '../engine/gl';
 import { css } from '../theme';
 import { Ground, GlowLayer, postFor } from '../kit/ground';
-import { glowDraw, heatColor, Voice, drawWithMissing, drawSet, setLine } from '../kit/lyric-moves';
+import { glowDraw, heatColor, Voice, drawWithMissing } from '../kit/lyric-moves';
+import { affine, drawInscription, inscribe, land, type Inscription } from '../kit/inscribe';
+import { hash } from '../engine/util';
 import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { beatHit, resolveX9Times, type X9Times } from './s09-z-shared';
@@ -19,6 +21,13 @@ class World {
   glow = new GlowLayer();
   ground = new Ground(); storm: DeepStorm; camera = new THREE.PerspectiveCamera(52, W / H, 0.1, 200);
   layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
+  private rows?: Inscription[];
+  /** The verse's two rows, each word in its final shape (letters never reflow while they land). */
+  rainRows() {
+    const line = this.voice.line('Stack traces falling like rain from the sky');
+    return this.rows ??= [line.words.slice(0, 3), line.words.slice(3)].map((ws) =>
+      inscribe(ws.map((w) => ({ ...this.voice.form(w, w.end), born: 1, age: 0 })), 96));
+  }
   constructor(ctx: SceneCtx) {
     this.storm = new DeepStorm(ctx.renderer); this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
   }
@@ -46,22 +55,30 @@ export default class S11Rain extends Scene {
     w.glow.renderScene(r, w.storm.scene, w.camera);
     stormMat.uniforms.glowOnly!.value = 0;
     w.layer.clear(); w.glow.clear(); const c = w.layer.ctx;
-    // Only the living verse racks forward; typography remains at the lyric level.
-    const verse = v.line('Stack traces falling like rain from the sky'), presence = v.presence(verse, t, 0);
-    if (presence > 0 && t < T.impacts[0]) {
-      const rows = [v.forms(verse, t).slice(0, 3), v.forms(verse, t).slice(3)];
+    // Stage 9 ②: the verse is rain (pdoom loss.ts "drop"). Each letter falls in along the rain and
+    // lands in its slot the moment it is sung, trailing a streak; the "Undefined" slam knocks the
+    // whole verse out of its rows, and the letters fall on out of frame with the rest of the storm.
+    const verse = v.line('Stack traces falling like rain from the sky');
+    if (t >= verse.words[0]!.start) {
+      const rows = w.rainRows(), slam = T.impacts[0];
       c.save(); c.translate(180, 390); c.rotate(-ROLL);
-      rows.forEach((forms, i) => {
-        const set = setLine(forms, 96);
-        set.words.forEach(word => {
-          if (word.form.born <= 0) return;
-          const focus = word.form.born, blur = (1 - focus) * 12;
-          c.save(); c.filter = blur > 0.3 ? `blur(${blur}px)` : 'none';
-          c.globalAlpha = presence * focus; c.fillStyle = heatColor(word.form.stress ? 'clay' : 'paper', 'ink', word.form.age);
-          fillRun(c, word.run, word.x, i * 125 - (1 - focus) * 90);
-          if (word.form.stress) glowDraw(c, w.glow.ctx, g => { g.fillStyle = c.fillStyle; fillRun(g, word.run, word.x, i * 125 - (1 - focus) * 90); });
-          c.restore();
-        });
+      rows.forEach((ins, i) => {
+        const off = i === 0 ? 0 : 3;
+        const dy = (g: Inscription['glyphs'][number]) => {
+          const k = land(t, g.t, 0.16), tf = slam + 0.05 * hash(i, g.wi, g.gi, 5), u = Math.max(0, t - tf);
+          return -(1 - k) * 220 + 1400 * u + 0.5 * 5200 * u * u;
+        };
+        const live: Inscription = { ...ins, glyphs: ins.glyphs.map((g) => ({ ...g, form: v.form(verse.words[g.wi + off]!, t) })) };
+        drawInscription(c, live, t, { on: 'ink', head: 'scan', place: (g, x) => affine(x, i * 125 + dy(g)), glow: w.glow.ctx });
+        // the streak each drop leaves while it falls in
+        c.strokeStyle = css('paper', 0.5); c.lineWidth = 2; c.beginPath();
+        for (const g of ins.glyphs) {
+          const k = land(t, g.t, 0.16);
+          if (t < g.t || k >= 0.98) continue;
+          const x = g.x + g.adv / 2, top = i * 125 + dy(g) - ins.capH;
+          c.moveTo(x, top - 260 * (1 - k)); c.lineTo(x, top - 8);
+        }
+        c.stroke();
       }); c.restore();
     }
     // C10 (R2): "…like glass" is carried by the glass strip's shards in S10; not re-set here.

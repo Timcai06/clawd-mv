@@ -53,3 +53,21 @@ export function countState(v: Voice, t: number, T: X9Times) {
     w: Math.min(1920, bounds.x + bounds.w) - Math.max(0, bounds.x), h: bounds.h } : null;
   return { number, digits, dominant, clawd: { x: 1450, y: 799, px: 10.7, pose }, clawdBox: spriteBox(1450, 799, 10.7, pose) };
 }
+
+/**
+ * Stage 9 ② (pdoom bureau.ts remapB): the third "again" stutters. Over that word the scene's clock
+ * replays the word from its onset three times, each pass faster (1×, 1.8×, 4.5×), and the last pass
+ * ends on the word's real end, so the clock is continuous outside the word. Identity elsewhere.
+ */
+export const STUTTER = { out: [0.45, 0.33, 0.22], src: [0.45, 0.6, 1] } as const;
+export function stutterTime(t: number, s: number, e: number) {
+  if (t <= s || t >= e) return t;
+  const L = e - s;
+  let u = (t - s) / L;
+  for (let k = 0; k < 3; k++) {
+    const o = STUTTER.out[k]!;
+    if (u < o || k === 2) return s + L * STUTTER.src[k]! * Math.min(1, u / o);
+    u -= o;
+  }
+  return t;
+}

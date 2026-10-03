@@ -12,6 +12,7 @@ import { Ground, GlowLayer, postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
 import { ease, hash, lerp } from '../engine/util';
 import { glowDraw, heatColor, Voice, drawSet, setLine, odometer, type WordForm } from '../kit/lyric-moves';
+import { drawInscription, inscribe } from '../kit/inscribe';
 import { fillRun, varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveFTimes, type FTimes } from './parts/s15-f-timing';
@@ -200,14 +201,18 @@ export default class S15Line42 extends Scene {
   /** Canvas text laid on a face of the solid: ux along the stroke, uy down the face (pdoom planeAffine). */
   private faceWord(c: CanvasRenderingContext2D, form: WordForm, at: P3, ux: P3, uy: P3, capH: number, on: 'paper' | 'ink', presence: number) {
     if (form.born <= 0) return;
-    const run = varRun(form.text.replace(/[“”"]/g, ''), 100, form.axes);
-    const m = capH / run.capH;
-    const A = planeAffine(this.w.rig, at, ux, uy, m, 0, 0);
+    // Stage 9 ②: carved a letter at a time while the word is sung, in the shape the word ends with.
+    const fin = inscribe([{ ...this.w.voice.form(form.word, form.word.end), text: form.text.replace(/[“”"]/g, ''), born: 1, age: 0 }], 100);
+    const A = planeAffine(this.w.rig, at, ux, uy, capH / fin.capH, 0, 0);
     if (!A) return;
-    c.save(); c.setTransform(A.a, A.b, A.c, A.d, A.e, A.f);
-    c.globalAlpha = presence * Math.min(1, form.born * 1.6);
-    c.fillStyle = heatColor(form.stress ? 'clay' : on === 'paper' ? 'ink' : 'ink', 'paper', form.age);
-    fillRun(c, run, 0, 0); c.restore();
+    void on;
+    drawInscription(c, { ...fin, glyphs: fin.glyphs.map((g) => ({ ...g, form })) }, this.tNow, { on: 'paper', head: 'scan', alpha: presence,
+      place: (_g, x) => ({ ...A, e: A.a * x + A.e, f: A.b * x + A.f }) });
+  }
+  /** World width of a word carved at cap height `capH` (in its final shape). */
+  private faceWidth(form: WordForm, capH: number) {
+    const run = varRun(form.text.replace(/[“”"]/g, ''), 100, this.w.voice.form(form.word, form.word.end).axes);
+    return run.width * capH / run.capH;
   }
 
   /** The cut stone that becomes S16's first domino (2D, last beat). */
@@ -300,7 +305,23 @@ export default class S15Line42 extends Scene {
       return;
     }
     if (line.i === v.line('Snip the extra line and set October free').i) {
-      forms.slice(0, 7).forEach((form, i) => this.word(c, form, 110, 175 + i * 112, on, 0, presence));
+      // Stage 9 ②: "Snip the extra line" is carved along the extra line itself, on the stone right of
+      // the snip, so it falls away with it; "and set October" runs down the lower stroke that stays.
+      const cap = 0.62, b = barPose(audio, t, T);
+      const barUx = onBar(b, p3(1, 0, 0)), barO = onBar(b, p3(0, 0, 0)), by0 = onBar(b, p3(0, -1, 0));
+      const bx = p3(barUx.x - barO.x, barUx.y - barO.y, barUx.z - barO.z), by = p3(by0.x - barO.x, by0.y - barO.y, by0.z - barO.z);
+      let x = CUT_X + 0.45;
+      forms.slice(0, 4).forEach((form) => {
+        this.faceWord(c, form, onBar(b, p3(x, BAR_C.y - cap * 0.5, BAR_H.z + 0.005)), bx, by, cap, 'paper', presence);
+        x += this.faceWidth(form, cap) + cap * 0.32;
+      });
+      const dl = (() => { const dx = LOWER_END.x - TIP.x, dy = LOWER_END.y - TIP.y, L = Math.hypot(dx, dy); return p3(dx / L, dy / L, 0); })();
+      let s2 = 3.6;
+      forms.slice(4, 7).forEach((form) => {
+        const at = p3(TIP.x + dl.x * s2 + dl.y * cap * 0.5, TIP.y + dl.y * s2 - dl.x * cap * 0.5, DEPTH_HZ + 0.005);
+        this.faceWord(c, form, at, dl, p3(dl.y, -dl.x, 0), cap, 'paper', presence);
+        s2 += this.faceWidth(form, cap) + cap * 0.32;
+      });
       const free = forms[7]!;
       drawFree(c, free, audio, t, T, on, presence);
       return;
