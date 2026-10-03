@@ -7,6 +7,7 @@ import { HANDOFF, lensRect, type Prim, type Rect } from '../../kit/handoff';
 import type { LensView } from '../../kit/lens';
 import { lerp } from '../../engine/util';
 import { heatColor, Voice, drawSet, setLine, stamp } from '../../kit/lyric-moves';
+import { affine, drawInscription, drawStrikeGuide, fitWidth, headX, inscribe, land, type Aff, type InGlyph, type Inscription } from '../../kit/inscribe';
 import { mono } from './s01-drafting';
 import { machineTitle, printInBox, mixRect } from './s01-print';
 import type { OpeningTimes } from './s01-timing';
@@ -65,23 +66,62 @@ export function drawForm(c: CanvasRenderingContext2D, rect: Rect) {
   for(let i=0;i<400;i++){const x=60+hash(301,i,1)*1790,y=57+hash(301,i,2)*1000;c.fillStyle=css('ink',.08);c.fillRect(x,y,.7,.7);}
   c.restore();
 }
+/** Title strip (between the header rule and the fields), in form px. */
+export const TITLE_CLIP = { x: 60, y: 115, w: 1790, h: 865 };
+const TITLE_ROWS = [{ x: 85, base: 480.6, w: 1150 }, { x: 85, base: 815.6, w: 1150 }];
+// The rest of the line is typed into the ACTUAL field, after the machine text (inside title safe).
+const TITLE_CAP = 315.6, NOTES = { x: 600, base: 893, cap: 42 };
+/** Size whose cap height is `cap` px. */
+const sizeForCap = (cap: number) => cap * 100 / inscribe([], 100).capH;
+
+/**
+ * S03's sung words, typed into the form (stage 9 ②): "Got a bug / report," is struck letter by
+ * letter into the title strip by a typewriter whose head is the clay cursor (pdoom bureau.ts
+ * drawTyped, with the strike guide); on "the" the strip line-feeds up and out, bringing the form's
+ * own title up from below; "the weirdest I've seen" is typed into the ACTUAL field. The BUG stamp
+ * lands on "bug". No line fades: the words leave with the strip and, at the cut, with the form.
+ */
 export function drawReportLyrics(c: CanvasRenderingContext2D, v: Voice, t: number) {
-  const line=v.line(1), forms=v.forms(line,t), pres=v.presence(line,t);
-  if(t<line.words[4]!.start){
-    const rows=[{forms:forms.slice(0,3),x:85,y:165,h:315.6},{forms:forms.slice(3,4),x:85,y:500,h:315.6}];
-    for(const row of rows){
-      const set=setLine(row.forms,460), sx=Math.min(1,1150/set.width);
-      for(const word of set.words){if(word.form.born<=0)continue;c.save();c.fillStyle=heatColor(word.form.stress?'clay':'ink', 'paper', word.form.age);c.globalAlpha=word.form.born;
-        printInBox(c,word.run,{x:row.x+word.x*sx,y:row.y,w:word.w*sx,h:row.h});c.restore();}
+  const line=v.line(1), forms=v.forms(line,t), the=line.words[4]!.start;
+  const feed=land(t,the,0.32), lift=feed*720;
+  c.save(); c.beginPath(); c.rect(TITLE_CLIP.x,TITLE_CLIP.y,TITLE_CLIP.w,TITLE_CLIP.h); c.clip();
+  const size=sizeForCap(TITLE_CAP);
+  [forms.slice(0,3),forms.slice(3,4)].forEach((row,r)=>{
+    const ins=inscribe(row,size,{space:0.22}), sc=fitWidth(ins,TITLE_ROWS[r]!.w), R=TITLE_ROWS[r]!;
+    const place=(_g:InGlyph,x:number)=>affine(R.x+x,R.base-lift);
+    if(feed<1) {
+      drawInscription(c,ins,t,{on:'paper',head:'type',place,scale:sc,seed:31+r});
+      typeHead(c,ins,t,place,sc,row[0]!.t0,(r===0?forms[3]!:forms[4]!).t0);
     }
-  } else {
+  });
+  if(feed>0){
+    c.save(); c.translate(0,720-lift);
     machineTitle(c,'Calendar shows',{x:85,y:165,w:1160,h:160});
     machineTitle(c,'October 32',{x:85,y:345,w:880,h:165});
+    c.restore();
   }
+  c.restore();
   const bug=v.form(line.words[2]!,t);
   if(bug.born>0) stamp(c,'BUG',STAMP.x,STAMP.y,460,{t,at:bug.t0,rot:STAMP.angle,color:bug.stress?'clay':'ink',axes:{wdth:bug.axes.wdth,wght:Math.max(800,bug.axes.wght)},seed:303});
-  if(pres>0)drawSet(c,setLine(forms.slice(4),74,{space:.18}),232,972,{on:'paper',alpha:pres});
+  // ACTUAL: the rest of the line, typed at the lyric level after "Calendar shows October 32".
+  const notes=inscribe(forms.slice(4),sizeForCap(NOTES.cap),{space:0.24});
+  const place=(_g:InGlyph,x:number)=>affine(NOTES.x+x,NOTES.base);
+  drawInscription(c,notes,t,{on:'paper',head:'type',place,seed:37});
+  typeHead(c,notes,t,place,1,forms[4]!.t0,Infinity);
   // "There's a thirty-second…" belongs to S04 since the cut moved to the line break (R1).
+}
+
+/** The typewriter's head: a clay block on the newest letter, the strike guide ahead of it; it
+ *  blinks once the row is done and is gone when the next row starts. */
+function typeHead(c: CanvasRenderingContext2D, ins: Inscription, t: number, place: (g: InGlyph, x: number) => Aff, sc: number, from: number, until: number) {
+  if (t < from - 0.3 || t >= until) return;
+  const last=ins.glyphs.at(-1)!, done=t>=last.t+0.06;
+  const x=headX(ins,t,sc), m=place(last,x);
+  if(!done) drawStrikeGuide(c,ins,t,place,sc,0.3);
+  if(done && Math.floor((t-last.t)*2.2)%2===1) return;
+  c.save(); c.transform(m.a,m.b,m.c,m.d,m.e,m.f);
+  c.fillStyle=css('clay'); c.fillRect(ins.size*0.05,-ins.capH,ins.capH*0.14,ins.capH);
+  c.restore();
 }
 /** S03's lens: the form is read up close (a breathing push that returns to identity at both cuts),
  *  with a punch on "weirdest". */

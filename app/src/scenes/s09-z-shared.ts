@@ -7,6 +7,7 @@ import { ease, lerp } from '../engine/util';
 import { normalizeAnchor, resolveStoryboard, type Storyboard } from '../storyboard';
 import { afterBeats, beatsSince, hitAfter, onBeats, span, typed, wordTime } from '../kit/time';
 import type { CameraView } from '../kit/stage';
+import { rideLayout } from './parts/s09-ride';
 
 const board = boardJSON as Storyboard;
 type TimingCtx = Pick<SceneCtx, 'lyrics' | 'audio'>;
@@ -35,6 +36,9 @@ export function resolveX9Times(ctx: TimingCtx) {
     why: word('S11-4'), rainEnd: shot('S11-4').end,
     runs: [word('S12-1'), word('S12-2'), word('S12-3')] as const,
     clear: word('S12-4'), cache: word('S12-4', 'cache'), count, ten, eleven, end,
+    /** S09's lyric laid out on the scope's glass (its letters drive the scan head); lazy, so timing
+     *  alone never needs the fonts. */
+    get ride() { return rideLayout(ctx.audio, ctx.lyrics); },
   };
 }
 export type X9Times = ReturnType<typeof resolveX9Times>;

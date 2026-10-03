@@ -5,6 +5,7 @@ import * as Clawd from '../../kit/clawd';
 import { lerp } from '../../engine/util';
 import { enterBeat, exitBeat, spriteBox, union } from './s09-type';
 import type { X9Times } from '../s09-z-shared';
+import { rideHead } from './s09-ride';
 
 export const SCOPE = { x0: 16, x1: 1904, y: 575, traceX: 108, period: 208 };
 export function scopeY(local: number) {
@@ -37,11 +38,8 @@ export function handoffOut(t: number, audio: AudioData, T: X9Times) {
     capH: lerp(140, HANDOFF.nineteen09.capH, p) };
 }
 
-/** Pure head-only query for birth-time sampling, without allocating echo traces. */
+/** Pure head-only query for birth-time sampling, without allocating echo traces. The scan head is
+ *  the writing head (stage 9 ②): it advances only as far as the letters already sung. */
 export function scopeHead(t: number, T: X9Times) {
-  const key = T.scopeKey;
-  // Head reaches the reference's x=1468 near the storyboard anchor, then continues right.
-  const phase = Math.max(0, Math.min(1, (t - T.waiting) / (key - T.waiting)));
-  const head = t <= key ? lerp(108, 1468, phase) : lerp(1468, 1824, Math.min(1, (t - key) / (T.terminalEnd - key)));
-  return head;
+  return rideHead(T.ride, t);
 }

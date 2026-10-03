@@ -7,6 +7,8 @@ import { Ground, postFor } from '../kit/ground';
 import { Voice } from '../kit/lyric-moves';
 import { afterBeats, span } from '../kit/time';
 import { ease } from '../engine/util';
+import { inscribe } from '../kit/inscribe';
+import { impact } from '../kit/impact';
 import { Lens } from '../kit/lens';
 import * as Clawd from '../kit/clawd';
 import { openingTimes } from './parts/s01-timing';
@@ -49,6 +51,9 @@ export default class S03Issue extends Scene {
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
     w.print.render(this.ctx.renderer, out);
     w.lens.film(this.ctx.renderer,finalOut,view03(t,w.T,w.voice.line(1).words.find(x=>/weirdest/i.test(x.w))!.start));
-    return {...postFor('paper'),hud:0,bloom:0,grain:.035,vignette:0};
+    // Impacts (G3): every typed title letter knocks the frame a little; the BUG stamp hits hard.
+    const line=w.voice.line(1),title=inscribe(w.voice.forms(line,t).slice(0,4),100);
+    const hits=[...title.glyphs.map(g=>({t:g.t,shake:2.5,half:0.03})),{t:line.words[2]!.start,shake:22,half:0.07}];
+    return {...postFor('paper'),hud:0,bloom:0,grain:.035,vignette:0,shake:impact(t,hits,w.T.end).shake};
   }
 }

@@ -221,7 +221,9 @@ T 2026-10-03：下一阶段 Claude 做核心设计，并亲自开发部分章节
 
 ### 阶段 9 ②：细节与整体动效（T 2026-10-03）
 - ✅ 2026-10-03 通读全片（67 张静帧 + 三次 COMMIT 对比 + 读代码），差距清单和「歌词像字幕」的设计写在 `docs/reference/polish-gaps.md`。
-- 🔜 等 T 挑优先级（文档第 4 节建议的 5 批）。每场改前/改后并排看；每批跑 tsc、测试、分镜检查，问过 T 再推送，渲染在 T 的 Mac 上。
+- ✅ T 定先做第 1 批（工具 + S03、S09 样板）。
+- ✅ 第 1 批：`kit/inscribe.ts`（逐字母书写）、`kit/impact.ts`（冲击），样板 S03 打字机、S09 骑在波形上（做法见 CONTEXT）。新测试 `kit-inscribe`、`scene-s09-ride`。改前/改后并排图：`out/wip/s03-compare.png`、`out/wip/s09-compare.png`。
+- 🔜 T 在 Mac 上看 S03、S09 短片，判断「歌词不像字幕」的方向；认可后按 `docs/reference/polish-gaps.md` 第 4 节继续。每场改前/改后并排看；每批跑 tsc、测试、分镜检查，问过 T 再推送，渲染在 T 的 Mac 上。
 
 ## ⏳ 阶段 10：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。

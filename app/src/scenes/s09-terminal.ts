@@ -17,6 +17,7 @@ import { mono, counter19 } from './parts/s09-type';
 import { scopeState, handoffIn, handoffOut, SCOPE, scopeHead } from './parts/s09-scope';
 import { Rig } from '../kit/rig';
 import { cameraAt, ridgeY, ridgeZ, RIDGES, wx, wy } from './parts/s09-world';
+import { drawRide } from './parts/s09-ride';
 // 19 is a machine counter, capH=140 (reference + nineteen09), not a ≥200px giant.
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
@@ -103,29 +104,11 @@ export default class S09Terminal extends Scene {
     const n = handoffOut(t, au, T);
     mono(c, 'npm test', 96, 290, TYPE_LEVELS.label, 'paper');
     mono(c, 'running 19 tests…', 96, 322, TYPE_LEVELS.label, 'paper');
-    const v = w.voice, line = v.line("So I run the tests, I’m waiting for a pass");
-    // Mono-like equal-pitch cells, but sung outlines/axes still come exclusively from vartype.
-    let x = 96;
-    for (const form of v.forms(line, t)) {
-      const pass = form.text.replace(/[^a-z]/gi, '').toLowerCase() === 'pass';
-      const run = varRun(form.text, 96, form.axes);
-      if (form.born > 0) {
-        c.save(); c.beginPath(); c.rect(pass ? headP.x - run.width : x, 338, run.width * form.sung, 122); c.clip();
-        c.fillStyle = heatColor(form.stress ? 'clay' : 'paper', 'ink', form.age);
-        fillRun(c, run, pass ? headP.x - run.width : x, 427);
-        if (form.stress) glowDraw(c, w.glow.ctx, g => {
-          g.beginPath(); g.rect(pass ? headP.x - run.width : x, 338, run.width * form.sung, 122); g.clip();
-          g.fillStyle = c.fillStyle; fillRun(g, run, pass ? headP.x - run.width : x, 427);
-        }); c.restore();
-        drawCursor(c, { x: pass ? headP.x : x + run.width * form.sung, y: 427, h: 72,
-          on: form.singing ? 1 : pass ? blink(f.beat) : 0 });
-        glowDraw(c, w.glow.ctx, g => drawCursor(g, { x: pass ? headP.x : x + run.width * form.sung, y: 427, h: 72,
-          on: form.singing ? 1 : pass ? blink(f.beat) : 0 }));
-      }
-      x += run.width + 24;
-    }
+    // Stage 9 ②: the lyric rides the trace on the glass, written by the scan head (parts/s09-ride.ts).
+    drawRide(c, T.ride, rig, t, 'ink', { glow: w.glow.ctx });
     // C8 (R2): "machine" ends 0.09 s after the cut; S08 sings it out, S09 does not re-set the line.
-    drawNote(c, { ax: headP.x, ay: headP.y - 18, x: headP.x + 46, y: headP.y - 120, text: 'expected: pass', sub: 'actual: pending', t0: T.waiting + 0.4, on: 'ink' }, t);
+    // Below the trace: the riding words own the space above it.
+    drawNote(c, { ax: headP.x, ay: headP.y + 18, x: headP.x + 46, y: headP.y + 120, text: 'expected: pass', sub: 'actual: pending', t0: T.waiting + 0.4, on: 'ink' }, t);
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
     counter19(c, n.x, n.baseline, n.capH, 'paper');
