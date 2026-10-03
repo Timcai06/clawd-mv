@@ -6,7 +6,7 @@
 2. 跨切点的长音词（R2）用 `kit/carry.ts`：上一场在最后半拍把这个词从它在世界里的姿态 `lerpAffines` 到 `CarrySpec` 版面；下一场开头只把这个词在同一版面里画完（`carryDrift`），在词尾 + 0.12 s 内交给自己的世界处理（每条写明怎么处理），**不重排整句**。
 3. 上一场最后 0.1 s：镜头不震、不推拉（`exitEnvelope().still`），交接物增益从 1 爬到峰值（R4）。
 4. 下一场如果有镜头运动，第一帧的速度方向要接上一场最后一帧（写明的条目要测：交接物屏幕速度方向误差 ≤ 10°，速率比 0.7–1.4）。
-5. 常量写进 `kit/handoff.ts` 的 `CUT` 表（C 在 V6-K 合并后添加；场景任务只读）。
+5. 常量在 `kit/handoff.ts`：`CUT.grid04`（C3）、`CUT.clawd04px`（C4）、`CUT.machine08`（C8 carry）、`CUT.diag13`（C12）、`CUT.free15`（C15 carry），其余沿用 `HANDOFF.*`；`Prim` 有 `points` 类型（C17）。场景任务只读。`engraveMaterial` 已有 `lightLines`、`splitX`、`paperMap` 选项。
 
 | # | 切点（s） | 交接物（Prim） | 上一场最后一拍 | 下一场第一拍 | 跨切点的词 |
 |---|---|---|---|---|---|
