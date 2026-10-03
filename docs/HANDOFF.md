@@ -43,4 +43,4 @@ S01 欢迎框里的 Clawd（`scenes/s01-boot.ts`，0–5.6 s）用的是睡姿 `
 - **渲染链路**：`app/scripts/render.ts` 用 playwright 驱动 `channel: 'chrome'`（Tim 的 Mac 上是系统 Chrome，GPU 是 Apple M5 Pro）。云上先确认有没有 Chrome / Chromium 和 WebGL2（可能要 `bunx playwright install chromium` 并改用 chromium，GPU 没有就是软件渲染，会慢很多）。先跑 `bun scripts/render.ts stills --t 12 --out ../out/wip/smoke` 看能不能出图，把耗时告诉 Tim。
 - **音频**：`audio/song.wav`（母带）是 gitignored，云上没有。逐拍和逐词数据在 `data/audio.json`、`data/lyrics.json`（已提交），画面不受影响；渲视频用 `--noaudio`，或者请 Tim 把 wav 放进来。
 - **中文字体**：片尾署名用 macOS 系统字体 PingFang SC，Linux 上没有；署名卡的最终渲染要在 Tim 的 Mac 上做，云上只验证布局。
-- 仓库的本地进度要先推到 GitHub 云上才看得到——如果你看到的最新提交不是「Revert v6: app/ and storyboard/ back to v5」之后的文档提交，先告诉 Tim。
+- 仓库的本地进度要先推到 GitHub 云上才看得到——如果你看到的最新提交早于「Handoff: first task is the eyeless Clawd at the opening」，说明本地进度没推上来，先告诉 Tim。
