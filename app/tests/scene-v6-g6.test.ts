@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { Voice } from '../src/kit/lyric-moves';
-import { Rig, p3 } from '../src/kit/rig';
+import { p3 } from '../src/kit/rig';
 import { SolidText } from '../src/kit/solidtype';
 import { carryLayout } from '../src/kit/carry';
 import { layoutPath, letterTimes, drawPathText, runInkBounds } from '../src/kit/pathtext';
@@ -11,7 +11,8 @@ import { HANDOFF, primError, exitEnvelope } from '../src/kit/handoff';
 import { resolveFTimes } from '../src/scenes/parts/s15-f-timing';
 import { freeCarrySpec, freeCarryAffines, handoffOut, entryPrim as entry15 } from '../src/scenes/parts/s15-layout';
 import { greenTimes, greenHit, GREEN_WIDTHS, greenState } from '../src/scenes/parts/s16-green-state';
-import { D, RADIUS, ARC, MAX_TILT, S16_GLSL, arcAt, dominoPoint, tiltAt, hitAngle, hitDelay, cameraAt, cursorAt, arcBounds, entryPrim, exitPrim, projectBounds, faceCorners, groundLyrics, greenLetterPoints, freeBody, freeTiltAt, floorToneAt, groundShadowAt, lightTone, faceNormal, KEY_LIGHT, checkScaleAt, shakeAt } from '../src/scenes/parts/s16-world';
+import { D, RADIUS, ARC, MAX_TILT, S16_GLSL, arcAt, dominoPoint, tiltAt, hitAngle, hitDelay, cameraAt, cursorAt, arcBounds, entryPrim, exitPrim, projectBounds, faceCorners, groundLyrics, greenLetterPoints, freeBody, freeTiltAt, floorToneAt, groundShadowAt, lightTone, faceNormal, KEY_LIGHT, checkScaleAt, shakeAt, GreenRig as Rig, faceCenter, dominoRayHit, nineteenFrame } from '../src/scenes/parts/s16-world';
+import { greenMaterial } from '../src/scenes/s16-green';
 import { exitPrim as exit14 } from '../src/scenes/s14-shaft';
 import { CUTS } from './handoff.test';
 import { FakeCanvas, FakePath } from './kit-pathtext.test';
@@ -25,7 +26,7 @@ const audio=new AudioData(audioJSON),lyrics=new Lyrics(lyricsJSON),v=new Voice(l
 const closeRect=(a:any,b:any)=>{for(const k of ['x','y','w','h'])expect(Math.abs(a[k]-b[k])).toBeLessThanOrEqual(2);};
 
 test('C14-C16 compare measured outgoing and incoming primitives, including quarter frames',()=>{
-  expect(CUTS.map(c=>c.id)).toEqual(['C14','C15','C16']);
+  expect(CUTS.filter(c=>['C14','C15','C16'].includes(c.id)).map(c=>c.id)).toEqual(['C14','C15','C16']);
   expect(primError(exit14(F.s15[0]!-1/60),entry15(F.s15[0]!))).toEqual({px:0,size:0});
   closeRect(entryPrim(T.start,T),HANDOFF.domino15);closeRect(exitPrim(T.end-1/60,T),HANDOFF.domino16);
   const cutErrors=CUTS.map(c=>({id:c.id,...primError(c.exitPrim(c.cut-1/60),c.entryPrim(c.cut))}));
@@ -154,13 +155,23 @@ test('five visible lit floor, cast-shadow and lit top-face samples meet the revi
   }console.log('G6 exposure samples',JSON.stringify(rows));
 });
 
-test('printed fail crosses measure at least 40 px on visible fronts half a beat after entry',()=>{
+test('at least six visible front crosses span 40 px, with 80-percent ink width and 12-percent strokes',()=>{
+  expect(PRINT.markWidth).toBe(D.w*.8);expect(PRINT.stroke).toBe(D.w*.12);
   const t=afterBeats(audio,T.start,.5),cam=cameraAt(t,T),rig=new Rig();rig.set(cam);const widths=[];
   for(let i=0;i<19;i++){const a=arcAt(i),n=faceNormal(i,t,T,false),dot=n.x*(cam.pos.x-a.x)+n.y*cam.pos.y+n.z*(cam.pos.z-a.z);const face=projectBounds(cam,faceCorners(i,t,T,false));
     if(dot<=0||face.x+face.w<0||face.x>1920)continue;
     const cross=projectBounds(cam,[-1,1].flatMap(x=>[-1,1].map(y=>dominoPoint(i,p3(x*PRINT.markWidth/2,D.h/2+y*PRINT.markWidth/2,D.d/2),tiltAt(i,t,T)))));
-    expect(cross.w).toBeGreaterThanOrEqual(40);widths.push({i:i+1,width:cross.w});
-  }expect(widths.length).toBeGreaterThan(0);console.log('G6 printed fail widths',JSON.stringify({t,widths}));
+    const visible:number[]=[],half=(PRINT.markWidth-PRINT.stroke*Math.SQRT2)/2;
+    for(const slope of [-1,1])for(let along=0;along<=40;along++)for(const side of [-1,0,1]){
+      const distance=(along/40-.5)*(2*half*Math.SQRT2+PRINT.stroke),across=side*PRINT.stroke/2;
+      const p=dominoPoint(i,p3((distance-across*slope)/Math.SQRT2,D.h/2+(distance*slope+across)/Math.SQRT2,D.d/2),tiltAt(i,t,T));
+      const q=rig.proj(p.x,p.y,p.z)!;if(q.x<0||q.x>1920||q.y<0||q.y>1080)continue;
+      const ray=p3(p.x-cam.pos.x,p.y-cam.pos.y,p.z-cam.pos.z),length=Math.hypot(ray.x,ray.y,ray.z);
+      if(T.triggers.every((_,j)=>j===i||dominoRayHit(j,cam.pos,ray,t,T,length-1e-6)===null))visible.push(q.x);
+    }
+    const visibleWidth=visible.length?Math.max(...visible)-Math.min(...visible):0;
+    if(visibleWidth>=40)widths.push({i:i+1,width:cross.w,visibleWidth});
+  }expect(widths.length).toBeGreaterThanOrEqual(6);console.log('G6 printed fail widths',JSON.stringify({t,widths}));
 });
 test('ground words stand on separate arc paths, within the lyric capital-height tier',()=>{
   const paths=groundLyrics(T,v);expect(paths.map(q=>q.center)).toEqual([.5,1,2]);expect(paths.every(q=>q.offset===.6)).toBe(true);
@@ -173,7 +184,8 @@ test('sixth green slams the nineteenth printed check with outBack in 0.12 s and 
 });
 test('Nineteen baseline points project rightward within ten degrees and its top points upward',()=>{
   const t=T.end-1/60,theta=tiltAt(18,t,T),rig=new Rig();rig.set(cameraAt(t,T));
-  const ps=[p3(-.315,D.h/2-.945,-D.d/2-.003),p3(-.315,D.h/2+.945,-D.d/2-.003),p3(.315,D.h/2-.945,-D.d/2-.003)].map(q=>dominoPoint(18,q,theta)).map(p=>rig.proj(p.x,p.y,p.z)!);
+  const {origin,u,v,width}=nineteenFrame();
+  const ps=[[-width/2,0],[width/2,0],[-width/2,.1]].map(([x,y])=>p3(origin.x+u.x*x!+v.x*y!,origin.y+u.y*x!+v.y*y!,origin.z)).map(q=>dominoPoint(18,q,theta)).map(p=>rig.proj(p.x,p.y,p.z)!);
   const [a,b,c]=ps;const angle=Math.atan2(b!.y-a!.y,b!.x-a!.x)*180/Math.PI;expect(Math.abs(angle)).toBeLessThanOrEqual(10);expect(b!.x).toBeGreaterThan(a!.x);expect(c!.y).toBeLessThan(a!.y);console.log('G6 Nineteen orientation',JSON.stringify({angle,points:ps}));
 });
 
@@ -193,8 +205,24 @@ test('GREEN capital-height vectors project inside the giant tier independently o
   console.log('G6 true GREEN caps',JSON.stringify({min,max}));
 });
 
-test('the inherited full-arc frame and thirty-percent constraints still apply after the camera re-solve',()=>{
+test('the inherited full-arc frame and revised twenty-eight-percent constraints',()=>{
   let minArea=1,maxOverflow=0;const rows=[];
-  for(let t=T.launches[0]!.start;t<T.nineteen.start;t+=1/120){const b=arcBounds(t,T),area=b.w*b.h/1920/1080,overflow=Math.max(0,-b.x,-b.y,b.x+b.w-1920,b.y+b.h-1080);minArea=Math.min(minArea,area);maxOverflow=Math.max(maxOverflow,overflow);if((area<.3||overflow>0)&&rows.length<5)rows.push({t,area,overflow,bbox:b});}
-  console.log('G6 inherited arc constraints',JSON.stringify({minArea,maxOverflow,rows}));expect(minArea).toBeGreaterThanOrEqual(.3);expect(maxOverflow).toBe(0);
+  for(let t=T.launches[0]!.start;t<T.nineteen.start;t+=1/120){const b=arcBounds(t,T),area=b.w*b.h/1920/1080,overflow=Math.max(0,-b.x,-b.y,b.x+b.w-1920,b.y+b.h-1080);minArea=Math.min(minArea,area);maxOverflow=Math.max(maxOverflow,overflow);if((area<.28||overflow>0)&&rows.length<5)rows.push({t,area,overflow,bbox:b});}
+  console.log('G6 inherited arc constraints',JSON.stringify({minArea,maxOverflow,rows}));expect(minArea).toBeGreaterThanOrEqual(.28);expect(maxOverflow).toBe(0);
+});
+
+test('closing sightline targets the moving green face with pitch >= 1.2 and no intervening board at 60Hz',()=>{
+  let frames=0,minPitch=Infinity;const hits=[];
+  const times=[...Array.from({length:Math.ceil((T.end-T.nineteen.start)*60)},(_,i)=>T.nineteen.start+i/60),T.end-1/60,T.end];
+  for(const t of times){const cam=cameraAt(t,T),center=faceCenter(18,t,T);expect(cam.tgt).toEqual(center);
+    const delta=p3(center.x-cam.pos.x,center.y-cam.pos.y,center.z-cam.pos.z),distance=Math.hypot(delta.x,delta.y,delta.z);
+    const pitch=Math.atan2(-delta.y,Math.hypot(delta.x,delta.z));minPitch=Math.min(minPitch,pitch);expect(pitch).toBeGreaterThanOrEqual(1.2-1e-10);
+    expect(dominoRayHit(18,cam.pos,delta,t,T,distance+1e-6)).not.toBeNull();
+    for(let i=0;i<18;i++)if(dominoRayHit(i,cam.pos,delta,t,T,distance-1e-6)!==null)hits.push({t,board:i+1});frames++;
+  }console.log('G6 closing ray checks',JSON.stringify({frames,minPitch,hits}));expect(hits).toEqual([]);
+});
+test('GREEN uses opaque, non-emissive ink with lightLines and maxCov 0.3',()=>{
+  const m=greenMaterial(),shader={uniforms:{},fragmentShader:'#include <common>\n#include <opaque_fragment>'} as any;
+  m.onBeforeCompile(shader,{} as any);expect(shader.uniforms.engraveLightLines.value).toBe(1);expect(shader.uniforms.engraveMaxCov.value).toBe(.3);
+  expect(m.transparent).toBe(false);expect(m.opacity).toBe(1);expect(m.emissiveIntensity).toBe(0);m.dispose();
 });

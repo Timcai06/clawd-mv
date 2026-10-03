@@ -13,6 +13,19 @@ import type { GreenTimes } from './s16-green-state';
 export const D = { w: 0.7, h: 2.1, d: 0.22 } as const;
 export const RADIUS = 14, ARC = 0.62, MAX_TILT = Math.PI / 2 - 0.08;
 export const FALL_SECONDS = 0.24;
+/** Off-axis framing keeps the physical sightline aimed at the moving face centre. */
+export interface GreenCamera extends Cam { shift?: { x:number; y:number } }
+export class GreenRig extends Rig {
+  override set(c:GreenCamera) {
+    super.set(c);
+    if(c.shift){
+      this.cam.projectionMatrix.elements[8]!-=2*c.shift.x/1920;
+      this.cam.projectionMatrix.elements[9]!+=2*c.shift.y/1080;
+      this.cam.projectionMatrixInverse.copy(this.cam.projectionMatrix).invert();
+      this.vp.multiplyMatrices(this.cam.projectionMatrix,this.cam.matrixWorldInverse);
+    }
+  }
+}
 export const KEY_LIGHT = p3(-Math.cos(22*Math.PI/180)/Math.sqrt(2), Math.sin(22*Math.PI/180), -Math.cos(22*Math.PI/180)/Math.sqrt(2));
 export function arcAt(i: number): P3 {
   const a = lerp(-ARC, ARC, i / 18);
@@ -32,6 +45,7 @@ export function hitAngle(i: number): number {
 }
 export function hitDelay(i: number): number { return FALL_SECONDS*Math.sqrt(hitAngle(i)/MAX_TILT); }
 export function tiltAt(i: number, t: number, T: GreenTimes): number {
+  if(i===18)t=Math.min(t,T.end-0.1);
   const age = t-T.triggers[i]!, duration = i === 18 ? 0.6 : FALL_SECONDS;
   if (age <= 0) return 0;
   if (age <= duration) return MAX_TILT*ease.inQuad(age/duration);
@@ -61,7 +75,7 @@ export function bounds(points: readonly { x: number; y: number }[]): Rect {
   return { x,y,w:Math.max(...points.map(p=>p.x))-x,h:Math.max(...points.map(p=>p.y))-y };
 }
 export function projectBounds(cam: Cam, points: P3[]): Rect {
-  const rig=new Rig(); rig.set(cam); const ps=points.map(p=>rig.proj(p.x,p.y,p.z)).filter(p=>p!==null);
+  const rig=new GreenRig(); rig.set(cam); const ps=points.map(p=>rig.proj(p.x,p.y,p.z)).filter(p=>p!==null);
   return ps.length ? bounds(ps) : { x:0,y:0,w:0,h:0 };
 }
 function vector(a: P3,b: P3): THREE.Vector3 { return new THREE.Vector3(a.x-b.x,a.y-b.y,a.z-b.z); }
@@ -100,13 +114,50 @@ export function fitFaceCamera(points: P3[], rect: Rect, back = false, readable =
   }
   return make(v);
 }
-const cameras=new WeakMap<GreenTimes,{entry:Cam;exit:Cam}>();
-function cutCameras(T:GreenTimes){let c=cameras.get(T);if(!c){c={entry:fitFaceCamera(faceCorners(0,T.start,T,false),HANDOFF.domino15),exit:fitFaceCamera(faceCorners(18,T.end-0.1,T),HANDOFF.domino16,true,true)};cameras.set(T,c);}return c;}
+const cameras=new WeakMap<GreenTimes,{entry:Cam;exit:GreenCamera}>();
+function cutCameras(T:GreenTimes){let c=cameras.get(T);if(!c){c={entry:fitFaceCamera(faceCorners(0,T.start,T,false),HANDOFF.domino15),exit:closingCamera(T.end-0.1,T)};cameras.set(T,c);}return c;}
+
+export const END_ROLL=Math.atan((HANDOFF.domino16.w/HANDOFF.domino16.h*D.h-D.w)/(D.h-HANDOFF.domino16.w/HANDOFF.domino16.h*D.w));
+export function faceCenter(i:number,t:number,T:GreenTimes):P3 {
+  return dominoPoint(i,p3(0,D.h/2,-D.d/2),tiltAt(i,t,T));
+}
+/** The label's baseline spans 90% of the narrow face; its basis is fixed to the print. */
+export function nineteenFrame(){
+  const c=Math.cos(END_ROLL),s=Math.sin(END_ROLL);
+  return {origin:p3(0,D.h/2,-D.d/2-.003),u:p3(-c,s,0),v:p3(s,c,0),width:D.w*.9};
+}
+export function closingCamera(t:number,T:GreenTimes):GreenCamera {
+  t=Math.min(t,T.end-0.1);
+  const k=ease.inOutCubic(span(t,T.nineteen.start,T.end-0.1)),target=faceCenter(18,t,T);
+  const theta=tiltAt(18,t,T),pitch=Math.max(1.2,theta),f=tangentAt(18);
+  const dir=new THREE.Vector3(-f.x*Math.cos(pitch),Math.sin(pitch),-f.z*Math.cos(pitch));
+  const X=vector(dominoPoint(18,p3(-1,0,0),theta),dominoPoint(18,p3(0,0,0),theta)).normalize();
+  const right=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),dir).normalize();
+  const up=new THREE.Vector3().crossVectors(dir,right).normalize();
+  const fov=34,finalDistance=540/Math.tan(fov*Math.PI/360)*(D.h*Math.cos(END_ROLL)+D.w*Math.sin(END_ROLL))/HANDOFF.domino16.h;
+  const distance=lerp(24,finalDistance,k),pos=new THREE.Vector3(target.x,target.y,target.z).addScaledVector(dir,distance);
+  return {pos:value(pos),tgt:target,fov,roll:Math.atan2(X.dot(up),X.dot(right))+END_ROLL,
+    shift:{x:k*(HANDOFF.domino16.x+HANDOFF.domino16.w/2-960),y:k*(HANDOFF.domino16.y+HANDOFF.domino16.h/2-540)}};
+}
+
+/** Finite CPU ray / oriented box slab intersection, using the same pose as GPU vertices. */
+export function dominoRayHit(i:number,origin:P3,direction:P3,t:number,T:GreenTimes,maxDistance=Infinity):number|null {
+  const theta=tiltAt(i,t,T),pivot=dominoPoint(i,p3(),theta),delta=vector(origin,pivot),ray=new THREE.Vector3(direction.x,direction.y,direction.z).normalize();
+  const axes=[p3(1,0,0),p3(0,1,0),p3(0,0,1)].map(q=>vector(dominoPoint(i,q,theta),pivot));
+  let near=0,far=maxDistance;
+  for(let j=0;j<3;j++){
+    const o=delta.dot(axes[j]!),d=ray.dot(axes[j]!),lo=[-D.w/2,0,-D.d/2][j]!,hi=[D.w/2,D.h,D.d/2][j]!;
+    if(Math.abs(d)<1e-10){if(o<lo||o>hi)return null;continue;}
+    const a=(lo-o)/d,b=(hi-o)/d;near=Math.max(near,Math.min(a,b));far=Math.min(far,Math.max(a,b));
+    if(far<near)return null;
+  }
+  return near;
+}
 export function waveIndex(t:number,T:GreenTimes):number {
   let i=0;while(i<18 && t>=T.triggers[i+1]!)i++;
   return i<18 ? i+span(t,T.triggers[i]!,T.triggers[i+1]!) : 18;
 }
-export function cameraAt(t:number,T:GreenTimes):Cam {
+export function cameraAt(t:number,T:GreenTimes):GreenCamera {
   const cut=cutCameras(T);if(t<=T.start)return structuredClone(cut.entry);
   if(exitEnvelope(t,T.end).still)return structuredClone(cut.exit);
   const i=waveIndex(t,T),a=arcAt(Math.floor(i)),b=arcAt(Math.min(18,Math.floor(i)+1));
@@ -118,7 +169,7 @@ export function cameraAt(t:number,T:GreenTimes):Cam {
   if(t<monumentStart)return following;
   const wide=monumentCamera(t,T);
   if(t<T.nineteen.start)return wide;
-  return mixCam(monumentCamera(T.nineteen.start,T),cut.exit,ease.inOutCubic(span(t,T.nineteen.start,T.end-0.1)));
+  return closingCamera(t,T);
 }
 const monumentCameras=new WeakMap<GreenTimes,{t:number;cam:Cam}[]>();
 const CAMERA_STEP=1/120;
@@ -178,7 +229,7 @@ export function cursorWorldAt(t:number,T:GreenTimes):P3 {
   for(const k of [1,2])if(t>=T.triggers[k]!-0.1 && t<=T.triggers[k]!){const a=arcAt(k),f=tangentAt(k),d=lerp(0.65,0.1,span(t,T.triggers[k]!-0.1,T.triggers[k]!));return p3(a.x-f.x*d,0.18,a.z-f.z*d);}
   return p3(p.x,0.18,p.z);
 }
-export function cursorAt(t:number,T:GreenTimes){const p=cursorWorldAt(t,T),r=new Rig();r.set(cameraAt(t,T));return r.proj(p.x,p.y,p.z);}
+export function cursorAt(t:number,T:GreenTimes){const p=cursorWorldAt(t,T),r=new GreenRig();r.set(cameraAt(t,T));return r.proj(p.x,p.y,p.z);}
 
 export const AMBIENT_TONE=0.20, FLOOR_TONE=0.88;
 export const LIGHT_INTENSITY=Math.PI*(FLOOR_TONE-AMBIENT_TONE)/Math.max(0.15,KEY_LIGHT.y);
