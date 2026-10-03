@@ -10,7 +10,7 @@ import { afterBeats, beatsSince, span, wordTime } from '../../kit/time';
 import { CALENDAR_MONTHS } from '../../kit/content';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
-import { HANDOFF, type Rect } from '../../kit/handoff';
+import { HANDOFF, CUT, type Prim, type Rect } from '../../kit/handoff';
 
 export const CELL = 3.6;
 export const BLOCK = 2.72;
@@ -114,12 +114,12 @@ export function cityState(audio: AudioData, t: number, T: CityTimes) {
   const travel = rising ? lerp(travelAtCount(31), 1, ease.inOutCubic(span(riseB, 0.2, 1.4))) : travelAtCount(count);
   return {
     travel, head: streetAt(travel), count, counter,
-    extrude: ease.outExpo(span(b, 0, 0.6)),
-    accented: Math.min(31, Math.floor(count + 1e-6)),
+    extrude: span(b, 0, 2),
+    accented: rising ? 32 : Math.min(31, Math.floor(count + 1e-6)),
     visited: Math.min(31, Math.floor(count + 1e-6)),
     rising, lift,
     settle: ease.inOutCubic(span(riseB, 0, 4)),
-    roof32: Math.max(0.025, dateBlock(32).height * lift),
+    roof32: dateBlock(32).height * lift,
   };
 }
 
@@ -162,7 +162,7 @@ function countCam(audio: AudioData, t: number, T: CityTimes): CamPose {
 }
 
 /** Camera as a pure function of time (seek-safe), continuous across the S04-1 → S04-2 cut. */
-export function cameraAt(audio: AudioData, t: number, T: CityTimes, s: ReturnType<typeof cityState>): CamPose {
+function oldCameraAt(audio: AudioData, t: number, T: CityTimes, s: ReturnType<typeof cityState>): CamPose {
   if (!s.rising) return countCam(audio, t, T);
   // S04-2: the tower erupts and the camera is thrown up and back with it into the storyboard frame
   // (overshoot, spring settle), then a slow push toward the tower's foot through "October" and
@@ -181,45 +181,88 @@ export function cameraAt(audio: AudioData, t: number, T: CityTimes, s: ReturnTyp
   return { pos, target: tg, fov: lerp(from.fov, KF.fov, Math.min(1, k)), roll: lerp(from.roll, 0, Math.min(1, k)) + 0.012 * Math.sin(rb * 1.3), shiftX: lerp(from.shiftX, 0, Math.min(1, k)) };
 }
 
-export function projectionCamera(audio: AudioData, t: number, T: CityTimes) {
-  const p = cameraAt(audio,t,T,cityState(audio,t,T)), cam = new THREE.PerspectiveCamera(p.fov,1920/1080,.1,300);
-  cam.position.copy(p.pos); cam.up.set(Math.sin(p.roll),Math.cos(p.roll),0); cam.lookAt(p.target);
-  if(p.shiftX)cam.setViewOffset(1920,1080,p.shiftX,0,1920,1080);
-  cam.updateProjectionMatrix();cam.updateMatrixWorld();return cam;
+// V6 entry calibration: preserve the square city world, calibrate only the flat month projection.
+import { Rig, mixCam, type Cam } from '../../kit/rig';
+import { solvePoint, setCamera, projectedBounds } from './s05-print';
+import { layoutPath, letterTimes, path3, pathAt, tangentAt, type PathLayout, type Path3 } from '../../kit/pathtext';
+import { varRun } from '../../kit/vartype';
+import { Voice } from '../../kit/lyric-moves';
+export const GRID_CORNERS:Point3[]=[[-12.6,0,1.8],[12.6,0,1.8],[12.6,0,-16.2],[-12.6,0,-16.2]];
+const plain=(c:CamPose):Cam=>({pos:{x:c.pos.x,y:c.pos.y,z:c.pos.z},tgt:{x:c.target.x,y:c.target.y,z:c.target.z},roll:c.roll,fov:c.fov});
+export function cameraAt(audio:AudioData,t:number,T:CityTimes,s=cityState(audio,t,T)):CamPose & {shiftY:number;stretchX:number} {
+  s=cityState(audio,t,T);
+  const old=oldCameraAt(audio,t,T,s),h=540/Math.tan(16*Math.PI/180)/(870/18),start:Cam={pos:{x:0,y:h,z:-7.2},tgt:{x:0,y:0,z:-7.2},roll:0,fov:32};
+  const k=ease.inOutCubic(span(t,T.start,afterBeats(audio,T.start,2))),base=mixCam(start,plain(old),k);
+  const end=T.end,last=afterBeats(audio,T.end,-1),u=span(t,last,end),d=DATES[31]!,roof=cityState(audio,t,T).roof32;
+  const point={x:d.x,y:roof+.4,z:d.z};
+  // A perspective solve moves the camera; Clawd's rectangle is its projected world size.
+  const ex=ease.inQuad(u);
+  if(t>=last){
+    const pose=oldCameraAt(audio,last,T,cityState(audio,last,T)),r=new Rig();setCamera(r,{...plain(pose),offsetX:pose.shiftX});
+    const d=DATES[31]!,roof=cityState(audio,last,T).roof32,q=r.proj(d.x,roof+.4,d.z)!;
+    // The center reaches the cut with the incoming push's tangent. Hermite
+    // interpolation leaves the city anchor unchanged and joins the screen velocity.
+    const duration=end-last,inDuration=duration*5/3;
+    const h00=2*u*u*u-3*u*u+1,h01=-2*u*u*u+3*u*u,h11=u*u*u-u*u;
+    const center={x:h00*q.x+h01*1204+h11*duration*2*(930-1204)/inDuration,
+      y:h00*q.y+h01*440.5+h11*duration*2*(520-440.5)/inDuration};
+    const c=solvePoint(point,lerp(6,9,ex)/.16,center,KF.yaw*Math.PI/180,KF.el*Math.PI/180,KF.fov);
+    return {pos:new THREE.Vector3(c.pos.x,c.pos.y,c.pos.z),target:new THREE.Vector3(c.tgt.x,c.tgt.y,c.tgt.z),fov:c.fov,roll:c.roll,shiftX:c.offsetX??0,shiftY:c.offsetY??0,stretchX:1};
+  }
+  return {pos:new THREE.Vector3(base.pos.x,base.pos.y,base.pos.z),target:new THREE.Vector3(base.tgt.x,base.tgt.y,base.tgt.z),fov:base.fov,roll:base.roll,
+    shiftX:old.shiftX*k,shiftY:-45*(1-k),stretchX:lerp((1320/25.2)/(870/18),1,k)};
 }
+export function projectionCamera(audio: AudioData, t: number, T: CityTimes) {
+  const p=cameraAt(audio,t,T),r=new Rig();setCamera(r,{...plain(p),offsetX:p.shiftX,offsetY:p.shiftY,stretchX:p.stretchX});const k=ease.inOutCubic(span(t,T.start,afterBeats(audio,T.start,2)));r.cam.up.set(0,k,-(1-k));r.cam.lookAt(p.target);r.cam.rotateZ(p.roll);r.cam.updateMatrixWorld(true);return r.cam;
+}
+export function cityRig(audio:AudioData,t:number,T:CityTimes){const r=new Rig();r.cam.copy(projectionCamera(audio,t,T));r.vp.multiplyMatrices(r.cam.projectionMatrix,r.cam.matrixWorldInverse);return r;}
 export function projectCity(cam: THREE.Camera, p: Point3) {
   const v = new THREE.Vector3(...p).project(cam);return {x:(v.x*.5+.5)*1920,y:(.5-v.y*.5)*1080};
 }
-function bounds(points: {x:number;y:number}[], clip = true): Rect {
-  const x = Math.max(clip?0:-Infinity,Math.min(...points.map(p=>p.x))),y=Math.max(clip?0:-Infinity,Math.min(...points.map(p=>p.y)));
-  return {x,y,w:Math.min(clip?1920:Infinity,Math.max(...points.map(p=>p.x)))-x,h:Math.min(clip?1080:Infinity,Math.max(...points.map(p=>p.y)))-y};
-}
+export function blockHeight(i:number,t:number,a:AudioData,T:CityTimes){const s=cityState(a,t,T);return i===31?s.roof32:(s.extrude===0?0:DATES[i]!.height*ease.outBack(Math.min(1,Math.max(0,s.extrude*1.6-i/31*.6)),1.3));}
 export function cityBounds(audio: AudioData, t: number, T: CityTimes) {
-  const cam=projectionCamera(audio,t,T),s=cityState(audio,t,T);
-  const buildings=DATES.map((d,i)=>{
-    const own=Math.min(1,Math.max(0,s.extrude*1.6-i/31*.6));
-    const h=i===31?s.roof32:Math.max(.025,d.height*ease.outBack(own,1.3)),w=i===31?TOWER_BLOCK:BLOCK;
-    return [-1,1].flatMap(x=>[-1,1].flatMap(z=>[0,h].map(y=>projectCity(cam,[d.x+x*w/2,y,d.z+z*w/2]))));
-  });
-  return {dominant:bounds(buildings.flat()),tower:bounds(buildings[31]!,false),clawd:clawdRect(audio,t,T)};
-}
-/** Incoming calendar is the same flat overhead plate for the cut's first beat. */
-export function handoffIn(t: number, audio: AudioData, T: CityTimes) {
-  return {...HANDOFF.month03,alpha:1-ease.inOutCubic(span(t,T.start,afterBeats(audio,T.start,1)))};
-}
-function stageClawd(audio: AudioData,t:number,T:CityTimes): Rect {
-  const s=cityState(audio,t,T),cam=projectionCamera(audio,t,T);
-  if(s.rising){
-    const d=DATES[31]!,p=projectCity(cam,[d.x,0,d.z+TOWER_BLOCK/2]);
-    return {x:p.x-70,y:p.y-60,w:102,h:60};
-  }
-  const p=projectCity(cam,[s.head[0],.62,s.head[2]]);return {x:p.x-48,y:p.y-30,w:96,h:30};
-}
-export function handoffOut(t: number,audio: AudioData,T:CityTimes) {
-  const b=stageClawd(audio,t,T),k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-1/60));
-  return {x:lerp(b.x,HANDOFF.clawd04.x,k),y:lerp(b.y,HANDOFF.clawd04.y,k),px:lerp(b.w/16,HANDOFF.clawd04.px,k)};
+  const r=cityRig(audio,t,T),buildings=DATES.map((d,i)=>{const h=blockHeight(i,t,audio,T),w=i===31?TOWER_BLOCK:BLOCK;return [-1,1].flatMap(x=>[-1,1].flatMap(z=>[0,h].map(y=>({x:d.x+x*w/2,y,z:d.z+z*w/2}))));});
+  return {dominant:projectedBounds(r,buildings.flat(),true),tower:projectedBounds(r,buildings[31]!),clawd:clawdRect(audio,t,T)};
 }
 export function clawdRect(audio:AudioData,t:number,T:CityTimes):Rect {
-  const b=stageClawd(audio,t,T),p=handoffOut(t,audio,T),k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-1/60));
-  return {x:p.x,y:p.y,w:p.px*16,h:lerp(b.h,HANDOFF.clawd04.px*5,k)};
+  const s=cityState(audio,t,T),d=DATES[31]!,r=cityRig(audio,t,T),p=s.rising?{x:d.x,y:s.roof32+.4,z:d.z}:{x:s.head[0],y:.62,z:s.head[2]},q=r.proj(p.x,p.y,p.z)!;
+  const px=.16*q.s;return {x:q.x-8*px,y:q.y-2.5*px,w:16*px,h:5*px};
 }
+export function handoffOut(t:number,a:AudioData,T:CityTimes){const b=clawdRect(a,t,T);return {x:b.x,y:b.y,px:b.w/16};}
+export function handoffIn(t:number,a:AudioData,T:CityTimes){return {...entryPrim(t,a,T),alpha:0};}
+export function entryPrim(t:number,a:AudioData,T:CityTimes):Prim {return {kind:'rect',...projectedBounds(cityRig(a,t,T),GRID_CORNERS.map(([x,y,z])=>({x,y,z})))};}
+export function exitPrim(t:number,a:AudioData,T:CityTimes):Prim {return {kind:'rect',...clawdRect(a,t,T)};}
+export function exitVelocity(t:number,a:AudioData,T:CityTimes){const h=1e-4,A=clawdRect(a,t-h,T),B=clawdRect(a,t+h,T);return {x:(B.x+B.w/2-A.x-A.w/2)/(2*h),y:(B.y+B.h/2-A.y-A.h/2)/(2*h),w:(B.w-A.w)/(2*h),h:(B.h-A.h)/(2*h)};}
+export const CITY_GLSL=`vec3 dateCenter(float day) {float slot=4.0+day-1.0;return vec3(day==32.0?11.55268:(mod(slot,7.0)-3.0)*3.6,0.0,-floor(slot/7.0)*3.6);}`;
+export function cursorAt(t:number,a:AudioData,T:CityTimes){const p=cityState(a,t,T).head,q=cityRig(a,t,T).proj(...p)!;return {x:q.x,y:q.y};}
+export function streetVisible(P:{x:number;y:number;z:number},t:number,a:AudioData,T:CityTimes){
+  const eye=cameraAt(a,t,T).pos,dir={x:eye.x-P.x,y:eye.y-P.y,z:eye.z-P.z};
+  return !DATES.some((d,i)=>{const h=blockHeight(i,t,a,T),w=(i===31?TOWER_BLOCK:BLOCK)/2;if(h<=0)return false;
+    let lo=0,hi=1;for(const [p,delta,min,max] of [[P.x,dir.x,d.x-w,d.x+w],[P.y,dir.y,0,h],[P.z,dir.z,d.z-w,d.z+w]]){if(Math.abs(delta!)<1e-12){if(p!<min!||p!>max!)return false;continue;}const A=(min!-p!)/delta!,B=(max!-p!)/delta!;lo=Math.max(lo,Math.min(A,B));hi=Math.min(hi,Math.max(A,B));if(hi<=lo)return false;}return hi>Math.max(lo,1e-4)&&lo<1;});
+}
+export function inverseTravel(a:AudioData,T:CityTimes){
+  const table=Array.from({length:2049},(_,i)=>{const t=lerp(T.start,T.countEnd,i/2048);return {t,s:cityState(a,t,T).travel*STREETS.total};});
+  return (s:number)=>{let lo=0,hi=table.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(table[m]!.s<s)lo=m;else hi=m;}const A=table[lo]!,B=table[hi]!;return lerp(A.t,B.t,Math.min(1,Math.max(0,(s-A.s)/Math.max(1e-12,B.s-A.s))));};
+}
+const lyricCache=new WeakMap<Lyrics,WeakMap<AudioData,WeakMap<CityTimes,ReturnType<typeof makeCityLyrics>>>>();
+function makeCityLyrics(l:Lyrics,a:AudioData,T:CityTimes){const v=new Voice(l,a),words=l.get('thirty-second day').words,route=path3(STREETS.points.map(([x,y,z])=>({x,y,z}))),d=DATES[31]!;
+  const first=path3(route.pts.slice(0,4)),foot=path3([{x:d.x-TOWER_BLOCK/2,y:.02,z:d.z+TOWER_BLOCK/2+.08},{x:d.x+12,y:.02,z:d.z+TOWER_BLOCK/2+.08}]);
+  const fit=(ws:typeof words,path:Path3,mode:'lie'|'stand')=>{let s0=0;return ws.map(word=>{
+    const t=(word.start+word.end)/2,r=cityRig(a,t,T),p=pathAt(path,s0),q=r.proj(p.x,p.y,p.z)!,ux=tangentAt(path,s0);
+    // lie text-up = normal cross tangent. Solve its actual affine cap height.
+    const scale=mode==='stand'?q.s:(()=>{const up={x:ux.z,y:0,z:-ux.x},b=r.proj(p.x+up.x*.1,p.y,p.z+up.z*.1)!;return Math.hypot(b.x-q.x,b.y-q.y)/.1;})();
+    const lay=layoutPath([word],{capH:75/scale,s0,axes:w=>v.form(w,w.end).axes,upper:true});
+    s0=lay.s1+.32*100*lay.capH/varRun('H',100,v.form(word,word.end).axes).capH;return lay;
+  });};
+  const leadWords=fit(words.slice(0,2),first,'lie'),dayWords=fit(words.slice(3,5),foot,'stand');
+  const merge=(sets:PathLayout[]):PathLayout=>({glyphs:sets.flatMap(s=>s.glyphs),s0:sets[0]!.s0,s1:sets.at(-1)!.s1,capH:sets[0]!.capH});
+  const word=words[2]!,display=word.w.toUpperCase(),run=varRun(display,100,v.form(word,word.end).axes),times=letterTimes({...word,w:display});
+  // R2: each birth point is the cursor's route position at that letter's vocal onset.
+  const count:PathLayout={capH:1.6,s0:0,s1:route.length,glyphs:run.glyphs.map((g,i)=>({ch:g.ch,word,wi:0,i,
+    s:cityState(a,times[i]!.t0,T).travel*STREETS.total,w:g.adv*1.6/run.capH,...times[i]!}))};
+  count.s0=count.glyphs[0]!.s;
+  return {lead:merge(leadWords),count,day:merge(dayWords),leadWords,dayWords,route,first,foot,october:words[5]!};
+}
+export function cityLyrics(l:Lyrics,a:AudioData,T:CityTimes){let audios=lyricCache.get(l);if(!audios){audios=new WeakMap();lyricCache.set(l,audios);}let times=audios.get(a);if(!times){times=new WeakMap();audios.set(a,times);}let hit=times.get(T);if(!hit){hit=makeCityLyrics(l,a,T);times.set(T,hit);}return hit;}
+/** R2 measures the head at each birth, rather than a continuous natural-width text head. */
+export function letterBirthPoint(i:number,a:AudioData,l:Lyrics,T:CityTimes){const lay=cityLyrics(l,a,T),g=lay.count.glyphs[i]!,p=pathAt(lay.route,g.s),q=cityRig(a,g.t0,T).proj(p.x,p.y,p.z)!;return {x:q.x,y:q.y};}

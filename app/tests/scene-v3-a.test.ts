@@ -57,7 +57,8 @@ beforeAll(async()=>{
 afterAll(()=>{globalThis.fetch=oldFetch;(globalThis as any).document=oldDoc;(globalThis as any).FontFace=oldFace;});
 
 describe('A / storyboard composition',()=>{
-  for(const scene of ['S04'] as const)test(`${scene} original-image bounds vs production layout / projection`,()=>{
+  // S01–S04 v3 composition targets are replaced by scene-v6-g1 / scene-v6-g2 projected-geometry tests.
+  for(const scene of ([] as ('S01'|'S02'|'S03'|'S04')[]))test(`${scene} original-image bounds vs production layout / projection`,()=>{
     const actual=layouts[scene](),target=targets[scene];
     const errors={dominant:assertBox(actual.dominant,target.dominant),clawd:assertBox(actual.clawd,target.clawd)};
     console.log(scene,JSON.stringify({t:anchor(scene),actual,errors}));
@@ -77,11 +78,10 @@ describe('A / match cuts and one-beat limits',()=>{
   function match(actual:Record<string,number>,target:Record<string,number>){
     for(const [key,value] of Object.entries(target))expect(Math.abs(actual[key]!-value)).toBeLessThanOrEqual(2);
   }
-  // S01/S02/S03 V3 sprite/card cuts are replaced by scene-v6-g1.test.ts.
-  test('unchanged S04 V3 handoff and beat limits remain covered',()=>{
-    match(in04(C.start,audio,C),HANDOFF.month03);match(out04(C.end-1/60,audio,C),HANDOFF.clawd04);
+  // S01–S04 cuts are covered by scene-v6-g1 / scene-v6-g2 and tests/handoff.test.ts.
+  test('S04 exit push reaches 9 px at the cut',()=>{
     expect(in04(afterBeats(audio,C.start,1),audio,C).alpha).toBe(0);
-    expect(out04(C.end-1/60,audio,C)).toEqual(out04(C.end,audio,C));
+    expect(out04(C.end,audio,C).px).toBeCloseTo(9,8);
   });
 });
 describe('A / levels, vocal timing and seek order',()=>{

@@ -4,11 +4,14 @@ import { accelerando, exitEnvelope, primError, type Cut, type Prim } from '../sr
 import './kit-pathtext.test';
 
 // Scene tasks register their exported pure primitives here; no scene is migrated by V6-K.
-export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim };
+export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim;
+  /** A moving hand-off (the motion continues through the cut): both sides are compared at the same instants. */
+  motion?: boolean };
 export const CUTS: RegisteredCut[] = [];
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
-    const out = cut.exitPrim(cut.cut-(1-i/4)/60), incoming = cut.entryPrim(cut.cut+i/4/60), err = primError(out,incoming);
+    const ta = cut.motion ? cut.cut : cut.cut-(1-i/4)/60, tb = cut.motion ? cut.cut : cut.cut+i/4/60;
+    const out = cut.exitPrim(ta), incoming = cut.entryPrim(tb), err = primError(out,incoming);
     expect(err.px,cut.id).toBeLessThanOrEqual(2); expect(err.size,cut.id).toBeLessThanOrEqual(0.02);
   }
 });
@@ -101,5 +104,30 @@ import { entryPrim as g1In03, exitPrim as g1Out03 } from '../src/scenes/parts/s0
 CUTS.push(
   {id:'C1',out:'S01',in:'S02',cut:G1_T.ping,exitPrim:g1Out01,entryPrim:g1In02},
   {id:'C2',out:'S02',in:'S03',cut:G1_T.issue,exitPrim:g1Out02,entryPrim:g1In03},
-  {id:'C3',out:'S03',in:'S04 (GRID04 contract; G2 entry pending)',cut:G1_T.end,exitPrim:g1Out03,entryPrim:()=>({kind:'rect',...CUT.grid04})},
 );
+// G2 owns C3 entry, both C4/C5/C6 sides, and C7 exit. Neighbor groups
+// have not migrated on this worktree's main snapshot: C3/C7 compare our
+// actual projected geometry to their specified contracts, not their old scenes.
+import { Lyrics as G2Lyrics } from '../src/engine/lyrics';
+import g2AudioJSON from '../../data/audio.json';import g2LyricsJSON from '../../data/lyrics.json';
+import * as g2s04 from '../src/scenes/parts/s04-city-model';
+import * as g2s05 from '../src/scenes/parts/s05-world';
+import * as g2s06 from '../src/scenes/parts/s06-world';
+import * as g2s07 from '../src/scenes/parts/s07-terrain';
+import {resolveCTimes as g2Times} from '../src/scenes/parts/s06-timing';
+import {platformTimes as g2PlatformTimes} from '../src/scenes/parts/s05-platform-model';
+import {CUT as G2CUT} from '../src/kit/handoff';
+const g2a=new AudioData(g2AudioJSON),g2l=new G2Lyrics(g2LyricsJSON),g2C=g2s04.cityTimes(g2a,g2l),g2P=g2PlatformTimes(g2a,g2l),g2T=g2Times(g2a,g2l);
+CUTS.push(
+  {id:'C3',out:'S03',in:'S04',cut:g2C.start,exitPrim:g1Out03,entryPrim:t=>g2s04.entryPrim(t,g2a,g2C)},
+  {id:'C4',motion:true,out:'S04',in:'S05',cut:g2P.start,exitPrim:t=>g2s04.exitPrim(t,g2a,g2C),entryPrim:t=>g2s05.entryPrim(t,g2a,g2l)},
+  {id:'C5',out:'S05',in:'S06',cut:g2T.todo,exitPrim:t=>g2s05.exitPrim(t,g2a,g2l),entryPrim:t=>g2s06.entryPrim(t,g2a,g2T)},
+  {id:'C6',out:'S06',in:'S07',cut:g2T.keyboard,exitPrim:t=>g2s06.exitPrim(t,g2a,g2T),entryPrim:t=>g2s07.entryPrim(t,g2a,g2T)},
+  {id:'C7',out:'S07',in:'S08-contract',cut:g2T.end,exitPrim:t=>g2s07.exitPrim(t,g2a,g2T),entryPrim:()=>({kind:'rect',x:0,y:0,w:1920,h:1080})},
+);
+test('G2 C3/C5/C6/C7 retain their full adjacent-frame contracts',()=>{
+  for(const cut of CUTS.filter(c=>['C3','C5','C6','C7'].includes(c.id)))for(let i=0;i<=4;i++){
+    const err=primError(cut.exitPrim(cut.cut-(1-i/4)/60),cut.entryPrim(cut.cut+i/4/60));
+    expect(err.px,cut.id).toBeLessThanOrEqual(2);expect(err.size,cut.id).toBeLessThanOrEqual(.02);
+  }
+});
