@@ -373,3 +373,8 @@ export default class S14Shaft extends Scene {
 
 /** Handoff geometry at the end of S14 (for tests): the lit line lands on HANDOFF.line14. */
 export function handoffOut() { return { ...HANDOFF.line14 }; }
+
+/** C14 export only; the existing shaft renderer is unchanged. */
+export function exitPrim(_t: number): import('../kit/handoff').Prim {
+  return { kind: 'line', x0: 46, y0: 990, x1: 1872, y1: 990, w: 2 };
+}

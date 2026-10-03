@@ -5,7 +5,8 @@ import { css } from '../../theme';
 import { F, font } from '../../engine/type';
 import { fillRun, runPath, type VarRun } from '../../kit/vartype';
 import type { Rect, Pt } from '../../kit/handoff';
-import type { Domino } from './s16-green-state';
+import * as THREE from 'three';
+import { D } from './s16-world';
 
 export function polygon(c: CanvasRenderingContext2D, points: readonly Pt[]) {
   c.beginPath(); c.moveTo(points[0]!.x, points[0]!.y);
@@ -48,33 +49,23 @@ export function printRun(c: CanvasRenderingContext2D, run: VarRun, box: Rect,
   c.restore();
 }
 
-export function drawDomino(c: CanvasRenderingContext2D, card: Domino, inkAlpha = 0.6) {
-  const { front: p, side, i, passed, face: b } = card;
-  // A projected shadow made of horizontal engraving strokes (no soft lighting).
-  c.save(); c.strokeStyle = NIGHT ? 'rgba(0,0,0,0.6)' : css('ink', 0.35); c.lineWidth = 0.8;
-  for (let j = 0; j < 22; j++) {
-    const y = p[3]!.y + card.thickness * j / 22;
-    c.beginPath(); c.moveTo(p[3]!.x - b.h * 0.5, y); c.lineTo(p[2]!.x, y - 9); c.stroke();
+
+/** One texture atlas, separate UV tiles for fail/pass/numbered sides. */
+export function dominoAtlas():THREE.CanvasTexture {
+  const cv=document.createElement('canvas');cv.width=1536;cv.height=2048;const c=cv.getContext('2d')!;
+  c.fillStyle=css('paper');c.fillRect(0,0,cv.width,cv.height);
+  for(let i=0;i<19;i++){
+    const y=i*104; c.font=font(F.mono(600),24);c.fillStyle=css('ink');
+    c.fillText(`TEST ${String(i+1).padStart(2,'0')}`,16,y+30);c.fillText('PASS',528,y+30);c.fillText(String(i+1).padStart(2,'0'),1040,y+50);
+    c.lineWidth=14;c.lineCap='square';c.strokeStyle=css('fail');c.beginPath();c.moveTo(188,y+46);c.lineTo(316,y+91);c.moveTo(316,y+46);c.lineTo(188,y+91);c.stroke();
+    c.strokeStyle=css('pass');c.beginPath();c.moveTo(684,y+62);c.lineTo(734,y+88);c.lineTo(838,y+44);c.stroke();
   }
-  polygon(c, side); c.fillStyle = css(NIGHT ? 'night' : 'ink'); c.fill(); c.clip();
-  c.strokeStyle = css('paper', NIGHT ? 0.35 : 0.75); c.lineWidth = 0.75;
-  for (let x = b.x - b.h; x < b.x + b.w + b.h; x += 3) {
-    c.beginPath(); c.moveTo(x, b.y); c.lineTo(x + b.h * 0.4, b.y + b.h + 35); c.stroke();
-  }
-  c.restore();
-  c.save(); polygon(c, p); c.fillStyle = NIGHT ? css('ink', 0.75) : css('paper'); c.fill(); c.clip();
-  c.fillStyle = css(NIGHT ? 'paper' : 'ink', 0.08);
-  for (let j = 0; j < 100; j++) c.fillRect(b.x + hash(i, j, 1) * b.w, b.y + hash(i, j, 2) * b.h, 1, 2);
-  // Map the plate's square to the front's affine basis, preserving the slanted typography.
-  c.transform(p[1]!.x - p[0]!.x, p[1]!.y - p[0]!.y,
-    p[3]!.x - p[0]!.x, p[3]!.y - p[0]!.y, p[0]!.x, p[0]!.y);
-  c.fillStyle = css(NIGHT ? 'paper' : 'ink', inkAlpha); c.font = font(F.mono(600), 20 / Math.max(1, b.h));
-  // Non-sung serial numbers have one annotation size, compensated for foreshortening.
-  c.save(); c.scale(b.h / Math.max(1, p[1]!.x - p[0]!.x), 1);
-  c.fillText(String(i + 1).padStart(2, '0'), 0.1 * (p[1]!.x - p[0]!.x) / b.h, 0.1); c.restore();
-  c.strokeStyle = css(passed ? 'pass' : 'fail'); c.lineWidth = 0.105;
-  c.beginPath();
-  if (passed) { c.moveTo(0.19, 0.58); c.lineTo(0.43, 0.7); c.lineTo(0.8, 0.43); }
-  else { c.moveTo(0.28, 0.48); c.lineTo(0.72, 0.67); c.moveTo(0.72, 0.48); c.lineTo(0.28, 0.67); }
-  c.stroke(); c.restore();
+  const tx=new THREE.CanvasTexture(cv);tx.colorSpace=THREE.SRGBColorSpace;tx.anisotropy=8;return tx;
+}
+export function dominoGeometry(i:number):THREE.BoxGeometry {
+  const g=new THREE.BoxGeometry(D.w,D.h,D.d);g.translate(0,D.h/2,0);
+  const uv=g.attributes.uv!;
+  // BoxGeometry groups: +/-x, +/-y, +z (red front), -z (green back).
+  for(let face=0;face<6;face++){const tile=face===4?0:face===5?1:2;for(let j=0;j<4;j++){const k=face*4+j,u=uv.getX(k),v=uv.getY(k);uv.setXY(k,(tile*512+8+u*496)/1536,1-(i*104+4+(1-v)*96)/2048);}}
+  return g;
 }

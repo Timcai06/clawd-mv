@@ -54,11 +54,11 @@ describe('nineteen dominoes', () => {
       expect(dominoState(audio, at, triggers).passed).toBe(i + 1);
     }
   });
-  test('the cascade accelerates, and ends at nineteen with no twentieth card', () => {
+  test('physical cascades use equal collision delays, and end at nineteen with no twentieth card', () => {
     expect(triggers[4]! - triggers[3]!).toBeLessThan(triggers[2]! - triggers[1]!);
     for (const start of [3, 7, 11]) {
       const gaps = [1, 2, 3].map(i => triggers[start + i]! - triggers[start + i - 1]!);
-      expect(gaps[1]).toBeLessThan(gaps[0]!); expect(gaps[2]).toBeLessThan(gaps[1]!);
+      expect(gaps[1]).toBeCloseTo(gaps[0]!,10); expect(gaps[2]).toBeCloseTo(gaps[1]!,10);
     }
     expect(dominoState(audio, T.end - eps, triggers).passed).toBe(19);
     expect(dominoState(audio, T.end + 20, triggers).cards.every(c => c.fall === 1)).toBe(true);

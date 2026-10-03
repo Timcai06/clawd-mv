@@ -1,165 +1,124 @@
-import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
-import { NIGHT, NightSky, ChromaGlow } from '../kit/night';
-import { drawNote } from '../kit/note';
-import { PrintOverlay } from '../kit/print-overlay';
-// S16: the cropped GREEN slab above one foreshortened arc of nineteen engraved dominoes.
+// V6 S16: engraved, lit solids. No state is integrated between rendered frames.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { F, font } from '../engine/type';
-import { css } from '../theme';
-import { ease, lerp } from '../engine/util';
-import { span } from '../kit/time';
-import { Lens } from '../kit/lens';
-import { Ground, postFor } from '../kit/ground';
-import { drawCursor } from '../kit/cursor';
-import { heatColor, Voice, drawSet, setLine, odometer } from '../kit/lyric-moves';
-import { varRun } from '../kit/vartype';
-import * as Clawd from '../kit/clawd';
-import { greenState, greenArcCards, greenTimes, type GreenTimes } from './parts/s16-green-state';
-import { drawDomino, polygon, printRun } from './parts/s16-print';
+import { clamp, ease } from '../engine/util';
+import { css, lin } from '../theme';
+import { engraveMaterial, setEngrave } from '../kit/engrave-mat';
+import { SolidText } from '../kit/solidtype';
+import { WordPlane } from '../kit/wordplane';
+import { Rig, p3 } from '../kit/rig';
+import { Voice } from '../kit/lyric-moves';
+import { drawCarry, carryLayout } from '../kit/carry';
+import { exitEnvelope } from '../kit/handoff';
+import { layoutPath, path3, drawPathText, letterTimes } from '../kit/pathtext';
+import { postFor } from '../kit/ground';
+import { greenTimes, greenHit, GREEN_WIDTHS, type GreenTimes } from './parts/s16-green-state';
+import { D, KEY_LIGHT, S16_GLSL, yawAt, arcAt, tiltAt, cameraAt, cursorWorldAt } from './parts/s16-world';
+import { resolveFTimes } from './parts/s15-f-timing';
+import { freeCarrySpec } from './parts/s15-layout';
+import { dominoAtlas, dominoGeometry } from './parts/s16-print';
+export { cursorAt, cameraAt } from './parts/s16-world';
+export const TYPE_LEVELS = { giant: 320, lyric: 70, label:20 };
 
-// Minimum capital heights: the fitted headline is >=510; 92 px Archivo has a 686/1000 cap.
-// Plex label uses its 20 px font size (task's permitted convention).
-export const TYPE_LEVELS = { giant: 510, lyric: 63.112, label: 20 };
-
-class World {
-  print = new PrintOverlay();
-  sky = new NightSky();
-  chroma = new ChromaGlow();
-  sparks = new SparkLines();
-  users = 0;
-  ground = new Ground();
-  layer = new Layer2D();
-  lens = new Lens();
-  times: GreenTimes;
-  voice: Voice;
-  constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.sky.dispose(); this.chroma.dispose(); this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
+function deform(m:THREE.Material,i:number,theta:{value:number}) {
+  const prior=m.onBeforeCompile.bind(m);
+  m.onBeforeCompile=(s,r)=>{
+    prior(s,r);s.uniforms.dominoI={value:i};s.uniforms.dominoTheta=theta;
+    s.vertexShader=s.vertexShader.replace('#include <common>','#include <common>\n'+S16_GLSL+'\nuniform float dominoI, dominoTheta;');
+    s.vertexShader=s.vertexShader.replace('#include <begin_vertex>','vec3 transformed=dominoPoint(dominoI,position,dominoTheta);');
+    // Normals undergo the same rigid transform, excluding the pivot's translation.
+    s.vertexShader=s.vertexShader.replace('#include <beginnormal_vertex>',`vec3 objectNormal=dominoPoint(dominoI,normal,dominoTheta)-dominoPoint(dominoI,vec3(0.0),dominoTheta);`);
+  };
+  const key=m.customProgramCacheKey.bind(m);m.customProgramCacheKey=()=>key()+'-s16-pose-v1';
 }
-const worlds = new WeakMap<THREE.WebGLRenderer, World>();
-
+class World {
+  users=0;T:GreenTimes;voice:Voice;scene=new THREE.Scene();rig=new Rig();layer=new Layer2D();
+  atlas=dominoAtlas();materials:THREE.MeshLambertMaterial[]=[];geo:THREE.BufferGeometry[]=[];
+  theta=Array.from({length:19},()=>({value:0}));dominoes:THREE.Mesh[]=[];poses:THREE.Group[]=[];
+  words:{word:GreenTimes['nineteen'];plane:WordPlane;board:number;cap:number;width:number}[]=[];
+  green:SolidText[]=[];greenLetters=Array.from({length:5},()=>engraveMaterial({ink:lin('ink'),paper:lin('ink'),pitch:5,emissive:lin('hot'),emissiveK:0}));greenMat=engraveMaterial({ink:lin('ink'),paper:lin('ink'),pitch:5,minCov:0.02});
+  floorMat=engraveMaterial({ink:lin('ink'),paper:lin('paper'),pitch:5});
+  cursorMat=engraveMaterial({ink:lin('ink'),paper:lin('clay'),pitch:5});cursor:THREE.Mesh;
+  free:SolidText;freeAnchor=new THREE.Group();freePivot=new THREE.Group();freeBearing=0;carry:ReturnType<typeof freeCarrySpec>;
+  groundWords:ReturnType<typeof layoutPath>;groundPath:ReturnType<typeof path3>;
+  depth:THREE.MeshDepthMaterial[]=[];
+  constructor(ctx:SceneCtx){
+    this.T=greenTimes(ctx.audio,ctx.lyrics);this.voice=new Voice(ctx.lyrics,ctx.audio);
+    this.carry=freeCarrySpec(this.voice,resolveFTimes(ctx));
+    const floorGeo=new THREE.PlaneGeometry(400,400);floorGeo.rotateX(-Math.PI/2);this.geo.push(floorGeo);
+    const floor=new THREE.Mesh(floorGeo,this.floorMat);floor.receiveShadow=true;this.scene.add(floor);
+    const light=new THREE.DirectionalLight(0xffffff,2.1);light.position.set(KEY_LIGHT.x*30,KEY_LIGHT.y*30,KEY_LIGHT.z*30-3);
+    light.target.position.set(0,0,-3);light.castShadow=true;light.shadow.mapSize.set(2048,2048);
+    Object.assign(light.shadow.camera,{left:-24,right:24,top:24,bottom:-24,near:0.1,far:100});light.shadow.bias=-0.0002;light.shadow.normalBias=0.015;
+    this.scene.add(light,light.target,new THREE.AmbientLight(0xffffff,0.2));
+    for(let i=0;i<19;i++){
+      const mat=engraveMaterial({ink:lin('ink'),paper:lin('paper'),paperMap:true,pitch:5});mat.map=this.atlas;deform(mat,i,this.theta[i]!);this.materials.push(mat);
+      const g=dominoGeometry(i);this.geo.push(g);const mesh=new THREE.Mesh(g,mat);mesh.frustumCulled=false;mesh.castShadow=mesh.receiveShadow=true;
+      const depth=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking});deform(depth,i,this.theta[i]!);mesh.customDepthMaterial=depth;this.depth.push(depth);
+      this.dominoes.push(mesh);this.scene.add(mesh);
+      const group=new THREE.Group(),a=arcAt(i),yaw=yawAt(i);
+      group.position.set(a.x+Math.sin(yaw)*D.d/2,0,a.z+Math.cos(yaw)*D.d/2);group.rotation.order='YXZ';group.rotation.y=yaw;
+      this.scene.add(group);this.poses.push(group);
+    }
+    for(const [board,word] of [[0,this.T.count[0]!],[1,this.T.count[4]!],[2,this.T.count[6]!],[18,this.T.nineteen]] as const){
+      // Nineteen fits along the long dimension of its narrow board. The glyph cap uses 90% of width.
+      const cap=board===18?D.w*0.9:0.55,axes=this.voice.form(word,word.end).axes;
+      const plane=new WordPlane(word.w,{capH:cap,axes,ax:0.5,ay:0.5,engrave:true,texCap:180});
+      plane.mesh.position.set(0,D.h*0.5,-D.d-0.003);plane.mesh.rotation.y=Math.PI;
+      const width=board===18?1.9:0.61, sx=Math.min(1,width/plane.w);plane.mesh.scale.set(sx,1,1);
+      if(board===18){plane.mesh.rotation.z=Math.PI/2;plane.mesh.scale.set(Math.min(1,1.89/plane.w),1,1);}
+      this.poses[board]!.add(plane.mesh);this.words.push({word,plane,board,cap,width});
+    }
+    for(const wdth of GREEN_WIDTHS){const text=new SolidText('GREEN',{capH:3.2,depth:0.6,axes:{wdth,wght:900},material:this.greenMat});text.letters.forEach((g,j)=>{g.mesh.material=this.greenLetters[j]!;});text.group.scale.x=6;text.group.position.set(-text.width*3,0,-19);this.scene.add(text.group);this.green.push(text);}
+    const cursorGeo=new THREE.BoxGeometry(0.12,0.36,0.12);this.geo.push(cursorGeo);this.cursor=new THREE.Mesh(cursorGeo,this.cursorMat);this.cursor.castShadow=true;this.scene.add(this.cursor);
+    const freeMat=engraveMaterial({ink:lin('ink'),paper:lin('clay'),pitch:5});this.materials.push(freeMat);
+    this.free=new SolidText('free',{capH:0.9,depth:0.05,axes:this.carry.axes,material:freeMat,bevel:0});
+    this.freePivot.add(this.free.group);this.freeAnchor.add(this.freePivot);this.scene.add(this.freeAnchor);
+    // The carry starts on a plane normal to the opening camera, with the exact same ink box.
+    this.rig.set(cameraAt(this.T.free.end-0.1,this.T));const cam=this.rig.cam;
+    const at=new THREE.Vector3((this.carry.x/1920)*2-1,1-(this.carry.y/1080)*2,0).unproject(cam);
+    const z=new THREE.Vector3().subVectors(at,cam.position).dot(cam.getWorldDirection(new THREE.Vector3()));
+    const px=1080/(2*Math.tan(cam.fov*Math.PI/360)*z),scale=90/(this.free.capH*px);
+    this.freeAnchor.position.copy(at);this.freeAnchor.quaternion.copy(cam.quaternion);this.freeAnchor.scale.setScalar(scale);
+    // Match the lowercase ink's left bearing, not its advance box.
+    this.freeBearing=-this.free.letters[0]!.mesh.geometry.boundingBox!.min.x;
+    this.freePivot.position.x=this.free.width+this.freeBearing;this.free.group.position.x=-this.free.width;
+    this.groundWords=layoutPath(this.T.count.filter((_,i)=>[1,2,3,5].includes(i)),{capH:0.7,axes:w=>this.voice.form(w,w.end).axes,s0:0,upper:true});
+    this.groundPath=path3([p3(-9,0.015,1.5),p3(12,0.015,1.5)]);
+  }
+  dispose(){for(const w of this.words)w.plane.dispose();for(const t of this.green)t.dispose();this.free.dispose();for(const g of this.geo)g.dispose();for(const m of [...this.materials,...this.depth,...this.greenLetters,this.greenMat,this.floorMat,this.cursorMat])m.dispose();this.atlas.dispose();this.layer.texture.dispose();}
+}
+const worlds=new WeakMap<THREE.WebGLRenderer,World>();
 export default class S16Green extends Scene {
-  private w!: World;
-  override init() {
-    this.w = worlds.get(this.ctx.renderer) ?? new World(this.ctx);
-    worlds.set(this.ctx.renderer, this.w); this.w.users++;
-  }
-  override dispose() {
-    if (--this.w.users === 0) { this.w.dispose(); worlds.delete(this.ctx.renderer); }
-  }
-
-  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
-    const out = this.w.lens.rt;
-    const w = this.w, v = w.voice, T = w.times, t = f.t;
-    const s = greenState(this.ctx.audio, this.ctx.lyrics, v, t, T);
-    // v4 motion: the lens rides the falling wave. Close on one, two, three (each topple a nudge),
-    // then it can't keep up with "green and green…", widening as the run accelerates; "Nineteen
-    // green!" lands as a hit and the frame opens to the identity for the S17 hand-off.
-    const last = Math.max(0, s.passed - 1), card = s.cards[last]!;
-    const cx = card.front.reduce((a, p) => a + p.x, 0) / 4, cy = card.front.reduce((a, p) => a + p.y, 0) / 4;
-    const close = 1 - ease.inOutCubic(span(t, T.triggers[2]!, T.triggers[10] ?? T.nineteen.start));
-    let nudge = 0;
-    for (const at of T.triggers) if (t >= at) nudge = Math.pow(0.5, (t - at) / 0.08);
-    const hit = t >= T.nineteen.start ? Math.pow(0.5, (t - T.nineteen.start) / 0.12) : 0;
-    const open = ease.inOutCubic(span(t, T.nineteen.start, T.outgoingStart));
-    const arrive = 1 - ease.outCubic(span(t, T.start, T.incomingEnd));
-    const zoom = lerp(1 + 0.14 * close + 0.06 * (1 - close) + 0.025 * nudge + 0.1 * hit, 1, Math.max(open, arrive));
-    const lens = { zoom, fx: lerp(cx, 960, Math.max(open, arrive)), fy: lerp(cy, 540, Math.max(open, arrive)),
-      ax: lerp(cx, 960, Math.max(open, arrive)), ay: lerp(cy, 540, Math.max(open, arrive)),
-      rot: (0.01 * nudge - 0.02 * hit) * (1 - open) };
-    if (NIGHT) w.sky.render(this.ctx.renderer, out, 0.3, 0.5);
-    else w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, halftone: 0.08, pitch: 7, haze: 0 });
-    w.layer.clear(); const c = w.layer.ctx;
-
-    // Registration rules carry no extra annotation text.
-    c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.3 : 0.55); c.lineWidth = 1;
-    c.beginPath(); c.moveTo(96, 500); c.lineTo(96, 1080);
-    c.moveTo(1530, 0); c.lineTo(1530, 655); c.moveTo(1530, 278); c.lineTo(1920, 278);
-    c.moveTo(0, 820); c.lineTo(620, 820); c.stroke();
-    if (s.form && s.form.born > 0) {
-      const run = varRun('GREEN', 740, { wdth: s.form.axes.wdth, wght: Math.max(820, s.form.axes.wght) });
-      // The reference's headline is INK. A stressed attack briefly prints clay, then
-      // becomes the persistent ink title rather than disappearing between greens.
-      printRun(c, run, s.headline, s.form.stress && s.form.singing ? 'clay' : NIGHT ? 'paper' : 'ink', 16,
-        Math.min(1, s.form.born * 1.6), heatColor(s.form.stress && s.form.singing ? 'clay' : NIGHT ? 'paper' : 'ink', 'paper', s.form.age));
+  private w!:World;
+  override init(){this.w=worlds.get(this.ctx.renderer)??new World(this.ctx);worlds.set(this.ctx.renderer,this.w);this.w.users++;}
+  override dispose(){if(--this.w.users===0){this.w.dispose();worlds.delete(this.ctx.renderer);}}
+  override render(f:Frame,out:THREE.WebGLRenderTarget){
+    const w=this.w,T=w.T,t=f.t,r=this.ctx.renderer;w.rig.set(cameraAt(t,T));
+    const flash=t>=T.greens[5]!.start&&t<T.greens[5]!.start+0.2?0.4:0;
+    for(let i=0;i<19;i++){const theta=tiltAt(i,t,T);w.theta[i]!.value=theta;w.poses[i]!.rotation.x=theta;setEngrave(w.materials[i]!,{emissive:lin('pass'),emissiveK:flash});}
+    for(const a of w.words){const form=w.voice.form(a.word,t),end=w.voice.form(a.word,a.word.end),sx=Math.min(1,(a.board===18?1.89:0.61)/a.plane.w);
+      a.plane.mesh.visible=t>=a.word.start;a.plane.mesh.scale.x=sx*form.axes.wdth/end.axes.wdth;
+      a.plane.set({prog:a.plane.karaoke(a.word,t),aDim:0,cSung:lin('ink'),cDone:lin('ink'),done:t>=a.word.end?1:0,heat:t>=a.word.start?Math.exp(-(t-a.word.start)/0.28):0,tone:0.7});
     }
-
-    { const last = s.cards[18]!, p = last.front[1]!;
-      drawNote(c, { ax: p.x, ay: p.y, x: p.x - 210, y: p.y - 90, text: '19/19 · flaky: 0', t0: T.nineteen.start + 0.35, on: NIGHT ? 'ink' : 'paper' }, t); }
-    c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.4 : 0.8); c.lineWidth = 1.3;
-    for (let i = 0; i < s.cards.length - 1; i++) {
-      const a = s.cards[i]!.front[1]!, b = s.cards[i + 1]!.front[0]!;
-      c.beginPath(); c.moveTo(a.x + 2, a.y - 24);
-      c.quadraticCurveTo((a.x + b.x) / 2, Math.min(a.y, b.y) - 55, b.x - 4, b.y - 28); c.stroke();
-      c.beginPath(); c.moveTo(b.x - 8, b.y - 31); c.lineTo(b.x - 4, b.y - 28); c.lineTo(b.x - 3, b.y - 34); c.stroke();
-    }
-    w.sparks.begin(c, undefined, NIGHT ? 'ink' : 'paper');
-    const waveEnd = T.triggers.at(-1)!;
-    const wavePath = (tb: number) => {
-      const i = Math.max(0, Math.min(s.cards.length-2, T.triggers.filter(at=>at<=tb).length-1));
-      const cards = greenArcCards(this.ctx.audio, tb, T);
-      const a = cards[i]!.front[1]!, b = cards[i+1]!.front[0]!;
-      const k = span(tb,T.triggers[i]!,T.triggers[i+1]!), q=1-k;
-      return { x:q*q*(a.x+2)+2*q*k*(a.x+b.x)/2+k*k*(b.x-4),
-        y:q*q*(a.y-24)+2*q*k*(Math.min(a.y,b.y)-55)+k*k*(b.y-28) };
-    };
-    if (t>=Math.max(T.triggers[0]!,T.incomingEnd) && t<waveEnd && sparkFade(t,T.outgoingStart)>0)
-      cursorSpark(c,undefined,w.sparks,t,tb=>({...wavePath(tb),h:24}),
-        {on:NIGHT ? 'ink' : 'paper',from:Math.max(T.triggers[0]!,T.incomingEnd),to:waveEnd,end:T.outgoingStart,seed:16});
-    if (t>=T.incomingEnd && sparkFade(t,T.outgoingStart)>0) for(let i=0;i<s.cards.length-1;i++) {
-      const a=s.cards[i]!.front[1]!, b=s.cards[i+1]!.front[0]!;
-      heatTrail(w.sparks,t,tb=>{
-        const k=span(tb,T.triggers[i]!,T.triggers[i+1]!),q=1-k;
-        return {x:q*q*(a.x+2)+2*q*k*(a.x+b.x)/2+k*k*(b.x-4),
-          y:q*q*(a.y-24)+2*q*k*(Math.min(a.y,b.y)-55)+k*k*(b.y-28)};
-      },{from:T.triggers[i]!,to:T.triggers[i+1]!,width:1.3,alpha:sparkFade(t,T.outgoingStart)});
-    }
-    const numericLine = v.line('One goes green, and two, and three');
-    for (const card of s.cards) {
-      drawDomino(c, card);
-      if (!card.label) continue;
-      const line = card.i === 18 ? v.line('Nineteen green!') : numericLine;
-      const form = v.form(card.label, t), presence = v.presence(line, t);
-      if (form.born <= 0 || presence <= 0) continue;
-      c.save(); polygon(c, card.front); c.clip();
-      const run = varRun(form.text.replace(/[,!]/g, ''), 92, form.axes);
-      printRun(c, run, { x: card.face.x + 5, y: card.face.y + card.face.h * 0.72,
-        w: card.face.w * 0.78, h: TYPE_LEVELS.lyric }, form.stress ? 'clay' : NIGHT ? 'paper' : 'ink', 100 + card.i,
-        presence * Math.min(1, form.born * 1.6), heatColor(form.stress ? 'clay' : NIGHT ? 'paper' : 'ink', NIGHT ? 'ink' : 'paper', form.age)); c.restore();
-    }
-
-    // Numeric words belong to the faces; GREEN is the headline. Connecting words
-    // occupy the reference's upper-right paper margin, one at a time.
-    const line = this.ctx.lyrics.lineAt(t) ?? this.ctx.lyrics.lastLine(t);
-    if (line && line.start < T.end && line.end >= T.start) {
-      const words = v.forms(line, t).filter(x => !/^(green\W*|one|two\W*|three|nineteen)$/i.test(x.text));
-      const latest = words.filter(x => x.born > 0).at(-1);
-      if (latest) drawSet(c, setLine([latest], 92), 1570, 205, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(line, t) });
-    }
-    const previous = v.line('Snip the extra line and set October free');
-    if (v.presence(previous, t) > 0) drawSet(c, setLine(v.forms(previous, t).slice(-2), 92),
-      120, 1010, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(previous, t) });
-
-    const cl = s.clawd;
-    Clawd.draw(c, cl.x, cl.y, Clawd.pose('A7', { beat: f.beat, beat0: 0, p: 0 }), { px: cl.px });
-    c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.35 : 0.6); c.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-      c.beginPath(); c.moveTo(1515 + i * 18, 448); c.lineTo(1515 + i * 18, 492 + (i % 3) * 25); c.stroke();
-    }
-    const final = v.form(T.nineteen, t);
-    if (final.born > 0) {
-      odometer(c, 18 + final.sung, 1570, 500, 92, { digits: 2, color: final.stress ? 'clay' : 'pass', on: NIGHT ? 'ink' : 'paper', age: final.age, pitch: 51 });
-      c.font = font(F.mono(500), 20); c.fillStyle = css('pass', 0.6); c.fillText('/19 passed', 1675, 499);
-      drawCursor(c, { x: 1808, y: 500, h: 24 });
-    } else {
-      c.font = font(F.mono(500), 20); c.fillStyle = css('pass', 0.6);
-      c.fillText(`${s.passed}/19 passed`, 1570, 500); drawCursor(c, { x: 1808, y: 500, h: 24 });
-    }
-    this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    if (NIGHT) w.chroma.composite(this.ctx.renderer, w.layer.texture, out, 0.55);
-    else w.print.render(this.ctx.renderer, out);
-    w.lens.film(this.ctx.renderer, finalOut, lens);
-    return NIGHT ? { ...postFor('ink'), hud: 0, frame: 0, vignette: 0.35, ca: 0.6 } : { ...postFor('paper'), hud: 0, frame: 0, grain: 0.035 };
+    const hit=greenHit(t,T);w.green.forEach((g,i)=>{g.group.visible=hit?.i===i;if(hit?.i===i){g.group.position.y=1.5*(1-ease.inQuad(clamp((t-hit.word.start)/0.12)));const times=letterTimes({...hit.word,w:'GREEN'});g.letters.forEach((_,j)=>{g.setLetter(j,{visible:t>=times[j]!.t0});setEngrave(w.greenLetters[j]!,{emissiveK:t>=times[j]!.t0?Math.exp(-(t-times[j]!.t0)/0.28):0});});}});
+    const cursor=cursorWorldAt(t,T);w.cursor.position.set(cursor.x,cursor.y,cursor.z);
+    setEngrave(w.cursorMat,{emissive:lin('clay'),emissiveK:exitEnvelope(t,T.end).gain-1});
+    // Retain the complete carry through its vocal tail, then let the physical word fall out with the world.
+    const begin=T.free.end-0.1,k=ease.inQuad(clamp((t-begin)/0.24));w.freeAnchor.visible=t>=begin&&t<begin+0.24+0.12;
+    // Rightward topple about the right baseline; timing/direction conflict is documented in final report.
+    w.freePivot.rotation.z=-Math.PI/2*k;w.freePivot.position.y=-2*Math.max(0,(t-begin-0.24)/0.12);
+    const oldShadow=r.shadowMap.enabled,oldType=r.shadowMap.type;r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFShadowMap;
+    r.setRenderTarget(out);r.setClearColor(new THREE.Color().setRGB(...lin('paper')),1);r.clear(true,true,true);
+    try{r.render(w.scene,w.rig.cam);}finally{r.shadowMap.enabled=oldShadow;r.shadowMap.type=oldType;}
+    w.layer.clear();const c=w.layer.ctx;
+    if(t<begin)drawCarry(c,w.carry,carryLayout(w.carry));
+    drawPathText(c,w.rig,w.groundPath,w.groundWords,t,{mode:'stand',base:'ink',on:'paper',axes:(g,t)=>w.voice.form(g.word,t).axes,minPx:50,maxPx:110});
+    if(t>=T.nineteen.end){c.font=font(F.mono(500),20);c.fillStyle=css('ink');c.fillText('19 / 19 passed',96,1000);}
+    this.ctx.comp.draw(r,w.layer.upload(),out);
+    const hitAge=hit?t-hit.word.start-0.12:-1,shake=hitAge>=0?6*Math.exp(-hitAge/0.06)*Math.sin(hitAge*100):0;
+    return {...postFor('paper'),hud:0,frame:0,vignette:0,grain:0.035,shake:[0,exitEnvelope(t,T.end).still?0:shake] as [number,number]};
   }
 }

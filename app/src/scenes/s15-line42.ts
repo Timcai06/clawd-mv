@@ -9,6 +9,8 @@ import { Layer2D, W, H } from '../engine/gl';
 import { F, font } from '../engine/type';
 import { css } from '../theme';
 import { Ground, GlowLayer, postFor } from '../kit/ground';
+import { drawCarry } from '../kit/carry';
+import { exitEnvelope } from '../kit/handoff';
 import { afterBeats, span } from '../kit/time';
 import { ease, hash, lerp } from '../engine/util';
 import { glowDraw, heatColor, Voice, drawSet, setLine, odometer, type WordForm } from '../kit/lyric-moves';
@@ -21,7 +23,7 @@ import { Rig, planeAffine, p3, type P3 } from '../kit/rig';
 import { VoxelClawd } from '../kit/clawd3d';
 import { lin } from '../theme';
 import { S15_GLSL, BAR_C, BAR_H, TIP, UPPER_END, LOWER_END, BEAM_HW, DEPTH_HZ, CUT_X, CLAWD_AT, CLAWD_VOX, barPose, cameraAt, onBar } from './parts/s15-world';
-import { TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, freeState, handoffIn, monumentState } from './parts/s15-layout';
+import { TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, freeState, freeCarrySpec, freeCarryAffines, handoffIn, monumentState } from './parts/s15-layout';
 export const TYPE_LEVELS = { ...PRINT_LEVELS };
 const CODE = 'for (let d = 0; d <= days; d++) {';
 
@@ -109,6 +111,7 @@ export default class S15Line42 extends Scene {
    */
   private lensView(t: number) {
     const T = this.w.T;
+    if (exitEnvelope(t,T.s16[0]!).still) return { zoom:1,fx:960,fy:540,ax:960,ay:540,rot:0 };
     const s16 = T.s16[0]!;
     if (t < T.s15[2]!) {
       // a slow push, then (from "forty-two") a dive into the "<=" — at the bottom of the dive it is
@@ -143,8 +146,8 @@ export default class S15Line42 extends Scene {
     // One machine annotation at the bottom; its incoming clay rule is exactly line14.
     const rule = handoffIn(t, audio, T);
     c.strokeStyle = css(rule.clay > 0.01 ? 'clay' : s.paper ? 'ink' : 'paper', 0.6);
-    c.lineWidth = 1; c.beginPath(); c.moveTo(rule.x0, rule.y); c.lineTo(rule.x1, rule.y); c.stroke();
-    if (!s.paper && rule.clay > 0.01) glowDraw(c, w.glow.ctx, g => { g.strokeStyle = c.strokeStyle; g.lineWidth = 1;
+    c.lineWidth = lerp(1,2,rule.clay); c.beginPath(); c.moveTo(rule.x0, rule.y); c.lineTo(rule.x1, rule.y); c.stroke();
+    if (!s.paper && rule.clay > 0.01) glowDraw(c, w.glow.ctx, g => { g.strokeStyle = c.strokeStyle; g.lineWidth = c.lineWidth;
       g.beginPath(); g.moveTo(rule.x0, rule.y); g.lineTo(rule.x1, rule.y); g.stroke(); });
     drawNote(c, { ax: (rule.x0 + rule.x1) / 2, ay: rule.y, x: (rule.x0 + rule.x1) / 2 + 60, y: rule.y - 64, text: 'Δ −1 char', sub: '<= → <', t0: afterBeats(audio, T.snip, 1), on: s.paper ? 'paper' : 'ink' }, t);
     c.font = font(F.mono(400), TYPE_LEVELS.label); c.fillStyle = css(s.paper ? 'ink' : 'paper', 0.6);
@@ -176,7 +179,7 @@ export default class S15Line42 extends Scene {
   /** The raymarched ≤ and the voxel Clawd on the bar. */
   private solid(f: Frame, out: THREE.WebGLRenderTarget, paper: boolean) {
     const w = this.w, T = w.T, t = f.t, audio = this.ctx.audio, r = this.ctx.renderer;
-    const cam = cameraAt(audio, t, T);
+    const cam = cameraAt(audio, exitEnvelope(t,T.s16[0]!).still ? T.s16[0]!-0.1 : t, T);
     w.rig.set(cam); w.rm.setCam(cam);
     const b = barPose(audio, t, T), u = w.rm.u;
     (u.barT!.value as THREE.Vector3).set(b.t.x, b.t.y, b.t.z); u.barRoll!.value = b.roll; u.gap!.value = b.gap;
@@ -213,13 +216,15 @@ export default class S15Line42 extends Scene {
   /** The cut stone that becomes S16's first domino (2D, last beat). */
   private piece(c: CanvasRenderingContext2D, q: { cx: number; cy: number; angle: number }, paper: boolean) {
     c.save(); c.translate(q.cx, q.cy); c.rotate(q.angle);
+    c.globalAlpha = 1;
     c.fillStyle = css('paper'); c.fillRect(-35, -105, 70, 210);
     c.beginPath(); c.rect(-35, -105, 70, 210); c.clip();
     c.strokeStyle = css('ink', 0.85); c.lineWidth = 1.1;
     for (let i = -210; i < 120; i += 4) { c.beginPath(); c.moveTo(-35, i); c.lineTo(35, i + 46); c.stroke(); }
     c.restore();
     c.save(); c.translate(q.cx, q.cy); c.rotate(q.angle);
-    c.strokeStyle = css(paper ? 'ink' : 'paper', 0.8); c.lineWidth = 1.2; c.strokeRect(-35, -105, 70, 210); c.restore();
+    const k = (exitEnvelope(this.tNow,this.w.T.s16[0]!).gain - 1) / 0.9;
+    c.strokeStyle = k > 0 ? heatColor('paper',paper ? 'paper' : 'ink',-0.28 * Math.log(k)) : css(paper ? 'ink' : 'paper',0.8); c.lineWidth = 1.2; c.strokeRect(-35, -105, 70, 210); c.restore();
   }
 
   /** Where the "<=" of line 42 sits in the source panel (the camera dives into it). */
@@ -303,6 +308,7 @@ export default class S15Line42 extends Scene {
       forms.slice(0, 7).forEach((form, i) => this.word(c, form, 110, 175 + i * 112, on, 0, presence));
       const free = forms[7]!;
       if (free.born > 0) {
+        if (t >= afterBeats(audio,T.s16[0]!,-0.5)) { drawCarry(c,freeCarrySpec(v,T),freeCarryAffines(audio,v,t,T)); return; }
         const escape = freeState(audio, t, T);
         c.save(); c.translate(escape.x, escape.baseline); c.rotate(escape.roll);
         c.globalAlpha = free.born * presence; c.fillStyle = heatColor(free.stress ? 'clay' : 'ink', on, free.age);

@@ -5,7 +5,22 @@ import './kit-pathtext.test';
 
 // Scene tasks register their exported pure primitives here; no scene is migrated by V6-K.
 export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim };
-export const CUTS: RegisteredCut[] = [];
+import { Lyrics } from '../src/engine/lyrics';
+import audioJSON from '../../data/audio.json';
+import lyricsJSON from '../../data/lyrics.json';
+import { exitPrim as exit14 } from '../src/scenes/s14-shaft';
+import { entryPrim as entry15, exitPrim as exit15 } from '../src/scenes/parts/s15-layout';
+import { resolveFTimes } from '../src/scenes/parts/s15-f-timing';
+import { greenTimes } from '../src/scenes/parts/s16-green-state';
+import { entryPrim as entry16, exitPrim as exit16 } from '../src/scenes/parts/s16-world';
+import { resolveReleaseTimes } from '../src/scenes/parts/s17-release-state';
+import { handoffIn as entry17 } from '../src/scenes/parts/s17-release-layout';
+const song=new AudioData(audioJSON),words=new Lyrics(lyricsJSON),F=resolveFTimes({audio:song,lyrics:words}),G=greenTimes(song,words),R=resolveReleaseTimes(song,words);
+export const CUTS: RegisteredCut[] = [
+  {id:'C14',out:'S14',in:'S15',cut:F.s15[0]!,exitPrim:exit14,entryPrim:entry15},
+  {id:'C15',out:'S15',in:'S16',cut:G.start,exitPrim:t=>exit15(t,song,F),entryPrim:t=>entry16(t,G)},
+  {id:'C16',out:'S16',in:'S17',cut:G.end,exitPrim:t=>exit16(t,G),entryPrim:t=>({kind:'rect',...entry17(t,song,R)})},
+];
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
     const out = cut.exitPrim(cut.cut-(1-i/4)/60), incoming = cut.entryPrim(cut.cut+i/4/60), err = primError(out,incoming);

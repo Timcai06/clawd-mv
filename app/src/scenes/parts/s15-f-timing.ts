@@ -4,6 +4,7 @@ import { Lyrics, type Line } from '../../engine/lyrics';
 import { F, font, glyphX, plain, fitSize } from '../../engine/type';
 import { ease } from '../../engine/util';
 import { css, type ThemeKey } from '../../theme';
+import { hitDelay, MAX_TILT } from './s16-world';
 import { afterBeats, beatsSince, span, wordTime } from '../../kit/time';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
@@ -77,12 +78,10 @@ export function snipState(audio: AudioData, t: number, T: FTimes) {
 export function dominoTimes(audio: AudioData, T: FTimes): number[] {
   const times = [T.one, T.two, T.three];
   T.greens.forEach((at, group) => {
-    const next = T.greens[group + 1] ?? T.nineteen;
     const count = group === 3 ? 3 : 4;
-    const length = beatsSince(audio, next, at);
     for (let i = 0; i < count; i++) {
-      const offset = length * ease.outQuad(i / count) * 0.92;
-      times.push(afterBeats(audio, at, offset));
+      const k=times.length;
+      times.push(i===0?at:times[k-1]!+hitDelay(k-1));
     }
   });
   times.push(T.nineteen);
@@ -91,9 +90,9 @@ export function dominoTimes(audio: AudioData, T: FTimes): number[] {
 
 export function dominoState(audio: AudioData, t: number, triggers: readonly number[]) {
   const cards = triggers.map((at, i) => {
-    const progress = beatProgress(audio, t, at, i < 3 ? 0.8 : 0.32);
-    const fall = ease.inOutCubic(progress);
-    return { at, passed: t >= at, fall, angle: 1.48 * fall };
+    const progress = Math.min(1,Math.max(0,(t-at)/(i===18?0.6:0.24)));
+    const fall = ease.inQuad(progress);
+    return { at, passed: t >= at, fall, angle: MAX_TILT * fall };
   });
   return { cards, passed: cards.filter(c => c.passed).length };
 }
