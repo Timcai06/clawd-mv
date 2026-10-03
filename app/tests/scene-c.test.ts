@@ -35,15 +35,10 @@ describe('C group musical events', () => {
       }
     }
   });
-  test('landing is on a measured beat; the dive waits, rushes, and parks before the chorus', () => {
-    expect(audio.beats).toContain(T.land);
-    expect(audio.beats).toContain(T.arrive);
-    expect(T.land).toBeGreaterThan(T.keyboard);
-    expect(T.land).toBeLessThan(T.dive);
-    expect(keyboardState(audio, T.land, T)).toMatchObject({ fall: 1, landing: 1, altitude: 0, dive: 0 });
-    expect(keyboardState(audio, T.launch, T).dive).toBe(0);
-    expect(keyboardState(audio, T.arrive, T)).toMatchObject({ dive: 1, cursorOnly: true });
-    expect(T.end - T.arrive).toBeGreaterThan(0.1);
+  test('landing uses measured beats; Enter dive starts on back and fills the last frame',()=>{
+    expect(audio.beats).toContain(T.land);expect(T.land).toBeGreaterThan(T.keyboard);expect(T.land).toBeLessThan(T.dive);
+    const back=T.claws.words.at(-1)!;expect(keyboardState(audio,back.start,T).dive).toBe(0);
+    expect(keyboardState(audio,T.end-1/60,T).dive).toBe(1);expect(keyboardState(audio,T.end,T).cursorOnly).toBe(false);
   });
   test('changing nominal BPM cannot change measured-grid choreography', () => {
     const low = new AudioData({ ...audioJSON, bpm: 40 });

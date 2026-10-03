@@ -72,68 +72,27 @@ describe('B / calendar city', () => {
   });
 });
 
-describe('B / code platforms', () => {
-  test('the three lenses and next scene boundary use the resolved storyboard', () => {
-    const cuts = resolveStoryboard(board as Storyboard, lyrics, audio).shots;
-    for (const [key, id] of [['start', 'S05-1'], ['read', 'S05-2'], ['scroll', 'S05-3'], ['end', 'S06-1']] as const)
-      expect(platform[key]).toBe(cuts.find((s) => s.id === id)!.start);
-    expect(platformState(audio, platform.read - 1e-5, platform).phase).toBe(0);
-    expect(platformState(audio, platform.read, platform).phase).toBe(1);
-    expect(platformState(audio, platform.scroll, platform).phase).toBe(2);
+// The retired 2D lenses/side-scroll are replaced by the cliff-world assertions in scene-v6-g2.
+// Keep the beat-grid and seek invariants against the submitted V6 world.
+import * as cliff from '../src/scenes/parts/s05-world';
+describe('B / source cliff timing invariants',()=>{
+  test('the three shot boundaries still use the resolved storyboard',()=>{
+    const cuts=resolveStoryboard(board as Storyboard,lyrics,audio).shots;
+    for(const [key,id] of [['start','S05-1'],['read','S05-2'],['scroll','S05-3'],['end','S06-1']] as const)
+      expect(platform[key]).toBe(cuts.find(s=>s.id===id)!.start);
   });
-
-  test('src, calendar, month.ts start opening one measured beat apart', () => {
-    for (let i = 0; i < 3; i++) {
-      const at = afterBeats(audio, platform.read, i);
-      expect(platform.drawers[i]).toBeCloseTo(at, 7);
-      expect(platformState(audio, at - 1e-5, platform).drawers[i]).toBe(0);
-      expect(platformState(audio, afterBeats(audio, at, 0.8), platform).drawers[i]).toBe(1);
-    }
+  test('revised beat grids retime drawers and nominal BPM does not',()=>{
+    const other=new AudioData({...audioJSON,bpm:280}),t=afterBeats(audio,platform.read,1.3);
+    for(let k=0;k<3;k++)expect(cliff.drawerBox(k,t,other,platform)).toEqual(cliff.drawerBox(k,t,audio,platform));
+    const shifted=new AudioData({...audioJSON,beats:audioJSON.beats.map((t:number)=>t+.2),downbeats:audioJSON.downbeats.map((t:number)=>t+.2)}),retimed=platformTimes(shifted,lyrics);
+    expect(retimed.drawers[1]).toBeCloseTo(afterBeats(shifted,retimed.read,1),7);
   });
-
-  test('the reading pass traverses the foreground ledges in source order', () => {
-    const seen = new Set<number>();
-    let lastX = -Infinity;
-    for (let t = platform.scroll; t < platform.end; t += 1 / 240) {
-      const s = platformState(audio, t, platform);
-      expect(s.walkX).toBeGreaterThanOrEqual(lastX);
-      lastX = s.walkX;
-      seen.add(s.row);
-    }
-    expect([...seen]).toEqual([0, 1, 2, 3]);
-    const final = platformState(audio, platform.end - 1e-5, platform);
-    expect(final.readRows).toBe(HERO_ROWS.length);
-    expect(final.travel).toBe(1);
-  });
-
-  test('three depth factors move by different amounts under the same camera motion', () => {
-    const a = platformState(audio, platform.scroll, platform);
-    const b = platformState(audio, platform.end, platform);
-    const deltas = [0.22, 0.55, 1].map((factor) => projectPlatform(1000, 800, factor, a).x - projectPlatform(1000, 800, factor, b).x);
-    expect(deltas[0]).toBeLessThan(deltas[1]); expect(deltas[1]).toBeLessThan(deltas[2]);
-    expect(deltas[0] / deltas[2]).toBeCloseTo(0.22, 7);
-    expect(deltas[1] / deltas[2]).toBeCloseTo(0.55, 7);
-  });
-
-  test('revised beat grids retime drawers and nominal BPM does not', () => {
-    const other = new AudioData({ ...audioJSON, bpm: 280 });
-    const t = afterBeats(audio, platform.read, 1.3);
-    expect(platformState(other, t, platform)).toEqual(platformState(audio, t, platform));
-    const shifted = new AudioData({ ...audioJSON, beats: audioJSON.beats.map((t: number) => t + 0.20),
-      downbeats: audioJSON.downbeats.map((t: number) => t + 0.20) });
-    const retimed = platformTimes(shifted, lyrics);
-    expect(retimed.drawers[1]).toBeCloseTo(afterBeats(shifted, retimed.read, 1), 7);
-  });
-
-  test('out-of-order evaluation preserves the source fixtures and camera result', () => {
-    const before = JSON.stringify({ lyricsJSON, audioJSON, board });
-    const s = platformState(audio, platform.read + 0.30, platform);
-    platformState(audio, platform.end, platform); platformState(audio, platform.start, platform);
-    expect(platformState(audio, platform.read + 0.30, platform)).toEqual(s);
-    expect(JSON.stringify({ lyricsJSON, audioJSON, board })).toBe(before);
+  test('out-of-order world evaluation preserves the production fixtures',()=>{
+    const before=JSON.stringify({lyricsJSON,audioJSON,board}),t=platform.read+.3,result=cliff.cameraAt(t,audio,lyrics);
+    cliff.cameraAt(platform.end,audio,lyrics);cliff.cameraAt(platform.start,audio,lyrics);
+    expect(cliff.cameraAt(t,audio,lyrics)).toEqual(result);expect(JSON.stringify({lyricsJSON,audioJSON,board})).toBe(before);
   });
 });
-
 test('only one discoverable main module exists for each B scene', () => {
   const files = [...new Bun.Glob('s*.ts').scanSync({ cwd: new URL('../src/scenes/', import.meta.url).pathname })];
   expect(files.filter((name) => name.startsWith('s04-'))).toEqual(['s04-calendar.ts']);

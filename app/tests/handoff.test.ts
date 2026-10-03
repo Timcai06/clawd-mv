@@ -49,3 +49,24 @@ test('accelerando reads variable beat intervals and changes from eighths to sixt
   expect(accelerando(audio,2,3,1)).toEqual([]); expect(accelerando(audio,0,10,1.1)).toEqual([0,0.25,0.5,0.8]);
   expect(accelerando(audio,0,-1,0.5)).toEqual([0,0.125,0.25,0.375]);
 });
+
+// G2 owns C3 entry, both C4/C5/C6 sides, and C7 exit. Neighbor groups
+// have not migrated on this worktree's main snapshot: C3/C7 compare our
+// actual projected geometry to their specified contracts, not their old scenes.
+import { Lyrics as G2Lyrics } from '../src/engine/lyrics';
+import g2AudioJSON from '../../data/audio.json';import g2LyricsJSON from '../../data/lyrics.json';
+import * as g2s04 from '../src/scenes/parts/s04-city-model';
+import * as g2s05 from '../src/scenes/parts/s05-world';
+import * as g2s06 from '../src/scenes/parts/s06-world';
+import * as g2s07 from '../src/scenes/parts/s07-terrain';
+import {resolveCTimes as g2Times} from '../src/scenes/parts/s06-timing';
+import {platformTimes as g2PlatformTimes} from '../src/scenes/parts/s05-platform-model';
+import {CUT as G2CUT} from '../src/kit/handoff';
+const g2a=new AudioData(g2AudioJSON),g2l=new G2Lyrics(g2LyricsJSON),g2C=g2s04.cityTimes(g2a,g2l),g2P=g2PlatformTimes(g2a,g2l),g2T=g2Times(g2a,g2l);
+CUTS.push(
+  {id:'C3',out:'S03-contract',in:'S04',cut:g2C.start,exitPrim:()=>({kind:'rect',...G2CUT.grid04}),entryPrim:t=>g2s04.entryPrim(t,g2a,g2C)},
+  {id:'C4',out:'S04',in:'S05',cut:g2P.start,exitPrim:t=>g2s04.exitPrim(t,g2a,g2C),entryPrim:t=>g2s05.entryPrim(t,g2a,g2l)},
+  {id:'C5',out:'S05',in:'S06',cut:g2T.todo,exitPrim:t=>g2s05.exitPrim(t,g2a,g2l),entryPrim:t=>g2s06.entryPrim(t,g2a,g2T)},
+  {id:'C6',out:'S06',in:'S07',cut:g2T.keyboard,exitPrim:t=>g2s06.exitPrim(t,g2a,g2T),entryPrim:t=>g2s07.entryPrim(t,g2a,g2T)},
+  {id:'C7',out:'S07',in:'S08-contract',cut:g2T.end,exitPrim:t=>g2s07.exitPrim(t,g2a,g2T),entryPrim:()=>({kind:'rect',x:0,y:0,w:1920,h:1080})},
+);

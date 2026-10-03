@@ -18,11 +18,15 @@ import { clamp, ease, hash, lerp } from '../engine/util';
 import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { blink, drawCursor } from '../kit/cursor';
-import { span } from '../kit/time';
+import { span, afterBeats } from '../kit/time';
 import { heatColor, Voice, drawSet, odometer, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { BLOCK, TOWER_BLOCK, CAM_YAW, DATES, STREETS, cameraAt, cityState, cityTimes, projectionCamera, clawdRect, handoffIn, type CityTimes, type Point3 } from './parts/s04-city-model';
+import { drawPathText } from '../kit/pathtext';
+import { WordPlane } from '../kit/wordplane';
+import { exitEnvelope } from '../kit/handoff';
+import { cityLyrics, cityRig, blockHeight, streetVisible, CELL } from './parts/s04-city-model';
 import { DateLabels } from './parts/s04-city-labels';
 import { drawCalendar } from './parts/s03-form';
 import { printInBox } from './parts/s01-print';
@@ -222,6 +226,7 @@ class CityWorld {
   floor: THREE.Mesh;
   floorMaterial: THREE.RawShaderMaterial;
   labels: DateLabels;
+  october: WordPlane;
   streets = new LineBatch(2400, { screen2D: false, blend: 'normal', depthTest: true });
   overlay = new Layer2D();
   times: CityTimes;
@@ -287,6 +292,9 @@ class CityWorld {
     this.floor.position.set(0.0, -0.015, -8.1);
     this.scene.add(this.floor);
     this.labels = new DateLabels(ctx.renderer);
+    this.october = new WordPlane('OCTOBER',{capH:6.5,engrave:true,axes:{wdth:87.5,wght:900},ay:0,outline:0});
+    this.scene.add(this.october.mesh);
+    cityLyrics(ctx.lyrics,ctx.audio,this.times);
 
   }
 
@@ -299,7 +307,7 @@ class CityWorld {
     this.blocks.geometry.dispose(); this.blockMaterial.dispose();
     this.shadows.geometry.dispose(); (this.shadows.material as THREE.Material).dispose();
     this.floor.geometry.dispose(); this.floorMaterial.dispose();
-    this.labels.dispose(); this.streets.geo.dispose(); this.streets.mat.dispose();
+    this.october.dispose(); this.labels.dispose(); this.streets.geo.dispose(); this.streets.mat.dispose();
     this.overlay.texture.dispose(); this.ground.pass.mat.dispose();
   }
 }
@@ -319,12 +327,7 @@ export default class S04Calendar extends Scene {
   }
 
   private camera(f: Frame, s: ReturnType<typeof cityState>) {
-    const cam = this.w.camera, c = cameraAt(this.ctx.audio, f.t, this.w.times, s);
-    cam.position.copy(c.pos); cam.fov = c.fov;
-    cam.up.set(Math.sin(c.roll), Math.cos(c.roll), 0);
-    cam.lookAt(c.target);
-    if (c.shiftX) cam.setViewOffset(W, H, c.shiftX, 0, W, H); else cam.clearViewOffset();
-    cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+    this.w.camera.copy(projectionCamera(this.ctx.audio,f.t,this.w.times));
   }
 
   private buildings(f: Frame, s: ReturnType<typeof cityState>) {
@@ -334,7 +337,7 @@ export default class S04Calendar extends Scene {
       // Each block springs up in its own instant across the first beat (a ripple from day 1).
       const own = clamp(s.extrude * 1.6 - (i / 31) * 0.6);
       const roofPulse = 0; // Printed roofs stay fixed while the kick breathes the lyric layer.
-      const h = i === 31 ? s.roof32 : Math.max(0.025, d.height * ease.outBack(own, 1.3) + roofPulse);
+      const h = blockHeight(i,f.t,this.ctx.audio,w.times);
       const bw = i === 31 ? TOWER_BLOCK : BLOCK;
       w.position.set(d.x, h / 2, d.z); w.scale.set(bw, h, bw);
       w.matrix.compose(w.position, w.identity, w.scale);
@@ -346,17 +349,19 @@ export default class S04Calendar extends Scene {
       w.scale.set(BLOCK + len, BLOCK, 1);
       w.matrix.compose(w.position, w.roofRotation, w.scale);
       w.shadows.setMatrixAt(i, w.matrix);
-      w.position.set(d.x, h + 0.008, d.z); w.scale.set(1, 1, 1);
+      const peak=afterBeats(this.ctx.audio,w.times.rise,.2),rest=afterBeats(this.ctx.audio,w.times.rise,.7);
+      const k32=i===31&&s.rising ? (f.t<peak?Math.min(1.6,lerp(1,1.6,ease.outBack(span(f.t,w.times.rise,peak),1.3))):lerp(1.6,1.2,ease.outBack(span(f.t,peak,rest),1.3))) : 1;
+      w.position.set(d.x, h + 0.008, d.z); w.scale.set(k32,k32,k32);
       w.matrix.compose(w.position, w.labelRotation, w.scale);
       w.labels.mesh.setMatrixAt(i, w.matrix);
     }
     w.blocks.instanceMatrix.needsUpdate = true;
     w.shadows.instanceMatrix.needsUpdate = true;
     w.labels.mesh.instanceMatrix.needsUpdate = true;
-    w.labels.mesh.count = s.rising ? 32 : 31;
-    w.shadows.count = s.rising ? 32 : 31;
+    w.labels.mesh.count = 32;
+    w.shadows.count = 32;
     w.shadows.visible = false; // v5: shadows are ray-tested in the block and floor shaders
-    N_BOXES.value = s.rising ? 32 : 31;
+    N_BOXES.value = 32;
     const d32 = DATES[31]!;
     w.labels.facade.visible = false;
     w.labels.facade.position.set(d32.x, s.roof32 * 0.64, d32.z + BLOCK / 2 + 0.008);
@@ -381,6 +386,14 @@ export default class S04Calendar extends Scene {
     lb.clear();
     const seg = (a: Point3, b: Point3, width: number, color: [number, number, number], alpha = 1) =>
       lb.seg(...a, ...b, width, ...color, alpha);
+    // The received calendar is a real seven-by-five floor grid in the city world.
+    // Its corners are exactly GRID_CORNERS, also measured by entryPrim.
+    for(let col=0;col<=7;col++){
+      const x=-3.5*CELL+col*CELL;seg([x,.001,CELL/2],[x,.001,-4.5*CELL],1.1,INK,.55);
+    }
+    for(let row=0;row<=5;row++){
+      const z=CELL/2-row*CELL;seg([-3.5*CELL,.001,z],[3.5*CELL,.001,z],1.1,INK,.55);
+    }
     // The clay route: drawn from t (the whole history) every frame, up to the counted day.
     const dist = s.travel * STREETS.total;
     for (let i = 1; i < STREETS.points.length; i++) {
@@ -405,101 +418,42 @@ export default class S04Calendar extends Scene {
   private character(f: Frame, s: ReturnType<typeof cityState>, c: CanvasRenderingContext2D) {
     const b=clawdRect(this.ctx.audio,f.t,this.w.times);
     c.save();c.translate(b.x,b.y);c.scale(b.w/160,b.h/50);
-    Clawd.draw(c,0,0,Clawd.pose(s.rising?null:'A5',{beat:f.beat,beat0:this.ctx.audio.beatAt(this.w.times.start),p:s.travel,travel:0}),{px:10});c.restore();
+    Clawd.draw(c,0,0,Clawd.pose(s.rising?null:'A5',{beat:f.beat,beat0:this.ctx.audio.beatAt(this.w.times.start),p:s.travel,travel:0}),{px:10,body:new THREE.Color(...CLAY).multiplyScalar(exitEnvelope(f.t,this.w.times.end).gain).getStyle()});c.restore();
   }
 
-  /** Lyrics v3: the counter, the line under it, the OCTOBER headline, then "So I…" in the grid. */
-  private lyrics(f: Frame, s: ReturnType<typeof cityState>, c: CanvasRenderingContext2D) {
-    const v = this.w.voice, T = this.w.times, t = f.t;
-    const line = v.line('There’s a thirty-second day in October');
-    const forms = v.forms(line, t);
-    const october = forms.at(-1)!;
-    const slam = october.born > 0;
-    const breath = v.breath(f.a.kick);
-
-    // The counter (the sung "thirty-second" made numeric): huge at top-left, then it overflows to 32
-    // and, when "October" lands, flies to the right margin as the "32" annotation.
-    const fly = ease.inOutCubic(span(t, T.october, T.october + 0.32));
-    const cx = lerp(96, 1752, fly), cy = lerp(312, 196, fly), size = lerp(300, 28, fly);
-    const over = s.rising;
-    c.save(); c.translate(cx, cy); c.scale(breath, breath);
-    if (forms[2]!.born > 0) odometer(c, s.counter, 0, 0, size, { digits: 2, color: over ? 'clay' : NIGHT ? 'paper' : 'ink', on: NIGHT ? 'ink' : 'paper', age: forms[2]!.age, axes: { wdth: 75, wght: 900 } });
-    c.restore();
-    if (fly > 0.98) {
-      c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.5 : 0.85); c.lineWidth = 1.2;
-      c.beginPath(); c.moveTo(1752, 214); c.lineTo(1888, 214); c.stroke();
-      c.beginPath(); c.moveTo(1560, 150); c.lineTo(1560, 420); c.stroke();
-
-    }
-
-    // "thirty-second day in": the line, set under the counter, each word born on its onset.
-    const pre = forms.slice(0, -1);
-    const lead = setLine(pre, 74, { space: 0.24 });
-    const leadAlpha = slam ? Math.max(0, 1 - ease.outCubic(span(t, T.october, T.october + 0.18))) : 1;
-    if (leadAlpha > 0) drawSet(c, lead, 92, 420, { on: NIGHT ? 'ink' : 'paper', alpha: leadAlpha });
-
-    // OCTOBER: slams down cropped by the frame on the onset, then stretches with the held note.
-    if (slam) {
-      const ox = v.form(october.word, t, { minWidth: 62, maxWidth: 84, rest: 880 });
-      const k = t - october.t0;
-      const drop = k < 0.1 ? lerp(-150, 10, ease.inQuad(k / 0.1)) : lerp(10, 0, ease.outCubic(clamp((k - 0.1) / 0.14)));
-      const run = varRun('OCTOBER', 286, { wdth: ox.axes.wdth, wght: Math.max(760, ox.axes.wght) });
-      const pres = Math.max(0.6, v.presence(line, t));
-      c.save(); c.globalAlpha = pres; c.fillStyle = NIGHT ? heatColor('paper', 'ink', october.age) : heatColor('ink', 'paper', october.age);
-      c.translate(-26, 212 + drop); c.scale(breath, breath);
-      printInBox(c, run, {x:0,y:-242,w:1215,h:242});
-      c.restore();
-      const lab = ease.outExpo(span(t, october.t0 + 0.12, october.t0 + 0.5));
-      if (lab > 0) {
-        c.globalAlpha = lab;
-        c.strokeStyle = css(NIGHT ? 'paper' : 'ink', NIGHT ? 0.5 : 0.8); c.lineWidth = 1.2;
-        c.beginPath(); c.moveTo(72, 300); c.lineTo(72 + 620 * lab, 300); c.stroke();
-        c.font = font(F.mono(), 20); c.fillStyle = css(NIGHT ? 'paper' : 'ink',0.6);
-        c.fillText('01—31', 72, 282);
-        c.globalAlpha = 1;
-      }
-    }
-
-    // "So I crack…": the next line takes the focus in the grid at the foot of the frame.
-    const next = v.line('So I crack my claws and read it all over');
-    if (t >= next.start) drawSet(c, setLine(v.forms(next, t), 74, { space: 0.24 }), 92, 420, { on: NIGHT ? 'ink' : 'paper' });
+  private lyrics(f:Frame,s:ReturnType<typeof cityState>,c:CanvasRenderingContext2D) {
+    const w=this.w,T=w.times,au=this.ctx.audio,lay=cityLyrics(this.ctx.lyrics,au,T),rig=cityRig(au,f.t,T);
+    const visible=(p:{x:number;y:number;z:number})=>streetVisible(p,f.t,au,T);
+    const common={base:'ink' as const,on:'paper' as const,axes:(g:any,t:number)=>w.voice.form(g.word,t).axes,visible,pop:0};
+    drawPathText(c,rig,lay.first,lay.lead,f.t,{...common,mode:'lie',normal:()=>({x:0,y:1,z:0})});
+    drawPathText(c,rig,lay.route,lay.count,f.t,{...common,mode:'lie',normal:()=>({x:0,y:1,z:0})});
+    drawPathText(c,rig,lay.foot,lay.day,f.t,{...common,mode:'stand',minPx:0,maxPx:1000});
   }
 
   private annotations(f: Frame, s: ReturnType<typeof cityState>, out: THREE.WebGLRenderTarget) {
     const w = this.w, c = w.overlay.ctx;
     w.overlay.clear();
-    const incoming = handoffIn(f.t,this.ctx.audio,w.times);
-    if(incoming.alpha>0){c.fillStyle=css('paper',incoming.alpha);c.fillRect(0,0,W,H);c.save();c.globalAlpha=incoming.alpha;drawCalendar(c,incoming);c.restore();}
     this.character(f,s,c);
     if (s.rising) {
       const d = DATES[31]!, top = w.project([d.x + TOWER_BLOCK / 2, s.roof32, d.z]);
-      drawNote(c, { ax: top.x, ay: top.y + 30, x: top.x + 70, y: top.y - 40, text: 'Oct 32', sub: 'permit pending', t0: w.times.october + 0.35, on: NIGHT ? 'ink' : 'paper' }, f.t);
+      drawNote(c, { ax: top.x, ay: top.y + 30, x: top.x + 70, y: top.y - 40, text: 'Oct 32 · not in spec', t0: w.times.october + 0.35, on: NIGHT ? 'ink' : 'paper' }, f.t);
     }
     this.lyrics(f, s, c);
-    const head = w.project([s.head[0], s.head[1], s.head[2]]);
-    if (head.visible && head.x > 20 && head.x < W - 30 && head.y > 20 && head.y < H - 20) {
-      w.sparks.begin(c, undefined, NIGHT ? 'ink' : 'paper');
-      const at = (tb: number) => {
-        const state = cityState(this.ctx.audio, tb, w.times);
-        const v = new THREE.Vector3(...state.head).project(projectionCamera(this.ctx.audio, tb, w.times));
-        return v.z > -1 && v.z < 1 ? { x: (v.x*0.5+0.5)*W-7, y: (0.5-v.y*0.5)*H+6,
-          h: 24, on: blink(this.ctx.audio.beatAt(tb), !state.rising) } : null;
-      };
-      if (sparkFade(f.t, w.times.end) > 0) {
-        heatTrail(w.sparks, f.t, tb => {
-          const p = w.project(cityState(this.ctx.audio, tb, w.times).head);
-          return p.visible ? p : null;
-        }, { from: w.times.start, width: 3.2, knots: w.streetKnots, alpha: sparkFade(f.t, w.times.end) });
-        cursorSpark(c, undefined, w.sparks, f.t, at,
-          { on: NIGHT ? 'ink' : 'paper', from: w.times.start, to: w.times.end-1/60, end: w.times.end, seed: 4 });
-      } else drawCursor(c, { x: head.x - 7, y: head.y + 6, h: 24, on: blink(f.beat, !s.rising) });
-    }
+    const head=w.project(s.head);
+    if(head.visible)drawCursor(c,{x:head.x-3,y:head.y+3,h:6/.55,on:1});
     this.ctx.comp.draw(this.ctx.renderer, w.overlay.upload(), out);
   }
 
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, s = cityState(this.ctx.audio, f.t, w.times);
     this.camera(f, s); this.buildings(f, s);
+    const lay=cityLyrics(this.ctx.lyrics,this.ctx.audio,w.times),o=w.october;
+    const oz=-4*CELL-4*CELL,ox=-20;
+    o.mesh.position.set(ox,0,oz);o.mesh.rotation.y=Math.atan2(w.camera.position.x-ox,w.camera.position.z-oz);
+    o.mesh.scale.x=w.voice.form(lay.october,f.t).axes.wdth/87.5;
+    const normal=new THREE.Vector3(0,0,1).applyQuaternion(o.mesh.quaternion);
+    o.set({prog:o.karaoke({...lay.october,w:'OCTOBER'},f.t),aDim:0,cSung:CLAY,cDone:INK,done:f.t>=lay.october.end?1:0,tone:Math.max(0,normal.dot(KEY_L.value)),heat:0});
+    o.mesh.visible=f.t>=lay.october.start;
     if (NIGHT) w.sky.render(this.ctx.renderer, out, 0.6, s.rising ? s.lift : 0);
     else w.ground.render(this.ctx.renderer, out, {
       kind: 'paper', t: f.t, camX: w.camera.position.x * 34, camY: w.camera.position.z * 30,
