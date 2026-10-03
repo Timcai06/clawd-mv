@@ -41,3 +41,65 @@ export const HANDOFF = {
   /** S17→S18: git graph nodes = the first stars of S18's constellation. */
   nodes17: [{ x: 83, y: 434 }, { x: 282, y: 434 }, { x: 408, y: 434 }, { x: 1478, y: 546 }, { x: 1645, y: 546 }, { x: 1826, y: 546 }] as Pt[],
 } as const;
+
+// v2: pure screen-space geometry. The v3 HANDOFF values above remain byte-for-byte intact.
+import type { AudioData } from '../engine/audio';
+import { clamp, lerp } from '../engine/util';
+import { carryLayout, type CarrySpec } from './carry';
+import { varRun } from './vartype';
+
+export type Prim =
+  | { kind: 'point'; x: number; y: number; r: number }
+  | { kind: 'line'; x0: number; y0: number; x1: number; y1: number; w: number }
+  | { kind: 'rect'; x: number; y: number; w: number; h: number; roll?: number }
+  | { kind: 'carry'; spec: CarrySpec };
+export interface Cut { id: string; out: string; in: string }
+export function primError(a: Prim, b: Prim): { px: number; size: number } {
+  if (a.kind !== b.kind) throw new Error('cannot compare different primitive kinds');
+  const dist = (x: number, y: number, X: number, Y: number) => Math.hypot(X-x,Y-y);
+  const relative = (x: number,y: number) => Math.abs(x-y)/Math.max(1e-12,Math.abs(x),Math.abs(y));
+  if (a.kind === 'point' && b.kind === 'point') return { px: dist(a.x,a.y,b.x,b.y), size: relative(a.r,b.r) };
+  if (a.kind === 'line' && b.kind === 'line') return {
+    px: Math.min(Math.max(dist(a.x0,a.y0,b.x0,b.y0),dist(a.x1,a.y1,b.x1,b.y1)),Math.max(dist(a.x0,a.y0,b.x1,b.y1),dist(a.x1,a.y1,b.x0,b.y0))),
+    size: relative(a.w,b.w),
+  };
+  if (a.kind === 'rect' && b.kind === 'rect') {
+    const corners = (p: typeof a) => {
+      const cs = Math.cos(p.roll ?? 0), sn = Math.sin(p.roll ?? 0);
+      return [[-0.5,-0.5],[0.5,-0.5],[0.5,0.5],[-0.5,0.5]].map(([x,y]) => ({ x: p.x+p.w/2+cs*x!*p.w-sn*y!*p.h, y: p.y+p.h/2+sn*x!*p.w+cs*y!*p.h }));
+    };
+    const A = corners(a), B = corners(b);
+    return { px: Math.max(...A.map((p,i) => dist(p.x,p.y,B[i]!.x,B[i]!.y))), size: Math.max(relative(a.w,b.w),relative(a.h,b.h)) };
+  }
+  if (a.kind === 'carry' && b.kind === 'carry') {
+    const A = carryLayout(a.spec), B = carryLayout(b.spec);
+    if (A.length !== B.length || A.some((g,i) => g.ch !== B[i]!.ch)) return { px: Infinity, size: Infinity };
+    const ra = varRun(a.spec.text,100,a.spec.axes), rb = varRun(b.spec.text,100,b.spec.axes);
+    let px = 0, size = 0;
+    A.forEach((g,i) => {
+      const h = B[i]!, ga = ra.glyphs[i]!, gb = rb.glyphs[i]!;
+      for (const [x,y,X,Y] of [[0,0,0,0],[ga.adv,0,gb.adv,0],[0,-ra.capH,0,-rb.capH]])
+        px = Math.max(px,dist(g.a*x!+g.c*y!+g.e,g.b*x!+g.d*y!+g.f,h.a*X!+h.c*Y!+h.e,h.b*X!+h.d*Y!+h.f));
+      size = Math.max(size,relative(Math.hypot(g.a,g.b)*ga.adv,Math.hypot(h.a,h.b)*gb.adv),relative(Math.hypot(g.c,g.d)*ra.capH,Math.hypot(h.c,h.d)*rb.capH));
+    });
+    return { px,size };
+  }
+  throw new Error('unsupported primitive');
+}
+export function exitEnvelope(t: number, end: number, peak = 1.9): { still: number; gain: number } {
+  return { still: t >= end-0.1 ? 1 : 0, gain: t >= end ? peak : lerp(1,peak,clamp((t-(end-0.09))/0.09)) };
+}
+export function accelerando(audio: AudioData, t0: number, tSwitch: number, end: number): number[] {
+  if (end <= t0) return [];
+  const out: number[] = [], sw = clamp(tSwitch,t0,end);
+  const add = (start: number, stop: number, step: number) => {
+    const b0 = audio.beatAt(start), b1 = audio.beatAt(stop);
+    for (let n = 0; b0+n*step < b1-1e-9; n++) {
+      // Use the supplied anchor exactly; all later pulses follow the measured variable grid.
+      const t = n ? audio.timeOfBeat(b0+n*step) : start;
+      if (t >= start-1e-9 && t < stop-1e-9) out.push(t);
+    }
+  };
+  add(t0,sw,0.5); add(sw,end,0.25);
+  return out;
+}
