@@ -123,6 +123,9 @@ export const CUT = {
   machine08: { text: 'machine', x: 96, y: 470, size: 110, color: 'paper' as const },
   /** C12: the clay/ink boundary S12's clay 11 hands to S13 (a full-height line). */
   diag13: { x0: 1010, y0: 0, x1: 760, y1: 1080 },
-  /** C15: the held "free" carried from S15 into S16, where it falls as domino zero. */
-  free15: { text: 'free', x: 1100, y: 560, size: 90, color: 'clay' as const },
+  /** C15: the held "free" carried from S15 into S16, where it falls as domino zero: it stands on the same
+   *  ground line as the first domino (baseline y = 810, the domino's foot) just to its left (ink box right
+   *  edge at x = right), so tipping right about its bottom-right corner its top lands on domino15.
+   *  CarrySpec.x = right − ink width of `free` at this size and the carried axes. */
+  free15: { text: 'free', right: 1000, y: 810, size: 90, color: 'clay' as const },
 } as const;

@@ -10,6 +10,9 @@ export interface EngraveOpts {
   gamma?: number;
   emissive?: RGB; emissiveK?: number;
   minCov?: number;
+  /** Upper bound of line coverage (default 1). For ink solids engraved with lightLines, ~0.35 keeps the
+   *  object reading as ink (fine paper lines on its lit faces) instead of turning grey. */
+  maxCov?: number;
   /** Dark-ground engraving: more line where it is lit (paper lines on ink), instead of where it is dark. */
   lightLines?: boolean;
   /** Screen logical x below which ink and paper swap (a printed split, S02); omit / null = off. */
@@ -19,7 +22,7 @@ export interface EngraveOpts {
 }
 
 type Uniforms = Record<'engraveInk' | 'engravePaper', THREE.IUniform<THREE.Vector3>> &
-  Record<'engraveAngle' | 'engravePitch' | 'engraveFaceAngles' | 'engraveGamma' | 'engraveMinCov' | 'engraveLightLines' | 'engraveSplitX' | 'engraveUseMap', THREE.IUniform<number>>;
+  Record<'engraveAngle' | 'engravePitch' | 'engraveFaceAngles' | 'engraveGamma' | 'engraveMinCov' | 'engraveMaxCov' | 'engraveLightLines' | 'engraveSplitX' | 'engraveUseMap', THREE.IUniform<number>>;
 const uniforms = new WeakMap<THREE.MeshLambertMaterial, Uniforms>();
 
 // Same hatch footprint and 4K ink preservation as engine/glsl/common.ts; names are
@@ -27,7 +30,7 @@ const uniforms = new WeakMap<THREE.MeshLambertMaterial, Uniforms>();
 const HEAD = /* glsl */ `
 const float PX_SCALE = ${SCALE.toFixed(1)};
 uniform vec3 engraveInk, engravePaper;
-uniform float engraveAngle, engravePitch, engraveFaceAngles, engraveGamma, engraveMinCov, engraveLightLines, engraveSplitX, engraveUseMap;
+uniform float engraveAngle, engravePitch, engraveFaceAngles, engraveGamma, engraveMinCov, engraveMaxCov, engraveLightLines, engraveSplitX, engraveUseMap;
 float engraveSat(float x) { return clamp(x, 0.0, 1.0); }
 float engraveIntegral(float t) { return t*t*t*(1.0-0.5*t); }
 float engraveInkWidth(float L, float R, float X) {
@@ -69,7 +72,7 @@ float engraveT = engraveSat(engraveL);
 // shadows stay the darkest thing on both sides of the split.
 bool engraveSwap = engravePx.x < engraveSplitX;
 bool engraveLL = (engraveLightLines > 0.5) != engraveSwap;
-float engraveCov = engraveTone(engraveU,engraveLL ? 1.0-engraveT : engraveT);
+float engraveCov = min(engraveMaxCov, engraveTone(engraveU,engraveLL ? 1.0-engraveT : engraveT));
 vec3 engraveP = engraveBase, engraveI = engraveInk;
 if (engraveSwap) { engraveP = engraveInk; engraveI = engraveBase; }
 outgoingLight = mix(engraveP,engraveI,engraveCov)+totalEmissiveRadiance;
@@ -82,7 +85,7 @@ export function engraveMaterial(o: EngraveOpts): THREE.MeshLambertMaterial {
     engraveInk: { value: new THREE.Vector3() }, engravePaper: { value: new THREE.Vector3() },
     engraveAngle: { value: 0.6 }, engravePitch: { value: 5 }, engraveFaceAngles: { value: 1 },
     engraveGamma: { value: 1.25 }, engraveMinCov: { value: 0.02 },
-    engraveLightLines: { value: 0 }, engraveSplitX: { value: -1e9 }, engraveUseMap: { value: 0 },
+    engraveMaxCov: { value: 1 }, engraveLightLines: { value: 0 }, engraveSplitX: { value: -1e9 }, engraveUseMap: { value: 0 },
   };
   uniforms.set(m, u);
   m.onBeforeCompile = (shader) => {
@@ -106,6 +109,7 @@ export function setEngrave(m: THREE.MeshLambertMaterial, o: Partial<EngraveOpts>
   if (o.faceAngles !== undefined) u.engraveFaceAngles.value = o.faceAngles ? 1 : 0;
   if (o.gamma !== undefined) u.engraveGamma.value = Math.max(o.gamma, 1e-4);
   if (o.minCov !== undefined) u.engraveMinCov.value = THREE.MathUtils.clamp(o.minCov, 0, 1);
+  if (o.maxCov !== undefined) u.engraveMaxCov.value = THREE.MathUtils.clamp(o.maxCov, 0, 1);
   if (o.lightLines !== undefined) u.engraveLightLines.value = o.lightLines ? 1 : 0;
   if (o.splitX !== undefined) u.engraveSplitX.value = o.splitX ?? -1e9;
   if (o.paperMap !== undefined) u.engraveUseMap.value = o.paperMap ? 1 : 0;
