@@ -9,7 +9,10 @@ export interface Anchor {
   sub?: number;
   /** 1-based syllable of the word (uses the aligned `syl` spans), e.g. 2 = the stressed -MIT of com-MIT. */
   syl?: number;
-  snap: 'downbeat' | 'beat' | 'none';
+  /** 'cut' = pdoom's timeline cut(): the last beat at/before the word's start + 50 ms (pdoom's dense
+   *  tolerance: a beat up to 50 ms after the first word is preferred to cutting the previous line's last
+   *  word in half), so a scene boundary sits between lines (docs/CUTS.md, R1). */
+  snap: 'downbeat' | 'beat' | 'none' | 'cut';
   offset_beats?: number;
 }
 export interface Shot {
@@ -71,6 +74,11 @@ function wordTimes(line: Line, query: string, syl?: number): number[] {
 
 function snapTime(t: number, snap: Anchor['snap'], audio: AudioData): number {
   if (snap === 'none') return t;
+  if (snap === 'cut') {
+    let best = audio.beats[0] ?? t;
+    for (const p of audio.beats) if (p <= t + 0.05) best = p; else break;
+    return best;
+  }
   const grid = snap === 'downbeat' ? audio.downbeats : audio.beats;
   // An absent grid cannot provide a measured snap. Ties go to the earlier point.
   return grid.reduce((best, point) => Math.abs(point - t) < Math.abs(best - t) ? point : best, grid[0] ?? t);

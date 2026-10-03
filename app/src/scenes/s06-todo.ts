@@ -14,7 +14,8 @@ import { ease, lerp } from '../engine/util';
 import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
-import { checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
+import { cam06, checkFinish, checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
+import { applyCam2, HANDOFF } from '../kit/handoff';
 import { printRun } from './parts/s05-print';
 
 export const TYPE_LEVELS = { giant: 526, lyric: 56, label: 18 }; // cap px; mono machine item can use the lyric tier
@@ -48,16 +49,7 @@ export default class S06Todo extends Scene {
     // v4 motion: the sheet is filmed, not pinned. A slow push on the pen; a punch toward each box on
     // its check (the third, stressed one hardest); the last beat dives into the pen tip, which S07
     // receives as its first lit key.
-    const punch=T.checks.reduce((a,at,i)=>a+(f.t>=at?[0.05,0.07,0.13][i]!*Math.pow(0.5,(f.t-at)/0.1):0),0);
-    const tilt=T.checks.reduce((a,at,i)=>a+(f.t>=at?[0.012,-0.014,0.02][i]!*Math.pow(0.5,(f.t-at)/0.14):0),0);
-    const drift=ease.inOutQuad(span(f.t,T.todo,T.keyboard));
-    const dive=ease.inCubic(span(f.t,afterBeats(au,T.keyboard,-1),T.keyboard));
-    const entry=1-ease.outCubic(span(f.t,T.todo,afterBeats(au,T.todo,1.2)));
-    const zoom=1+0.14*drift+punch+0.25*entry+1.6*dive;
-    const fx=s.pen.x, fy=s.pen.y;
-    c.save();
-    c.translate(lerp(fx,960,0.2*drift+0.8*dive),lerp(fy,540,0.2*drift+0.8*dive)-30*entry);
-    c.rotate(tilt-0.015*entry); c.scale(zoom,zoom); c.translate(-fx,-fy);
+    c.save(); applyCam2(c,cam06(au,f.t,T));
     w.sparks.begin(c, undefined, 'paper');
     let writing = false;
     const head=checkHeadline(f.t,T),checks=T.plan.words.filter(x=>x.w.toLowerCase().startsWith('check'));
@@ -91,9 +83,11 @@ export default class S06Todo extends Scene {
       }
       // Plotter strokes remain single strokes. Vocal check onsets start the pen;
       // the measured snares supply the hop accents, without revealing a future lyric.
-      const at=checks[i]!.start,progress=span(f.t,at,afterBeats(au,at,i===2?1:0.4));
-      const pts: [number,number][]=[[b.x+b.w*0.18,b.y+b.h*0.48],[b.x+b.w*0.41,b.y+b.h*0.7],[b.x+b.w*1.02,b.y+3]];
-      const finish = afterBeats(au, at, i===2?1:0.4);
+      const at=checks[i]!.start;
+      // C6: the third (stressed) check's flick ends at the pen hand-off point, where S07's first key lights.
+      const pts: [number,number][]=[[b.x+b.w*0.18,b.y+b.h*0.48],[b.x+b.w*0.41,b.y+b.h*0.7],
+        i===2?[HANDOFF.pen06.x,HANDOFF.pen06.y]:[b.x+b.w*1.02,b.y+3]];
+      const finish = checkFinish(au, T, i, at);
       const path = (tb: number) => trailHead(pts, span(tb, at, finish));
       const lengths = [Math.hypot(pts[1]![0]-pts[0]![0],pts[1]![1]-pts[0]![1]), Math.hypot(pts[2]![0]-pts[1]![0],pts[2]![1]-pts[1]![1])];
       heatTrail(w.sparks, f.t, path, { from: at, to: finish, width: i===2?21:11,
@@ -119,12 +113,7 @@ export default class S06Todo extends Scene {
     const pose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(at),p:0,travel:0});
     Clawd.draw(c,s.clawd.x,s.clawd.y+hop,pose,{px:s.clawd.px});
     if (!writing) drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
-    // The next line begins in this scene: carry its sung prefix on the lower margin.
-    if(f.t>=T.claws.start) {
-      const set=setLine(w.voice.forms(T.claws,f.t),78,{space:0.22});
-      c.save();c.translate(98,1060);c.scale(Math.min(1,1700/set.width),1);
-      drawSet(c,set,0,0,{on:'paper'});c.restore();
-    }
+    // "Claws on the keys" belongs to S07 since the cut moved to the line break (R1).
     c.restore();
     w.bg.render(this.ctx.renderer,out);
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);

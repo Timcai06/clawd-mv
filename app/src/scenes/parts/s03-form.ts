@@ -3,7 +3,9 @@ import type { AudioData } from '../../engine/audio';
 import { ease, hash } from '../../engine/util';
 import { css } from '../../theme';
 import { afterBeats, span } from '../../kit/time';
-import { HANDOFF, type Rect } from '../../kit/handoff';
+import { HANDOFF, lensRect, type Prim, type Rect } from '../../kit/handoff';
+import type { LensView } from '../../kit/lens';
+import { lerp } from '../../engine/util';
 import { heatColor, Voice, drawSet, setLine, stamp } from '../../kit/lyric-moves';
 import { mono } from './s01-drafting';
 import { machineTitle, printInBox, mixRect } from './s01-print';
@@ -79,6 +81,21 @@ export function drawReportLyrics(c: CanvasRenderingContext2D, v: Voice, t: numbe
   const bug=v.form(line.words[2]!,t);
   if(bug.born>0) stamp(c,'BUG',STAMP.x,STAMP.y,460,{t,at:bug.t0,rot:STAMP.angle,color:bug.stress?'clay':'ink',axes:{wdth:bug.axes.wdth,wght:Math.max(800,bug.axes.wght)},seed:303});
   if(pres>0)drawSet(c,setLine(forms.slice(4),74,{space:.18}),232,972,{on:'paper',alpha:pres});
-  const next=v.line(2);
-  if(t>=next.start)drawSet(c,setLine(v.forms(next,t),74),110,972,{on:'paper'});
+  // "There's a thirty-second…" belongs to S04 since the cut moved to the line break (R1).
+}
+/** S03's lens: the form is read up close (a breathing push that returns to identity at both cuts),
+ *  with a punch on "weirdest". */
+export function view03(t: number, T: OpeningTimes, weirdest: number): LensView {
+  const p = span(t, T.issue, T.end - 0.1);
+  const punch = t >= weirdest ? Math.pow(0.5, (t - weirdest) / 0.1) : 0;
+  const zoom = 1 + 0.07 * Math.sin(Math.PI * p) + 0.05 * punch;
+  return { zoom, fx: lerp(820, 960, p), fy: lerp(480, 540, p), rot: -0.012 * punch * (1 - p) };
+}
+/** C2: the form unfolding from the card's bar. */
+export function entryPrim03(t: number, audio: AudioData, T: OpeningTimes, weirdest: number): Prim {
+  return { kind: 'rect', ...lensRect(view03(t, T, weirdest), handoffIn(t, audio, T)) };
+}
+/** C3: the attached month. */
+export function exitPrim03(t: number, T: OpeningTimes, weirdest: number): Prim {
+  return { kind: 'rect', ...lensRect(view03(t, T, weirdest), handoffOut(t)) };
 }

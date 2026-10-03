@@ -5,7 +5,9 @@ import { ease, lerp } from '../../engine/util';
 import { afterBeats, beatsSince, span } from '../../kit/time';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
-import { HANDOFF } from '../../kit/handoff';
+import { HANDOFF, cam2Point, cam2Rect, mixCam2, type Cam2, type Prim, type Rect } from '../../kit/handoff';
+import type { Lyrics as LyricsT } from '../../engine/lyrics';
+import { cam06, resolveCTimes } from './s06-timing';
 import { clipBox } from './s05-print';
 
 export interface PlatformTimes {
@@ -112,6 +114,42 @@ export function handoffIn(t: number, audio: AudioData, T: PlatformTimes) {
 }
 
 export function handoffOut(t: number, audio: AudioData, T: PlatformTimes) {
-  const k = ease.inOutCubic(span(t, afterBeats(audio, T.end, -1), T.end));
+  const k = ease.inOutCubic(span(t, afterBeats(audio, T.end, -1), T.end - 0.1));
   return { x0: lerp(270, HANDOFF.strike05.x0, k), x1: lerp(1020, HANDOFF.strike05.x1, k), y: lerp(712, HANDOFF.strike05.y, k) };
+}
+
+/** S05's camera: arrive pushed in on Clawd (S04's push, continued), pull out over 1.5 beats, a punch
+ *  on "claws"; the last beat eases into S06's first camera exactly (C5), so the read line's
+ *  underline is S06's first strike-through on screen. Held for the last 0.1 s. */
+export function cam05(audio: AudioData, lyrics: LyricsT, t: number, T: PlatformTimes): Cam2 {
+  const s = platformLayout(audio, t, T);
+  const claws = lyrics.get('crack my claws').words.find((x) => /claws/i.test(x.w))!;
+  const tIn = ease.outCubic(span(t, T.start, afterBeats(audio, T.start, 1.5)));
+  const punch = t >= claws.start ? Math.pow(0.5, (t - claws.start) / 0.09) : 0;
+  const fx = lerp(s.clawd.x + 8 * s.clawd.px, 960, tIn), fy = lerp(s.clawd.y, 540, tIn);
+  const own: Cam2 = { zoom: lerp(1.45, 1, tIn) + 0.05 * punch, rot: -0.012 * punch, fx, fy, ax: fx, ay: fy };
+  const exitK = ease.inCubic(span(t, afterBeats(audio, T.end, -1), T.end - 0.1));
+  if (exitK <= 0) return own;
+  return mixCam2(own, s06EntryCam(audio, lyrics), exitK);
+}
+const entryCams = new WeakMap<AudioData, Cam2>();
+/** S06's first camera (resolved once per song). */
+function s06EntryCam(audio: AudioData, lyrics: LyricsT): Cam2 {
+  let k = entryCams.get(audio);
+  if (!k) { const T6 = resolveCTimes(audio, lyrics); k = cam06(audio, T6.todo, T6); entryCams.set(audio, k); }
+  return k;
+}
+/** C4: Clawd on S05's first frame (S04 parks its Clawd exactly here). */
+export function clawdScreen05(audio: AudioData, lyrics: LyricsT, t: number, T: PlatformTimes): Rect {
+  const c = platformLayout(audio, t, T).clawd;
+  return cam2Rect(cam05(audio, lyrics, t, T), { x: c.x, y: c.y, w: 16 * c.px, h: 5 * c.px });
+}
+export function entryPrim05(audio: AudioData, lyrics: LyricsT, t: number, T: PlatformTimes): Prim {
+  return { kind: 'rect', ...clawdScreen05(audio, lyrics, t, T) };
+}
+/** C5: the read line's underline, through S05's camera. */
+export function exitPrim05(audio: AudioData, lyrics: LyricsT, t: number, T: PlatformTimes): Prim {
+  const k = cam05(audio, lyrics, t, T), s = handoffOut(t, audio, T);
+  const a = cam2Point(k, { x: s.x0, y: s.y }), b = cam2Point(k, { x: s.x1, y: s.y });
+  return { kind: 'line', x0: a.x, y0: a.y, x1: b.x, y1: b.y, w: 2 * k.zoom };
 }

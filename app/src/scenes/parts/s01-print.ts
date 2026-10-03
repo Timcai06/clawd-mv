@@ -27,7 +27,7 @@ export function grain(c: CanvasRenderingContext2D, box: Rect, seed: number, n = 
   c.restore();
 }
 export function machineTitle(c: CanvasRenderingContext2D, text: string, box: Rect, alpha = 0.6) {
-  c.save(); c.globalAlpha = alpha; c.fillStyle = css('ink');
+  c.save(); c.globalAlpha *= alpha; c.fillStyle = css('ink');
   printInBox(c, varRun(text, 100, { wdth: 75, wght: 900 }), box); c.restore();
 }
 export function mixRect(a: Rect, b: Rect, k: number): Rect {

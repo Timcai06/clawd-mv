@@ -10,7 +10,8 @@ import { afterBeats, beatsSince, span, wordTime } from '../../kit/time';
 import { CALENDAR_MONTHS } from '../../kit/content';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
-import { HANDOFF, type Rect } from '../../kit/handoff';
+import { HANDOFF, type Prim, type Rect } from '../../kit/handoff';
+import { clawdScreen05, platformTimes } from './s05-platform-model';
 
 export const CELL = 3.6;
 export const BLOCK = 2.72;
@@ -24,6 +25,8 @@ export interface CityTimes {
   countEnd: number;
   /** Onset of the sung "October". */
   october: number;
+  /** C4 (docs/CUTS.md): Clawd's screen rect on S05's first frame; S04 parks its Clawd here. */
+  clawdOut: Rect;
 }
 
 const LINE = 'There’s a thirty-second day in October';
@@ -34,7 +37,9 @@ export function cityTimes(audio: AudioData, lyrics: Lyrics): CityTimes {
   const line = lyrics.get('thirty-second day');
   const thirty = line.words.find((w) => w.w.toLowerCase().startsWith('thirty'))!;
   const october = wordTime(lyrics, LINE, 'October') ?? line.words.at(-1)!.start;
-  return { start: cut('S04-1'), rise: cut('S04-2'), end: cut('S05-1'), countEnd: thirty.end, october };
+  const P = platformTimes(audio, lyrics);
+  return { start: cut('S04-1'), rise: cut('S04-2'), end: cut('S05-1'), countEnd: thirty.end, october,
+    clawdOut: clawdScreen05(audio, lyrics, P.start, P) };
 }
 
 export function dateBlock(day: number) {
@@ -216,10 +221,14 @@ function stageClawd(audio: AudioData,t:number,T:CityTimes): Rect {
   const p=projectCity(cam,[s.head[0],.62,s.head[2]]);return {x:p.x-48,y:p.y-30,w:96,h:30};
 }
 export function handoffOut(t: number,audio: AudioData,T:CityTimes) {
-  const b=stageClawd(audio,t,T),k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-1/60));
-  return {x:lerp(b.x,HANDOFF.clawd04.x,k),y:lerp(b.y,HANDOFF.clawd04.y,k),px:lerp(b.w/16,HANDOFF.clawd04.px,k)};
+  const b=stageClawd(audio,t,T),k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-0.1)),o=T.clawdOut;
+  return {x:lerp(b.x,o.x,k),y:lerp(b.y,o.y,k),px:lerp(b.w/16,o.w/16,k)};
 }
 export function clawdRect(audio:AudioData,t:number,T:CityTimes):Rect {
-  const b=stageClawd(audio,t,T),p=handoffOut(t,audio,T),k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-1/60));
-  return {x:p.x,y:p.y,w:p.px*16,h:lerp(b.h,HANDOFF.clawd04.px*5,k)};
+  const b=stageClawd(audio,t,T),p=handoffOut(t,audio,T),k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-0.1));
+  return {x:p.x,y:p.y,w:p.px*16,h:lerp(b.h,T.clawdOut.h,k)};
 }
+/** C4: S04's Clawd (screen overlay, no camera). */
+export function exitPrim04(audio: AudioData, t: number, T: CityTimes): Prim { return { kind: 'rect', ...clawdRect(audio, t, T) }; }
+/** C3: the flat month S04 opens on (screen overlay), = S03's attachment. */
+export function entryPrim04(): Prim { return { kind: 'rect', ...HANDOFF.month03 }; }

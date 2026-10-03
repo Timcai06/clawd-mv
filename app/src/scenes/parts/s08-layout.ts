@@ -2,7 +2,7 @@ import type { AudioData } from "../../engine/audio";
 import type { Lyrics } from "../../engine/lyrics";
 import { ease, lerp } from "../../engine/util";
 import { Voice } from "../../kit/lyric-moves";
-import { HANDOFF } from "../../kit/handoff";
+import { HANDOFF, type Prim } from "../../kit/handoff";
 import { afterBeats, beatsSince, span } from "../../kit/time";
 import { varRun } from "../../kit/vartype";
 import { resolveStoryboard, type Storyboard } from "../../storyboard";
@@ -116,4 +116,9 @@ export function commitBounds(
     giant: visibleBox(bounds(mappedInk(run, s.giant))),
     clawd: bounds(spritePoints(s.clawd)),
   };
+}
+/** C7: the cursor S08 receives (identity camera while frozen at the start). */
+export function entryPrim08(t: number, audio: AudioData, T: CommitScore): Prim {
+  const p = handoffIn(t, audio, T);
+  return { kind: "rect", x: p.x, y: p.y - p.h, w: p.h * 0.55, h: p.h };
 }

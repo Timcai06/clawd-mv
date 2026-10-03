@@ -14,7 +14,8 @@ import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
 import { drawCursor } from '../kit/cursor';
 import * as Clawd from '../kit/clawd';
-import { handoffOut, platformLayout, platformTimes, type PlatformTimes } from './parts/s05-platform-model';
+import { cam05, handoffOut, platformLayout, platformTimes, type PlatformTimes } from './parts/s05-platform-model';
+import { applyCam2 } from '../kit/handoff';
 import { hatchBlock, printRun } from './parts/s05-print';
 
 export const TYPE_LEVELS = { giant: 320, lyric: 56, label: 18 }; // cap heights; source labels are 18px Mono
@@ -70,12 +71,7 @@ export default class S05Platform extends Scene {
     // v4 motion: arrive pushed in on Clawd (continuing S04's push), pull out over the first beat;
     // a punch on "claws"; the last beat pushes in on the read line (the strike S06 picks up).
     const claws = this.ctx.lyrics.get('crack my claws').words.find((x) => /claws/i.test(x.w))!;
-    const tIn = ease.outCubic(span(f.t, T.start, afterBeats(au, T.start, 1.5)));
-    const punch = f.t >= claws.start ? Math.pow(0.5, (f.t - claws.start) / 0.09) : 0;
-    const exitK = ease.inCubic(span(f.t, afterBeats(au, T.end, -1), T.end));
-    const zoom = lerp(1.45, 1, tIn) + 0.05 * punch + 0.35 * exitK;
-    const fx = lerp(s.clawd.x + 8 * s.clawd.px, 960, tIn), fy = lerp(s.clawd.y, 540, tIn) + 170 * exitK;
-    c.save(); c.translate(fx, fy); c.scale(zoom, zoom); c.rotate(-0.012 * punch); c.translate(-fx, -fy);
+    c.save(); applyCam2(c, cam05(au, this.ctx.lyrics, f.t, T));
     this.tree(c, 1130 - s.offset * 0.18, 55, 1, 0.6);
     this.tree(c, 180 - s.offset * 0.22, 75, 0.43, 0.2);
     this.tree(c, 660 - s.offset * 0.55, 288, 0.43, 0.25);
@@ -92,8 +88,8 @@ export default class S05Platform extends Scene {
     c.fillText("import { calendar } from './calendar';",5-s.offset*0.22,457);
     c.fillText('export function month(date: Date) {',170-s.offset*0.55,548);
     let rider={...s.clawd};
-    // Choose the currently sung line across the cut. Already sung words retain their forms.
-    const line=this.ctx.lyrics.lineAt(f.t) ?? this.ctx.lyrics.lastLine(f.t);
+    // S05 owns one line since the cuts sit between lines (R1); "Read the code" belongs to S06.
+    const line=this.ctx.lyrics.get('So I crack my claws and read it all over');
     if(line) {
       const forms=w.voice.forms(line,f.t), set=setLine(forms,78,{space:0.22});
       const fit=Math.min(1,1550/set.width);

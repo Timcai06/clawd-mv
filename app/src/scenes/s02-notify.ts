@@ -16,8 +16,7 @@ import * as Clawd from '../kit/clawd';
 import { openingTimes } from './parts/s01-timing';
 import { mono } from './parts/s01-drafting';
 import { printInBox, grain, cursorFromTop } from './parts/s01-print';
-import { notifyLayout, handoffIn, PING_BOX, WAKE_CLAWD } from './parts/s02-layout';
-import { drawReportLyrics } from './parts/s03-form';
+import { notifyLayout, handoffIn, view02, drawScreenGrid, PING_BOX, WAKE_CLAWD } from './parts/s02-layout';
 export const TYPE_LEVELS = { giant: 625, lyric: 50.8, label: 20 };
 class NotifyWorld {
   print = new PrintOverlay('step(edge, p.x)', { edge: { value: 0 } }, 'uniform float edge;');
@@ -30,16 +29,6 @@ export default class S02Notify extends Scene {
   private w!: NotifyWorld;
   override init() { this.w = shared ??= new NotifyWorld(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
-  /** v4 motion: PING lands as a sprung hit with a roll; each word of "on my screen" nudges; identity on the S03 cut. */
-  private view(t: number) {
-    const au = this.ctx.audio, T = this.w.T;
-    const b = Math.max(0, beatsSince(au, t, T.ping));
-    let zoom = 1 + 0.14 * Math.exp(-b * 5) * Math.cos(b * 8), rot = t >= T.ping ? 0.03 * Math.exp(-b * 4) * Math.sin(b * 10) : 0;
-    const line = this.w.voice.line(0);
-    for (const wd of line.words.slice(4)) if (t >= wd.start) { const k = Math.pow(0.5, (t - wd.start) / 0.08); zoom += 0.02 * k; rot += (wd.index % 2 ? 0.006 : -0.006) * k; }
-    const settle = ease.inOutCubic(span(t, afterBeats(au, T.issue, -0.5), T.issue));
-    return { zoom: lerp(zoom, 1, settle), fx: 960, fy: 600, rot: rot * (1 - settle) };
-  }
 
   override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
     const out = this.w.lens.rt;
@@ -50,11 +39,16 @@ export default class S02Notify extends Scene {
     const line = w.voice.line(0), ping = w.voice.form(line.words[3]!, t);
     if (ping.born > 0 && s.exit < 1) {
       const drop = -180 * (1 - span(t, ping.t0, afterBeats(au, ping.t0, 0.18))) ** 2;
-      const box = { ...PING_BOX, y: PING_BOX.y + drop };
+      // C2: over the last beat PING squashes into the notification card's band as the card flies
+      // to the form's top bar (scaleY (1-k)^3, like pdoom's 9s collapsing into the loom's weft);
+      // the card is drawn over it, so the word ends inside the bar S03 unfolds from.
+      const e = 1 - (1 - s.exit) ** 3, card0 = s.card;
+      const box = { x: lerp(PING_BOX.x, card0.x, e), y: lerp(PING_BOX.y + drop, card0.y, e),
+        w: lerp(PING_BOX.w, card0.w, e), h: lerp(PING_BOX.h, card0.h, e) };
       const run = varRun('PING', 100, { wdth: ping.axes.wdth, wght: Math.max(800, ping.axes.wght) });
       for (const left of [true, false]) {
         c.save(); c.beginPath(); c.rect(left ? 0 : s.edge, 0, left ? s.edge : 1920 - s.edge, 1080); c.clip();
-        c.globalAlpha = (1 - s.exit) * Math.min(1, ping.born * 1.6);
+        c.globalAlpha = Math.min(1, ping.born * 1.6);
         const hit = t < afterBeats(au, ping.t0, 0.18);
         c.fillStyle = heatColor(ping.stress && hit ? 'clay' : left ? 'paper' : 'ink', left ? 'ink' : 'paper', ping.age); printInBox(c, run, box); c.restore();
       }
@@ -75,14 +69,12 @@ export default class S02Notify extends Scene {
       drawSet(c,setLine(w.voice.forms(line,t).slice(0,3),74),96,1008,{on:left?'ink':'paper',alpha:w.voice.presence(line,t)});
       c.restore();
     }
-    gridSnap(c, w.voice.forms(line, t).slice(4), { x: 720, y: 948, colW: 160, rowH: 80, cols: 7, size: 74, on: 'paper', t, alpha: w.voice.presence(line, t) });
+    drawScreenGrid(c, w.voice, t);
     drawNote(c, { ax: card.x + card.w - 30, ay: card.y, x: card.x + card.w - 250, y: card.y - 58, text: '1 unread', sub: 'priority: weird', t0: afterBeats(au, w.T.ping, 1), on: 'paper' }, t);
-    // Got/a/bug can precede the bug-snapped S03 cut. Same TITLE positions on both sides.
-    if (t >= w.voice.line(1).start) drawReportLyrics(c, w.voice, t);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.print.pass.u.edge!.value = s.edge * (1 - s.exit);
     w.print.render(this.ctx.renderer, out);
-    w.lens.film(this.ctx.renderer, finalOut, this.view(t));
+    w.lens.film(this.ctx.renderer, finalOut, view02(t, au, w.T, w.voice.line(0).words.slice(4)));
     return { ...postFor('paper'), hud: 0, bloom: 0, grain: 0.03, vignette: 0 };
   }
 }

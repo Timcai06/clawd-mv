@@ -112,9 +112,10 @@ describe('E v3 typography, word timing, seek determinism', () => {
     const carried = lyrics.get('But it works on my machine').words.at(-1)!;
     expect(carried.start).toBeLessThan(D.start); expect(carried.end).toBeGreaterThan(D.start);
     expect(voice.form(carried, D.start).born).toBeGreaterThan(0);
+    // R1 (docs/CUTS.md): the S16 cut sits on the beat before "One", so the whole line belongs to S16.
     const one = lyrics.get('One goes green').words[0]!;
-    expect(one.start).toBeLessThan(T.s16[0]!);
-    expect(voice.form(one, T.s16[0]! - 1 / 60).born).toBeGreaterThan(0);
+    expect(one.start).toBeGreaterThanOrEqual(T.s16[0]! - 0.05);
+    expect(voice.form(one, T.s16[0]! - 0.06).born).toBe(0);
   });
   test('near stops on the exact voice onset, counter and escape follow their words', () => {
     const near = lyrics.get('Frame by frame').words.at(-1)!;

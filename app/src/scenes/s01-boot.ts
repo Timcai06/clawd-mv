@@ -15,7 +15,7 @@ import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
 import { cursorFromTop, printInBox } from './parts/s01-print';
 import * as Clawd from '../kit/clawd';
-import { openingTimes, bootState, handoffOut, WELCOME_BOX, BOOT_CLAWD } from './parts/s01-timing';
+import { openingTimes, bootState, handoffOut, view01, WELCOME_BOX, BOOT_CLAWD, LINE01 } from './parts/s01-timing';
 export const TYPE_LEVELS = { giant: null, lyric: 50.8, label: 20 }; // cap heights; Archivo 74 px = 50.764 cap px
 class BootWorld { lens = new Lens();
   sparks = new SparkLines();
@@ -28,15 +28,6 @@ export default class S01Boot extends Scene {
   private w!: BootWorld;
   override init() { this.w = shared ??= new BootWorld(this.ctx); this.w.users++; }
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
-  /** v4 motion: tight on the lone cursor, a long pull-back as the welcome frame draws, a lean-in on the last beat. */
-  private view(t: number) {
-    const au = this.ctx.audio, T = this.w.T;
-    const cur = cursorFromTop(handoffOut(T.start, au, T));
-    const back = ease.inOutCubic(span(t, afterBeats(au, T.welcome, -1.5), afterBeats(au, T.welcome, 3)));
-    const lean = Math.sin(Math.PI * span(t, afterBeats(au, T.ping, -2), T.ping)) * 0.06;
-    const zoom = lerp(2.6, 1, back) + lean;
-    return { zoom, fx: lerp(cur.x + 10, 960, back), fy: lerp(cur.y - 20, 540, back), ax: 960, ay: 540, rot: 0.02 * (1 - back) };
-  }
 
   override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
     const out = this.w.lens.rt;
@@ -92,12 +83,13 @@ export default class S01Boot extends Scene {
       Clawd.draw(g, BOOT_CLAWD.x, BOOT_CLAWD.y, { ...reveal, cells: reveal.cells.filter(cell => cell.k === 'O') }, { px: BOOT_CLAWD.px, alpha: 0.25 });
     }
     cursorSpark(c, g, w.sparks, f.t, cursorAt, { on: 'ink', from: w.T.welcome, to: frameEnd, end: w.T.ping, seed: 1 });
-    const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
-    drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink', glow: g });
+    // C1: "Nine o'clock, a" in the layout S02 keeps; "ping" is born giant in S02, not here.
+    const line = w.voice.line(0), forms = w.voice.forms(line, f.t).slice(0, 3);
+    drawSet(c, setLine(forms, LINE01.size), LINE01.x, LINE01.y, { on: 'ink', glow: g });
     { const q = cursorFromTop(handoffOut(f.t, au, w.T));
       drawNote(c, { ax: q.x + 14, ay: q.y - 12, x: q.x + 80, y: q.y - 70, text: 'pid 1031 · idle', t0: w.T.start + 0.6, t1: w.T.welcome, on: 'ink' }, f.t); }
     this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.sparks.finish(this.ctx, out); w.glow.composite(this.ctx, out, 2.0);
-    this.w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
+    this.w.lens.film(this.ctx.renderer, finalOut, view01(f.t, au, w.T));
     return { ...postFor('ink'), hud: 0, grain: 0.03, ca: 0.6, vignette: 0 };
   }
 }

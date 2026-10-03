@@ -83,7 +83,8 @@ describe('A / match cuts and one-beat limits',()=>{
     match(out01(T.ping-1/60,audio,T),HANDOFF.cursor01);match(in02(T.ping,audio,T),HANDOFF.cursor01);
     match(out02(T.issue-1/60,audio,T),HANDOFF.card02);match(in03(T.issue,audio,T),HANDOFF.card02);
     match(out03(C.start-1/60),HANDOFF.month03);match(in04(C.start,audio,C),HANDOFF.month03);
-    match(out04(C.end-1/60,audio,C),HANDOFF.clawd04);
+    // C4 (docs/CUTS.md): S04 parks Clawd at its rect on S05's first frame (after S05's camera); see handoff.test.ts.
+    match(out04(C.end-1/60,audio,C),{x:C.clawdOut.x,y:C.clawdOut.y,px:C.clawdOut.w/16});
     console.log('handoff max error 0 px (seven owned sides)');
   });
   test('cursor drawing converts top-left handoff y to the kit baseline exactly',()=>{
@@ -116,11 +117,13 @@ describe('A / levels, vocal timing and seek order',()=>{
     expect(words.length).toBeGreaterThan(0);
     for(const w of words)expect(voice.form(w,w.start-.01).born).toBe(0);
   });
-  test('the prefixes sung before snapped cuts keep their born forms',()=>{
-    for(const [line,t] of [[0,T.ping],[1,T.issue],[2,C.start],[3,C.end-1/60]] as const){
-      const words=voice.forms(lyrics.lines[line]!,t).filter(f=>f.t1<t);
-      expect(words.length).toBeGreaterThan(0);for(const f of words)expect(f.born).toBe(1);
-    }
+  test('the ping cut keeps its sung prefix; the other cuts sit between lines (R1)',()=>{
+    // C1 is the one mid-line cut: "Nine o'clock, a" is sung and born before the ping.
+    const words=voice.forms(lyrics.lines[0]!,T.ping).filter(f=>f.t1<T.ping);
+    expect(words.length).toBeGreaterThan(0);for(const f of words)expect(f.born).toBe(1);
+    // C2, C3, C4: the incoming scene's line starts at most 50 ms before the cut.
+    for(const [line,t] of [[1,T.issue],[2,C.start],[3,C.end]] as const)
+      expect(lyrics.lines[line]!.start).toBeGreaterThanOrEqual(t-0.05);
   });
   test('layout, camera, handoff and sound forms are independent of seek history',()=>{
     const states=[(t:number)=>bootBounds(audio,t,T),(t:number)=>notifyLayout(t,audio,T),(t:number)=>formBounds(t,audio,T),

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { AudioData } from '../../engine/audio';
 import { ease, lerp } from '../../engine/util';
 import { afterBeats, span } from '../../kit/time';
-import { HANDOFF } from '../../kit/handoff';
+import { HANDOFF, type Prim } from '../../kit/handoff';
 import { keyboardState, type CTimes } from './s06-timing';
 import { clipBox, unionBoxes } from './s05-print';
 import * as Clawd from '../../kit/clawd';
@@ -118,10 +118,14 @@ export function handoffIn(t: number,audio: AudioData,T: CTimes) {
 
 // S07→S08 has no new HANDOFF field: preserve the existing centred 39.6×72 cursor.
 export function handoffOut(t: number,audio: AudioData,T: CTimes) {
-  const k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end));
+  const k=ease.inOutCubic(span(t,afterBeats(audio,T.end,-1),T.end-0.1));
   const p=projectPoint(new THREE.Vector3(ENTER.x,0.515,ENTER.z),cameraAt(audio,t,T));
   return {x:lerp(p.x-19.8,940.2,k),y:lerp(p.y+36,576,k),h:72};
 }
+/** C6: the first lit key, received at the pen tip (screen; S07 has no 2D camera). */
+export function entryPrim07(t: number,audio: AudioData,T: CTimes): Prim { const p=handoffIn(t,audio,T); return {kind:'point',x:p.x,y:p.y,r:6}; }
+/** C7: the cursor block (drawCursor's rect from a baseline point). */
+export function exitPrim07(t: number,audio: AudioData,T: CTimes): Prim { const p=handoffOut(t,audio,T); return {kind:'rect',x:p.x,y:p.y-p.h,w:p.h*0.55,h:p.h}; }
 
 export function keyboardLayout(audio: AudioData,t: number,T: CTimes) {
   const camera=cameraAt(audio,t,T),s=keyboardState(audio,t,T);

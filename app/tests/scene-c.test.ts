@@ -11,10 +11,12 @@ const audio = new AudioData(audioJSON), lyrics = new Lyrics(lyricsJSON);
 const T = resolveCTimes(audio, lyrics);
 
 describe('C group musical events', () => {
-  test('each check uses a distinct measured snare and completes before the keyboard cut', () => {
+  test('checks: two measured snares, then the eighth after; all complete before the keyboard cut', () => {
     expect(T.checks).toHaveLength(3);
     expect(new Set(T.checks).size).toBe(3);
-    for (const t of T.checks) expect(audio.events('snare', t, t + 0.0001).length).toBe(1);
+    for (const t of T.checks.slice(0, 2)) expect(audio.events('snare', t, t + 0.0001).length).toBe(1);
+    expect(audio.beatAt(T.checks[2]!) - audio.beatAt(T.checks[1]!)).toBeCloseTo(0.5, 6);
+    expect(T.checks[2]!).toBeLessThan(afterBeats(audio, T.keyboard, -0.5));
     for (const t of T.checks) expect(todoState(audio, t - 0.00001, T).completed).toBeLessThan(todoState(audio, afterBeats(audio, t, 0.3), T).completed);
     const finished = todoState(audio, T.keyboard - 0.00001, T);
     expect(finished.checks).toEqual([1, 1, 1]);

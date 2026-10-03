@@ -460,9 +460,7 @@ export default class S04Calendar extends Scene {
       }
     }
 
-    // "So I crack…": the next line takes the focus in the grid at the foot of the frame.
-    const next = v.line('So I crack my claws and read it all over');
-    if (t >= next.start) drawSet(c, setLine(v.forms(next, t), 74, { space: 0.24 }), 92, 420, { on: NIGHT ? 'ink' : 'paper' });
+    // "So I crack…" belongs to S05 since the cut moved to the line break (docs/CUTS.md, R1).
   }
 
   private annotations(f: Frame, s: ReturnType<typeof cityState>, out: THREE.WebGLRenderTarget) {

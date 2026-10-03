@@ -6,12 +6,13 @@ import { Layer2D } from '../engine/gl';
 import { Ground, postFor } from '../kit/ground';
 import { Voice } from '../kit/lyric-moves';
 import { afterBeats, span } from '../kit/time';
-import { lerp } from '../engine/util';
+import { ease } from '../engine/util';
 import { Lens } from '../kit/lens';
 import * as Clawd from '../kit/clawd';
 import { openingTimes } from './parts/s01-timing';
+import { drawScreenGrid } from './parts/s02-layout';
 import { mono } from './parts/s01-drafting';
-import { drawForm, drawCalendar, drawReportLyrics, handoffIn, handoffOut, FORM_ROLL, REPORT_CLAWD } from './parts/s03-form';
+import { drawForm, drawCalendar, drawReportLyrics, handoffIn, handoffOut, view03, FORM_ROLL, REPORT_CLAWD } from './parts/s03-form';
 export const TYPE_LEVELS = { giant: 315.6, lyric: 50.8, label: 20 };
 class IssueWorld {
   print = new PrintOverlay();
@@ -24,31 +25,30 @@ export default class S03Issue extends Scene {
   private w!:IssueWorld;
   override init(){this.w=shared??=new IssueWorld(this.ctx);this.w.users++;}
   override dispose(){if(--this.w.users===0){this.w.dispose();shared=undefined;}}
-  /** v4 motion: the form is read up close (a breathing push that returns to identity for the S04 hand-off), with a punch on "weirdest". */
-  private view(t:number){
-    const T=this.w.T;
-    const p=span(t,T.issue,T.end);
-    const weird=this.w.voice.line(1).words.find(x=>/weirdest/i.test(x.w))!;
-    const punch=t>=weird.start?Math.pow(0.5,(t-weird.start)/0.1):0;
-    const zoom=1+0.07*Math.sin(Math.PI*p)+0.05*punch;
-    return {zoom,fx:lerp(820,960,p),fy:lerp(480,540,p),rot:-0.012*punch*(1-p)};
-  }
 
   override render(f:Frame,finalOut:THREE.WebGLRenderTarget){
     const out=this.w.lens.rt;
     const w=this.w,au=this.ctx.audio,t=f.t,c=w.layer.ctx,b=handoffIn(t,au,w.T),k=span(t,w.T.issue,afterBeats(au,w.T.issue,1));
     w.ground.render(this.ctx.renderer,out,{kind:'paper',t,grid:0,halftone:.22,pitch:7}); w.layer.clear();
+    // C3 (docs/CUTS.md): over the last beat the form, its words and the stamp fall out of frame
+    // (inCubic, done 0.1 s before the cut); only the attached month stays, which S04 opens on.
+    const fall=1150*ease.inCubic(span(t,afterBeats(au,w.T.end,-1),w.T.end-0.1));
+    c.save();c.translate(0,fall);
     c.save();c.translate(960,540);c.rotate(FORM_ROLL*k);c.translate(-960,-540);drawForm(c,b);c.restore();
     if(k>0){
-      c.save();c.globalAlpha=k;drawCalendar(c,handoffOut(t));drawReportLyrics(c,w.voice,t);
+      c.save();c.globalAlpha=k;c.save();c.translate(0,-fall);drawCalendar(c,handoffOut(t));c.restore();drawReportLyrics(c,w.voice,t);
       c.save();c.translate(REPORT_CLAWD.x,REPORT_CLAWD.y);c.scale(1,REPORT_CLAWD.stretchY);
       Clawd.draw(c,0,0,Clawd.pose(null,{beat:f.beat,beat0:au.beatAt(w.T.issue),p:k}),{px:REPORT_CLAWD.px});c.restore();c.restore();
     } else {
       mono(c,'Issue #1031 · calendar',b.x+24,b.y+b.h*.65,20,'ink',.6);drawReportLyrics(c,w.voice,t);
     }
+    c.restore();
+    // C2 (R2): "screen" is still sung for 0.21 s after the cut; finish it in S02's grid, under the form.
+    const screen=w.voice.line(0).words.at(-1)!;
+    if(t<screen.end+0.12){c.save();c.globalCompositeOperation='destination-over';drawScreenGrid(c,w.voice,t,true);c.restore();}
     this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
     w.print.render(this.ctx.renderer, out);
-    w.lens.film(this.ctx.renderer,finalOut,this.view(t));
+    w.lens.film(this.ctx.renderer,finalOut,view03(t,w.T,w.voice.line(1).words.find(x=>/weirdest/i.test(x.w))!.start));
     return {...postFor('paper'),hud:0,bloom:0,grain:.035,vignette:0};
   }
 }

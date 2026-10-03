@@ -144,8 +144,10 @@ export default class S08Commit extends Scene {
       }
     }
     if (s.frozen) {
-      const p = handoffIn(t, au, { ...T, start: s.second ? T.pick2 : T.start });
-      drawCursor(c, { ...p, on: blink(au.beatAt(t)) });
+      const t0 = s.second ? T.pick2 : T.start;
+      const p = handoffIn(t, au, { ...T, start: t0 });
+      // Blink phase counts from the cut, so the cursor S07 hands over is lit on the first frame (C7).
+      drawCursor(c, { ...p, on: blink(au.beatAt(t) - au.beatAt(t0)) });
     }
     c.restore();
     // The hash's hairline is the only outgoing object; no transition outside the last beat.
