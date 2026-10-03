@@ -12,7 +12,10 @@
 写法样板：`scenes/s15-line42.ts` + `parts/s15-world.ts` + `kit/raymarch.ts`（光线步进 + 光照转刻线 + CPU/GPU 双写的世界）；`scenes/s04-calendar.ts` + `parts/s04-city-model.ts`（真实光照、阴影）；`scenes/s14-shaft.ts`（字贴在 3D 平面上、按拍分段的镜头）。
 公共部件：`kit/pathtext.ts`（沿 3D 路径逐字母排布）、`kit/wordplane.ts`（字的 3D 平面）、`kit/carry.ts`（跨切点的词）、`kit/handoff.ts`（`CUT` 常量、`Prim`、`exitEnvelope`、`accelerando`）、`kit/rig.ts`、`kit/raymarch.ts`、`kit/clawd3d.ts`、`kit/spark.ts`、`kit/vartype.ts`、`kit/lyric-moves.ts`（`Voice`）。
 
-## 2. v5 方法（每场都必须遵守）
+## 2. v5 方法
+
+**先读这条（Tim 2026-10-03）：不要为了 3D 而 3D。** 3D 只在它承载歌词含义时用；没有含义支撑的场景用平面海报式版式 + 动效。下面 1–6 条适用于用了 3D 的场景。
+
 1. **数学世界**写在 `parts/sNN-world.ts`：几何函数 CPU（TS）和 GPU（GLSL 字符串）各一份，同名同参数，数值一致（测试：随机 200 个点，CPU 和 GLSL 的翻译版在 JS 里重算误差 < 1e-4；GLSL 版本用字符串常量导出，测试里用一个简单的 GLSL→JS 对照函数，或者把同一组常量喂给两边并比较少量关键点在两边的手算值——具体做法写进取舍清单）。镜头、字、Clawd、光标的位置都向世界函数查询。
 2. 渲染用三种方式之一：光线步进（`kit/raymarch.ts`）、位移网格、自写投影细线（`LineBatch` / Canvas + `Rig.proj`）。
 3. **冲击帧（2026-10-03 C 补）**：「N 帧反色」一律指**调色板互换**（场景里 ink ↔ paper、clay 场 ↔ ink 场，在场景自己的颜色里换），**不用** `post.invert`（RGB 反相会把 clay 变成青色）。
