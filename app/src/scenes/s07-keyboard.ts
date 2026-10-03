@@ -4,7 +4,7 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
 import { GLSL_COMMON } from '../engine/glsl/common';
 import { F, font } from '../engine/type';
-import { css, lin } from '../theme';
+import { css, lin, POSTER_POST } from '../theme';
 import { postFor, GlowLayer } from '../kit/ground';
 import { Voice } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
@@ -15,7 +15,7 @@ import { resolveCTimes, keyboardState, type CTimes } from './parts/s06-timing';
 import { WordPlane } from '../kit/wordplane';
 import { letterTimes } from '../kit/pathtext';
 import { exitEnvelope } from '../kit/handoff';
-import { keyTop,keyEvents,LOOKING_KEYS,ENTER } from './parts/s07-terrain';
+import { keyTop,keyEvents,LOOKING_KEYS,ENTER,enterCovers } from './parts/s07-terrain';
 import { KEY_FIELD, TERRAIN_KEYS, WORD_KEYS, RIDER_KEY, keyHeight, terrainOpacity, cameraAt, atScreen, handoffIn, handoffOut, riderAt, riderGeometry, titleSlice } from './parts/s07-terrain';
 import { printRun } from './parts/s05-print';
 
@@ -77,11 +77,12 @@ void main() {
   // tops: paper in the light; in a crest's shadow, fine diagonal rules
   vec3 roof=mix(paper, ink, hatch((vWorld.x + vWorld.z * 0.6) * 22.0, (1.0 - sh) * 0.55) * 0.85);
   roof=mix(roof,clay,max(vEnter,vSung));
-  if(vEnter>.5){float u=dot(FRAG_PX,vec2(-sin(.6),cos(.6)))/5.0;roof=mix(clay,ink,hatch(u,.20)*.75);}
-  roof+=clay*vHeat;
+  roof+=clay*vHeat*(1.0-vEnter);
   float grain=hash12(floor(vWorld.xz*260.0));
   roof=mix(roof,ink,grain*0.035);
-  roof*=1.0+vEnter*(exitGain-1.0);
+  // C7: screen-space ink strokes, 1.2 logical px at a fixed 5 px pitch.
+  // Enter is exact palette clay; heat, grain and exit gain do not relight it.
+  if(vEnter>.5){float u=dot(FRAG_PX,vec2(-sin(.6),cos(.6)));float d=abs(mod(u+2.5,5.0)-2.5);roof=mix(clay,ink,pxLine(d,.1,1.1));}
   vec3 col = mix(side,roof,top);
   float clayCoverage = top * max(vEnter,vSung);
   if (glowOnly > 0.5) col = clay * clayCoverage;
@@ -138,6 +139,14 @@ class KeyboardWorld {
       const planes=wi===7?parent.letters():[parent];if(wi===7)parent.dispose();
       planes.forEach((plane,j)=>{plane.mesh.geometry.computeBoundingBox();plane.mesh.geometry.translate(-plane.mesh.geometry.boundingBox!.min.x,0,0);plane.mesh.rotation.x=-Math.PI/2;plane.set({aDim:0,cSung:CLAY,cDone:INK});this.words.push({plane,key:wi===7?LOOKING_KEYS[j]!:WORD_KEYS[wi]!,wi,...(wi===7?{letter:j}:{})});this.scene.add(plane.mesh);});
     });
+    // The completed Enter field includes the word's face: when the key covers
+    // the viewport, its ink/clay screen engraving also replaces the hot ink mask.
+    const back=this.words.find(w=>w.wi===8)!.plane.mesh.material as THREE.RawShaderMaterial;
+    back.uniforms.enterField={value:0};
+    back.fragmentShader=back.fragmentShader.replace('uniform bool engraved;','uniform bool engraved; uniform float enterField;')
+      .replace('vec3 rgb = cover * mix(cold*aDim,cs,sung) * opacity;',`vec3 rgb = cover * mix(cold*aDim,cs,sung) * opacity;
+      float enterU=dot(FRAG_PX,vec2(-sin(.6),cos(.6))),enterD=abs(mod(enterU+2.5,5.0)-2.5);
+      rgb=mix(rgb,a*mix(vec3(${CLAY.join(',')}),vec3(${INK.join(',')}),pxLine(enterD,.1,1.1)),enterField);`);
     const lc=this.legendAtlas.ctx;lc.fillStyle=css('ink');lc.font=font(F.mono(500),26);lc.textAlign='center';
     for(const k of this.legendKeys)lc.fillText(k.label.length>2?k.label.slice(0,2):k.label,(k.index%8)*64+32,Math.floor(k.index/8)*64+43);
     this.legendTexture=new THREE.CanvasTexture(this.legendAtlas.canvas);this.legendTexture.colorSpace=THREE.SRGBColorSpace;
@@ -170,10 +179,11 @@ export default class S07Keyboard extends Scene {
       const size=Math.min(1,key.width*.85/plane.w);plane.mesh.scale.set(size,1,1);plane.mesh.position.set(key.x-plane.w*size/2,keyTop(key,t,a,T)+.004,key.z+.28);
       const target=letter===undefined?{...word,w:word.w.toUpperCase()}:{...word,w:Array.from(word.w.toUpperCase())[letter]!,start:times[letter]!.t0,end:times[letter]!.t1};
       plane.set({prog:plane.karaoke(target,t),done:t>=word.end?1:0,heat:t<at?0:Math.exp(-(t-at)/.28)});plane.mesh.visible=t>=at;
+      if(wi===8)(plane.mesh.material as THREE.RawShaderMaterial).uniforms.enterField!.value=enterCovers(t,a,T)?1:0;
     }
     const m=new THREE.Matrix4(),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2),sc=new THREE.Vector3();
     w.legendKeys.forEach((key,i)=>{sc.set(key.width*.72,key.depth*.62,1);m.compose(new THREE.Vector3(key.x,keyTop(key,t,a,T)+.005,key.z),q,sc);w.legends.setMatrixAt(i,m);});w.legends.instanceMatrix.needsUpdate=true;
     const rider=riderGeometry(a,t,T,w.camera),R=riderAt(a,t,T);w.sprite.clear();Clawd.draw(w.sprite.ctx,0,0,Clawd.pose('A5',{beat:f.beat,beat0:a.beatAt(T.land),p:0,travel:0}),{px:10});w.sprite.upload();w.clawd.position.copy(rider.pos);w.clawd.quaternion.copy(w.camera.quaternion);w.clawd.scale.set(16*R.px*rider.units,5*R.px*rider.units,1);
-    const r=this.ctx.renderer;r.setRenderTarget(out);r.clearDepth();r.render(w.scene,w.camera);return {hud:0,frame:0,bloom:.45,grain:.02};
+    const r=this.ctx.renderer;r.setRenderTarget(out);r.clearDepth();r.render(w.scene,w.camera);return {...POSTER_POST,hud:0,frame:0,bloom:0,grain:.02,exposure:1};
   }
 }

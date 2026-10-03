@@ -116,10 +116,16 @@ export function keyEvents(T:CTimes){
   return T.claws.words.flatMap((word,i)=>i===7?letterTimes(word).map((g,j)=>({key:LOOKING_KEYS[j]!,word,letter:j,at:g.t0})): [{key:WORD_KEYS[i]!,word,letter:0,at:letterTimes(word)[0]!.t0}]);
 }
 export function keyPress(t:number,at:number){if(t<at)return 0;if(t<at+.06)return -.12*ease.outQuad(span(t,at,at+.06));return -.12*(1-springStep((t-at-.06)/.18));}
+export const MAX_KEY_DISTANCE=Math.max(...KEY_FIELD.map(k=>Math.hypot(k.x-WORD_KEYS[0]!.x,k.z-WORD_KEYS[0]!.z)));
+export function keyRise(k:typeof KEY_FIELD[number],t:number,a:AudioData,T:CTimes){
+  const first=WORD_KEYS[0]!,distance=Math.hypot(k.x-first.x,k.z-first.z),delay=distance/MAX_KEY_DISTANCE,begin=afterBeats(a,T.keyboard,delay);
+  // The distance/one-beat front reaches the farthest cap at the deadline;
+  // shorter caps retain the 0.35-beat spring, clipped to that same deadline.
+  const end=Math.min(afterBeats(a,begin,.35),afterBeats(a,T.keyboard,1));
+  return k.index===first.index||t>=end?1:t<=begin?0:ease.outBack(span(t,begin,end),1.3);
+}
 export function keyTop(k:typeof KEY_FIELD[number],t:number,a:AudioData,T:CTimes){
-  const s=keyboardState(a,t,T),base=keyHeight(k.x,k.z,k.enter,a.beatAt(t),a.hit('kick',t),s.landing),first=WORD_KEYS[0]!;
-  const delay=Math.hypot(k.x-first.x,k.z-first.z)/9,begin=afterBeats(a,T.keyboard,delay);
-  const rise=k.index===first.index?1:ease.outBack(span(t,begin,afterBeats(a,begin,.35)),1.3);
+  const s=keyboardState(a,t,T),base=keyHeight(k.x,k.z,k.enter,a.beatAt(t),a.hit('kick',t),s.landing),rise=keyRise(k,t,a,T);
   const event=keyEvents(T).filter(e=>e.key.index===k.index&&e.at<=t).at(-1);
   return lerp(-.6,base,rise)+(event?keyPress(t,event.at):0);
 }
@@ -140,6 +146,11 @@ export function cameraAt(a:AudioData,t:number,T:CTimes){
   }
   return cam;
 }
+export function cameraRoll(cam:THREE.PerspectiveCamera){
+  const forward=new THREE.Vector3(0,0,-1).applyQuaternion(cam.quaternion),reference=cam.clone();reference.up.set(0,1,0);reference.lookAt(cam.position.clone().add(forward));
+  const delta=reference.quaternion.invert().multiply(cam.quaternion);return 2*Math.atan2(delta.z,delta.w);
+}
+export function entryRoll(a:AudioData,T:CTimes){return cameraRoll(cameraAt(a,T.keyboard,T));}
 export function cursorAt(t:number,a:AudioData,T:CTimes){const event=keyEvents(T).filter(e=>e.at<=t).at(-1),k=event?.key??WORD_KEYS[0]!;return projectPoint(new THREE.Vector3(k.x,keyTop(k,t,a,T),k.z),cameraAt(a,t,T));}
 export function entryPrim(t:number,a:AudioData,T:CTimes):Prim{const k=WORD_KEYS[0]!,p=projectPoint(new THREE.Vector3(k.x,keyTop(k,t,a,T),k.z),cameraAt(a,t,T));return {kind:'point',...p,r:6};}
 export function enterCorners(t:number,a:AudioData,T:CTimes){const y=keyTop(ENTER,t,a,T),cam=cameraAt(a,t,T);return [-1,1].flatMap(x=>[-1,1].map(z=>projectPoint(new THREE.Vector3(ENTER.x+x*ENTER.width*.45,y,ENTER.z+z*ENTER.depth*.45),cam)));}

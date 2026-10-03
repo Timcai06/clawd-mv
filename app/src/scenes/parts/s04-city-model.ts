@@ -184,23 +184,29 @@ function oldCameraAt(audio: AudioData, t: number, T: CityTimes, s: ReturnType<ty
 // V6 entry calibration: preserve the square city world, calibrate only the flat month projection.
 import { Rig, mixCam, type Cam } from '../../kit/rig';
 import { solvePoint, setCamera, projectedBounds } from './s05-print';
-import { layoutPath, path3, writeHead, pathAt } from '../../kit/pathtext';
+import { layoutPath, letterTimes, path3, pathAt, tangentAt, type PathLayout, type Path3 } from '../../kit/pathtext';
+import { varRun } from '../../kit/vartype';
 import { Voice } from '../../kit/lyric-moves';
 export const GRID_CORNERS:Point3[]=[[-12.6,0,1.8],[12.6,0,1.8],[12.6,0,-16.2],[-12.6,0,-16.2]];
 const plain=(c:CamPose):Cam=>({pos:{x:c.pos.x,y:c.pos.y,z:c.pos.z},tgt:{x:c.target.x,y:c.target.y,z:c.target.z},roll:c.roll,fov:c.fov});
 export function cameraAt(audio:AudioData,t:number,T:CityTimes,s=cityState(audio,t,T)):CamPose & {shiftY:number;stretchX:number} {
-  t=Math.min(t,T.end-1/60);s=cityState(audio,t,T);
+  s=cityState(audio,t,T);
   const old=oldCameraAt(audio,t,T,s),h=540/Math.tan(16*Math.PI/180)/(870/18),start:Cam={pos:{x:0,y:h,z:-7.2},tgt:{x:0,y:0,z:-7.2},roll:0,fov:32};
   const k=ease.inOutCubic(span(t,T.start,afterBeats(audio,T.start,2))),base=mixCam(start,plain(old),k);
-  const end=T.end-1/60,last=afterBeats(audio,T.end,-1),u=span(t,last,end),d=DATES[31]!,roof=cityState(audio,t,T).roof32;
+  const end=T.end,last=afterBeats(audio,T.end,-1),u=span(t,last,end),d=DATES[31]!,roof=cityState(audio,t,T).roof32;
   const point={x:d.x,y:roof+.4,z:d.z};
   // A perspective solve moves the camera; Clawd's rectangle is its projected world size.
-  const push=solvePoint(point,9/.16,{x:1204,y:440.5},KF.yaw*Math.PI/180,KF.el*Math.PI/180,KF.fov);
-  const ex=ease.inCubic(u);
+  const ex=ease.inQuad(u);
   if(t>=last){
     const pose=oldCameraAt(audio,last,T,cityState(audio,last,T)),r=new Rig();setCamera(r,{...plain(pose),offsetX:pose.shiftX});
     const d=DATES[31]!,roof=cityState(audio,last,T).roof32,q=r.proj(d.x,roof+.4,d.z)!;
-    const c=solvePoint(point,lerp(6,9,ex)/.16,{x:lerp(q.x,1204,ex),y:lerp(q.y,440.5,ex)},KF.yaw*Math.PI/180,KF.el*Math.PI/180,KF.fov);
+    // The center reaches the cut with the incoming push's tangent. Hermite
+    // interpolation leaves the city anchor unchanged and joins the screen velocity.
+    const duration=end-last,inDuration=duration*5/3;
+    const h00=2*u*u*u-3*u*u+1,h01=-2*u*u*u+3*u*u,h11=u*u*u-u*u;
+    const center={x:h00*q.x+h01*1204+h11*duration*2*(930-1204)/inDuration,
+      y:h00*q.y+h01*440.5+h11*duration*2*(520-440.5)/inDuration};
+    const c=solvePoint(point,lerp(6,9,ex)/.16,center,KF.yaw*Math.PI/180,KF.el*Math.PI/180,KF.fov);
     return {pos:new THREE.Vector3(c.pos.x,c.pos.y,c.pos.z),target:new THREE.Vector3(c.tgt.x,c.tgt.y,c.tgt.z),fov:c.fov,roll:c.roll,shiftX:c.offsetX??0,shiftY:c.offsetY??0,stretchX:1};
   }
   return {pos:new THREE.Vector3(base.pos.x,base.pos.y,base.pos.z),target:new THREE.Vector3(base.tgt.x,base.tgt.y,base.tgt.z),fov:base.fov,roll:base.roll,
@@ -240,10 +246,23 @@ export function inverseTravel(a:AudioData,T:CityTimes){
 }
 const lyricCache=new WeakMap<Lyrics,WeakMap<AudioData,WeakMap<CityTimes,ReturnType<typeof makeCityLyrics>>>>();
 function makeCityLyrics(l:Lyrics,a:AudioData,T:CityTimes){const v=new Voice(l,a),words=l.get('thirty-second day').words,route=path3(STREETS.points.map(([x,y,z])=>({x,y,z}))),d=DATES[31]!;
-  const lead=layoutPath(words.slice(0,2),{capH:.9,axes:w=>v.form(w,w.end).axes,upper:true});
-  const count=layoutPath([words[2]!],{capH:1.1,axes:w=>v.form(w,w.end).axes,upper:true,notBefore:inverseTravel(a,T)});
-  const day=layoutPath(words.slice(3,5),{capH:.75,axes:w=>v.form(w,w.end).axes,upper:true});
-  return {lead,count,day,route,first:path3(route.pts.slice(0,3)),foot:path3([{x:d.x-TOWER_BLOCK/2,y:.02,z:d.z+TOWER_BLOCK/2+.08},{x:d.x+12,y:.02,z:d.z+TOWER_BLOCK/2+.08}]),october:words[5]!};
+  const first=path3(route.pts.slice(0,4)),foot=path3([{x:d.x-TOWER_BLOCK/2,y:.02,z:d.z+TOWER_BLOCK/2+.08},{x:d.x+12,y:.02,z:d.z+TOWER_BLOCK/2+.08}]);
+  const fit=(ws:typeof words,path:Path3,mode:'lie'|'stand')=>{let s0=0;return ws.map(word=>{
+    const t=(word.start+word.end)/2,r=cityRig(a,t,T),p=pathAt(path,s0),q=r.proj(p.x,p.y,p.z)!,ux=tangentAt(path,s0);
+    // lie text-up = normal cross tangent. Solve its actual affine cap height.
+    const scale=mode==='stand'?q.s:(()=>{const up={x:ux.z,y:0,z:-ux.x},b=r.proj(p.x+up.x*.1,p.y,p.z+up.z*.1)!;return Math.hypot(b.x-q.x,b.y-q.y)/.1;})();
+    const lay=layoutPath([word],{capH:75/scale,s0,axes:w=>v.form(w,w.end).axes,upper:true});
+    s0=lay.s1+.32*100*lay.capH/varRun('H',100,v.form(word,word.end).axes).capH;return lay;
+  });};
+  const leadWords=fit(words.slice(0,2),first,'lie'),dayWords=fit(words.slice(3,5),foot,'stand');
+  const merge=(sets:PathLayout[]):PathLayout=>({glyphs:sets.flatMap(s=>s.glyphs),s0:sets[0]!.s0,s1:sets.at(-1)!.s1,capH:sets[0]!.capH});
+  const word=words[2]!,display=word.w.toUpperCase(),run=varRun(display,100,v.form(word,word.end).axes),times=letterTimes({...word,w:display});
+  // R2: each birth point is the cursor's route position at that letter's vocal onset.
+  const count:PathLayout={capH:1.6,s0:0,s1:route.length,glyphs:run.glyphs.map((g,i)=>({ch:g.ch,word,wi:0,i,
+    s:cityState(a,times[i]!.t0,T).travel*STREETS.total,w:g.adv*1.6/run.capH,...times[i]!}))};
+  count.s0=count.glyphs[0]!.s;
+  return {lead:merge(leadWords),count,day:merge(dayWords),leadWords,dayWords,route,first,foot,october:words[5]!};
 }
 export function cityLyrics(l:Lyrics,a:AudioData,T:CityTimes){let audios=lyricCache.get(l);if(!audios){audios=new WeakMap();lyricCache.set(l,audios);}let times=audios.get(a);if(!times){times=new WeakMap();audios.set(a,times);}let hit=times.get(T);if(!hit){hit=makeCityLyrics(l,a,T);times.set(T,hit);}return hit;}
-export function writeHeadAt(t:number,a:AudioData,l:Lyrics,T:CityTimes){const lay=cityLyrics(l,a,T),p=pathAt(lay.route,writeHead(lay.count.glyphs,t)),q=cityRig(a,t,T).proj(p.x,p.y,p.z)!;return {x:q.x,y:q.y};}
+/** R2 measures the head at each birth, rather than a continuous natural-width text head. */
+export function letterBirthPoint(i:number,a:AudioData,l:Lyrics,T:CityTimes){const lay=cityLyrics(l,a,T),g=lay.count.glyphs[i]!,p=pathAt(lay.route,g.s),q=cityRig(a,g.t0,T).proj(p.x,p.y,p.z)!;return {x:q.x,y:q.y};}

@@ -425,9 +425,9 @@ export default class S04Calendar extends Scene {
     const w=this.w,T=w.times,au=this.ctx.audio,lay=cityLyrics(this.ctx.lyrics,au,T),rig=cityRig(au,f.t,T);
     const visible=(p:{x:number;y:number;z:number})=>streetVisible(p,f.t,au,T);
     const common={base:'ink' as const,on:'paper' as const,axes:(g:any,t:number)=>w.voice.form(g.word,t).axes,visible,pop:0};
-    drawPathText(c,rig,lay.first,lay.lead,f.t,{...common,mode:'lie',normal:()=>({x:0,y:1,z:0})});
+    for(const word of lay.leadWords)drawPathText(c,rig,lay.first,word,f.t,{...common,mode:'lie',normal:()=>({x:0,y:1,z:0})});
     drawPathText(c,rig,lay.route,lay.count,f.t,{...common,mode:'lie',normal:()=>({x:0,y:1,z:0})});
-    drawPathText(c,rig,lay.foot,lay.day,f.t,{...common,mode:'stand',minPx:0,maxPx:1000});
+    for(const word of lay.dayWords)drawPathText(c,rig,lay.foot,word,f.t,{...common,mode:'stand',minPx:0,maxPx:1000});
   }
 
   private annotations(f: Frame, s: ReturnType<typeof cityState>, out: THREE.WebGLRenderTarget) {
@@ -470,4 +470,3 @@ export default class S04Calendar extends Scene {
     };
   }
 }
-

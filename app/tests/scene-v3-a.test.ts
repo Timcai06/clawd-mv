@@ -83,7 +83,7 @@ describe('A / match cuts and one-beat limits',()=>{
     match(out01(T.ping-1/60,audio,T),HANDOFF.cursor01);match(in02(T.ping,audio,T),HANDOFF.cursor01);
     match(out02(T.issue-1/60,audio,T),HANDOFF.card02);match(in03(T.issue,audio,T),HANDOFF.card02);
     match(out03(C.start-1/60),HANDOFF.month03); // S04 now receives CUT.grid04; covered by scene-v6-g2.
-    const b=out04(C.end-1/60,audio,C);match(b,{x:1132,y:418,px:9});
+    const b=out04(C.end,audio,C);match(b,{x:1132,y:418,px:9}); // R2: continuous push reaches 9 at the cut.
     console.log('Legacy S01-S03 matches and S04 projected exit checked within 2 px');
   });
   test('cursor drawing converts top-left handoff y to the kit baseline exactly',()=>{
@@ -95,7 +95,7 @@ describe('A / match cuts and one-beat limits',()=>{
     expect(out02(afterBeats(audio,T.issue,-1)-.01,audio,T)).toEqual(out02(T.ping,audio,T));
     expect(in03(afterBeats(audio,T.issue,1),audio,T)).toEqual(in03(T.attachment,audio,T));
     expect(in04(afterBeats(audio,C.start,1),audio,C).alpha).toBe(0);
-    expect(out04(C.end-1/60,audio,C).px).toBeCloseTo(9,8);
+    expect(out04(C.end,audio,C).px).toBeCloseTo(9,8);
   });
 });
 describe('A / levels, vocal timing and seek order',()=>{

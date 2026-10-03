@@ -70,3 +70,9 @@ CUTS.push(
   {id:'C6',out:'S06',in:'S07',cut:g2T.keyboard,exitPrim:t=>g2s06.exitPrim(t,g2a,g2T),entryPrim:t=>g2s07.entryPrim(t,g2a,g2T)},
   {id:'C7',out:'S07',in:'S08-contract',cut:g2T.end,exitPrim:t=>g2s07.exitPrim(t,g2a,g2T),entryPrim:()=>({kind:'rect',x:0,y:0,w:1920,h:1080})},
 );
+test('G2 C3/C5/C6/C7 retain their full adjacent-frame contracts',()=>{
+  for(const cut of CUTS.filter(c=>['C3','C5','C6','C7'].includes(c.id)))for(let i=0;i<=4;i++){
+    const err=primError(cut.exitPrim(cut.cut-(1-i/4)/60),cut.entryPrim(cut.cut+i/4/60));
+    expect(err.px,cut.id).toBeLessThanOrEqual(2);expect(err.size,cut.id).toBeLessThanOrEqual(.02);
+  }
+});

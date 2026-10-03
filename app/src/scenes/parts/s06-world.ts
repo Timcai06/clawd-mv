@@ -8,6 +8,7 @@ import { letterTimes } from '../../kit/pathtext';
 import { Rig, mixCam, orbitCam, type P3 } from '../../kit/rig';
 import { HANDOFF, type Prim } from '../../kit/handoff';
 import { varRun } from '../../kit/vartype';
+import { solidLetterGeometry } from '../../kit/solidtype';
 import type { CTimes } from './s06-timing';
 import { projectedBounds, setCamera, solveLine, solvePoint, type ProjectCam } from './s05-print';
 import { mixProject } from './s05-world';
@@ -80,8 +81,9 @@ export function checkLight(t:number,T:CTimes) {
   let deg=62;
   for(const [k,at] of T.checks.entries()){if(t<at)break;deg=lerp([62,42,24][k]!,[42,24,11][k]!,ease.outCubic(span(t,at,at+.18)));}
   const e=deg*Math.PI/180,az=-Math.PI/4;
-  return {elevation:deg,dir:{x:Math.sin(az)*Math.cos(e),y:Math.sin(e),z:Math.cos(az)*Math.cos(e)}};
+  return {elevation:deg,intensity:.9/Math.sin(e),dir:{x:Math.sin(az)*Math.cos(e),y:Math.sin(e),z:Math.cos(az)*Math.cos(e)}};
 }
+export function surfaceTone(normal:P3,t:number,T:CTimes,shadow=1){const L=checkLight(t,T);return Math.min(.92,.12+L.intensity*Math.max(0,normal.x*L.dir.x+normal.y*L.dir.y+normal.z*L.dir.z)*shadow);}
 export function checkWidth() {const r=varRun('CHECK',100,{wdth:100,wght:900});return r.width*4.2/r.capH;}
 export function checkCorners():P3[] {
   const w=checkWidth();return [-w/2,w/2].flatMap(x=>[0,.3].flatMap(y=>[-2.6,-6.8].map(z=>({x,y,z}))));
@@ -114,3 +116,46 @@ export function exitVelocity(t:number,a:AudioData,T:CTimes) {
   return {x:(Q.x-P.x)/(2*h),y:(Q.y-P.y)/(2*h),roll:(cameraAt(t+h,a,T).roll-cameraAt(t-h,a,T).roll)/(2*h)};
 }
 export function checkBounds(t:number,a:AudioData,T:CTimes){return projectedBounds(rigAt(t,a,T),checkCorners(),true);}
+
+type P2={x:number;z:number};
+/** CPU triangle silhouettes use the same shipped outlines and extrusion as SolidText. */
+let checkTriangles:P3[][]|undefined,checkFootprint:P2[][]|undefined;
+function checkMesh(){
+  if(checkTriangles)return {triangles:checkTriangles,footprint:checkFootprint!};
+  const run=varRun('CHECK',100,{wdth:100,wght:900}),scale=4.2/run.capH,width=run.width*scale;
+  checkTriangles=[];checkFootprint=[];
+  for(const g of run.glyphs){const pos=solidLetterGeometry(g.ch,{wdth:100,wght:900},4.2,.25,0).getAttribute('position');
+    for(let i=0;i<pos.count;i+=3){const tri=[0,1,2].map(j=>({x:-width/2+g.x*scale+pos.getX(i+j),y:.012+pos.getZ(i+j),z:-2.6-pos.getY(i+j)}));
+      checkTriangles.push(tri);if(tri.every(p=>Math.abs(p.y-.262)<1e-6))checkFootprint.push(tri.map(p=>({x:p.x,z:p.z})));}
+  }return {triangles:checkTriangles,footprint:checkFootprint};
+}
+function clipPaper(poly:P2[]):P2[]{
+  for(const [axis,bound,sign] of [['x',-PAPER_W/2,1],['x',PAPER_W/2,-1],['z',-PAPER_D/2,1],['z',PAPER_D/2,-1]] as const){
+    const out:P2[]=[];for(let i=0;i<poly.length;i++){const A=poly[i]!,B=poly[(i+1)%poly.length]!,da=sign*(A[axis]-bound),db=sign*(B[axis]-bound);
+      if(da>=0)out.push(A);if((da>=0)!==(db>=0)){const u=da/(da-db);out.push({x:lerp(A.x,B.x,u),z:lerp(A.z,B.z,u)});}}
+    poly=out;if(!poly.length)break;
+  }return poly;
+}
+export function checkShadowPolygons(t:number,T:CTimes){const {dir:L}=checkLight(t,T),mesh=checkMesh();
+  return {shadow:mesh.triangles.map(tri=>clipPaper(tri.map(p=>({x:p.x-p.y*L.x/L.y,z:p.z-p.y*L.z/L.y})))).filter(p=>p.length>=3),
+    footprint:mesh.footprint.map(clipPaper).filter(p=>p.length>=3)};
+}
+function intervals(polys:P2[][],z:number):[number,number][]{
+  const ranges:[number,number][]=[];for(const poly of polys){const xs:number[]=[];for(let i=0;i<poly.length;i++){const A=poly[i]!,B=poly[(i+1)%poly.length]!;
+    if((A.z<=z&&z<B.z)||(B.z<=z&&z<A.z))xs.push(A.x+(B.x-A.x)*(z-A.z)/(B.z-A.z));}
+    xs.sort((a,b)=>a-b);for(let i=0;i+1<xs.length;i+=2)ranges.push([xs[i]!,xs[i+1]!]);}
+  ranges.sort((a,b)=>a[0]-b[0]);const union:[number,number][]=[];for(const range of ranges){const last=union.at(-1);if(last&&range[0]<=last[1])last[1]=Math.max(last[1],range[1]);else union.push([...range]);}return union;
+}
+export function paperSamples(t:number,T:CTimes){const polys=checkShadowPolygons(t,T),lit:P3[]=[],shadow:P3[]=[];
+  for(let z=-PAPER_D/2+.1;z<PAPER_D/2-.1;z+=.2){const S=intervals(polys.shadow,z),F=intervals(polys.footprint,z);
+    for(let x=-PAPER_W/2+.1;x<PAPER_W/2-.1;x+=.2){if(F.some(([a,b])=>x>=a&&x<=b))continue;
+      const set=S.some(([a,b])=>x>=a&&x<=b)?shadow:lit;if(set.length<5)set.push({x,y:0,z});if(lit.length===5&&shadow.length===5)return {lit,shadow};}}
+  return {lit,shadow};
+}
+export function paperToneAt(p:P3,t:number,T:CTimes){const {shadow}=checkShadowPolygons(t,T),blocked=intervals(shadow,p.z).some(([a,b])=>p.x>=a&&p.x<=b);return surfaceTone({x:0,y:1,z:0},t,T,blocked?0:1);}
+/** Area on the paper, excluding the CHECK solid's own footprint; 0.01-unit scanline quadrature. */
+export function checkShadowArea(t:number,T:CTimes,step=.01){const {shadow,footprint}=checkShadowPolygons(t,T);let area=0;
+  for(let z=-PAPER_D/2+step/2;z<PAPER_D/2;z+=step){const S=intervals(shadow,z),F=intervals(footprint,z);let width=S.reduce((sum,[a,b])=>sum+b-a,0);
+    for(const [a,b] of S)for(const [c,d] of F)width-=Math.max(0,Math.min(b,d)-Math.max(a,c));area+=Math.max(0,width)*step;}
+  return area;
+}

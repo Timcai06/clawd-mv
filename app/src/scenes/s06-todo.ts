@@ -4,7 +4,7 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D, clearRT } from '../engine/gl';
 import { LineBatch } from '../engine/lines';
 import { F,font } from '../engine/type';
-import { lin,css } from '../theme';
+import { lin,css,POSTER_POST } from '../theme';
 import { engraveMaterial } from '../kit/engrave-mat';
 import { SolidText } from '../kit/solidtype';
 import { Rig,planeAffine } from '../kit/rig';
@@ -24,9 +24,10 @@ class Plotter {
   beam:THREE.Mesh;carriage:THREE.Mesh;pen:THREE.Mesh;tip:THREE.Mesh;
   constructor(ctx:SceneCtx){
     this.T=resolveCTimes(ctx.audio,ctx.lyrics);this.scene.add(new THREE.AmbientLight(0xffffff,.12));
+    const compile=this.mat.onBeforeCompile;this.mat.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.fragmentShader=shader.fragmentShader.replace('float engraveT = engraveSat(engraveL);','float engraveT = clamp(engraveL,0.0,0.92);');};this.mat.customProgramCacheKey=()=> 'g2-plotter-normalized';
     this.light.castShadow=true;this.light.shadow.mapSize.set(1024,1024);Object.assign(this.light.shadow.camera,{left:-20,right:20,top:18,bottom:-18,near:.1,far:100});this.light.shadow.bias=-.0004;this.scene.add(this.light,this.light.target);
     const paper=new THREE.Mesh(new THREE.BoxGeometry(W.PAPER_W,.025,W.PAPER_D),this.mat);paper.position.y=-.013;paper.receiveShadow=true;this.scene.add(paper);
-    const table=new THREE.Mesh(new THREE.BoxGeometry(24,.3,14),engraveMaterial({ink:lin('paper'),paper:lin('ink'),lightLines:true}));table.position.y=-.2;table.receiveShadow=true;this.scene.add(table);
+    const table=new THREE.Mesh(new THREE.BoxGeometry(24,.3,14),engraveMaterial({ink:lin('paper'),paper:lin('ink'),lightLines:true,maxCov:.3}));table.position.y=-.2;table.receiveShadow=true;this.scene.add(table);
     this.check=new SolidText('CHECK',{axes:{wdth:100,wght:900},capH:4.2,depth:.25,bevel:0,material:this.mat});this.check.group.rotation.x=-Math.PI/2;this.check.group.position.set(-this.check.width/2,.012,-2.6);this.scene.add(this.check.group);
     const box=(x:number,y:number,z:number)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(x,y,z),this.mat);m.castShadow=m.receiveShadow=true;this.scene.add(m);return m;};
     this.beam=box(21,.3,.4);this.carriage=box(.5,.5,.6);
@@ -40,7 +41,7 @@ export default class S06Todo extends Scene {
   w!:Plotter;override init(){this.w=world??=new Plotter(this.ctx);this.w.users++;}override dispose(){if(--this.w.users===0){this.w.dispose();world=undefined;}}
   override render(f:Frame,out:THREE.WebGLRenderTarget){
     const w=this.w,T=w.T,a=this.ctx.audio,t=f.t,p=W.penAt(t,a,T);
-    setCamera(w.rig,W.cameraAt(t,a,T));const L=W.checkLight(t,T).dir;w.light.position.set(L.x,L.y,L.z).multiplyScalar(35);
+    setCamera(w.rig,W.cameraAt(t,a,T));const light=W.checkLight(t,T),L=light.dir;w.light.intensity=Math.PI*light.intensity;w.light.position.set(L.x,L.y,L.z).multiplyScalar(35);
     w.beam.position.set(0,.9,p.z);w.carriage.position.set(p.x,.75,p.z);w.pen.position.set(p.x,p.y+.4,p.z);w.tip.position.set(p.x,p.y+.01,p.z);w.clay.color.setRGB(...lin('clay'),THREE.LinearSRGBColorSpace).multiplyScalar(exitEnvelope(t,T.keyboard).gain);
     // Tip radius is six logical pixels at every camera distance.
     const q=w.rig.proj(p.x,p.y,p.z);if(q)w.tip.scale.setScalar(6/q.s/.035);
@@ -72,6 +73,6 @@ export default class S06Todo extends Scene {
     }
     lb.render(r,out,w.rig.cam);w.layer.clear();const c=w.layer.ctx,P={x:-2.4,y:.012,z:W.rowLine(2)[0].z-.08},aff=planeAffine(w.rig,P,{x:1,y:0,z:0},{x:0,y:0,z:1},.42/.7/100);
     if(aff){c.save();c.setTransform(aff.a,aff.b,aff.c,aff.d,aff.e,aff.f);c.font=font(F.mono(),100);c.fillStyle=css('ink',.6);c.fillText('Fix October',0,0);c.restore();}
-    this.ctx.comp.draw(r,w.layer.upload(),out);return {hud:0,frame:0,bloom:.18,grain:.02,exposure:1+(exitEnvelope(t,T.keyboard).gain-1)*.04};
+    this.ctx.comp.draw(r,w.layer.upload(),out);return {...POSTER_POST,hud:0,frame:0,grain:.02,exposure:1};
   }
 }

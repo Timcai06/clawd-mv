@@ -14,6 +14,8 @@ import { boxCorners, projectedBounds, setCamera, solveLine, solvePoint, type Box
 
 export const CW=.14, VOXEL=.16;
 export const LIGHT=new Float64Array([-.5,.8,.6].map(v=>v/Math.hypot(.5,.8,.6)));
+export const AMBIENT=.12,LIGHT_INTENSITY=(.90-AMBIENT)/LIGHT[2]!;
+export function surfaceTone(normal:P3,shadow=1){return Math.min(.92,AMBIENT+LIGHT_INTENSITY*Math.max(0,normal.x*LIGHT[0]!+normal.y*LIGHT[1]!+normal.z*LIGHT[2]!)*shadow);}
 export const WORLD_GLSL=`
 vec3 ledgeLo(float i,float indent) { return vec3(-6.0+indent*0.14,-0.5*(i-18.0)-0.12,0.0); }
 vec3 ledgeHi(float i,float indent,float len) { return vec3(-6.0+(indent+len)*0.14,-0.5*(i-18.0)+0.12,0.35); }
@@ -34,6 +36,17 @@ export function drawerOut(k:number,t:number,a:AudioData,T:PlatformTimes) {
 export function drawerBox(k:number,t:number,a:AudioData,T:PlatformTimes):Box3 {
   const lo={x:-6+2.6*k,y:2.6-1.15*k,z:drawerOut(k,t,a,T)};
   return {lo,hi:{x:lo.x+4.4,y:lo.y+.9,z:lo.z+1.2}};
+}
+export function wallShadowAt(p:P3,t:number,a:AudioData,l:Lyrics,T=platformTimes(a,l)){
+  const boxes=[...SOURCE_ROWS.map(ledgeBox),...[0,1,2].map(k=>drawerBox(k,t,a,T)),...stoneWords(l).flatMap((w,j)=>t>=w.start?[wordStone(j,l,a)]:[])];
+  for(const b of boxes){let near=0,far=Infinity;for(const [axis,i] of [['x',0],['y',1],['z',2]] as const){const origin=p[axis]+LIGHT[i]!*.002,dir=LIGHT[i]!;
+    const A=(b.lo[axis]-origin)/dir,B=(b.hi[axis]-origin)/dir;near=Math.max(near,Math.min(A,B));far=Math.min(far,Math.max(A,B));}
+    if(far>near&&far>0)return 0;}
+  return 1;
+}
+export function cliffSamples(t:number,a:AudioData,l:Lyrics,T=platformTimes(a,l)){
+  const b=drawerBox(0,t,a,T),lit=Array.from({length:5},(_,i)=>({x:lerp(b.lo.x+.3,b.hi.x-.3,(i+.5)/5),y:b.lo.y+.45,z:b.hi.z}));
+  const shadow=lit.map(p=>({x:p.x-p.z*LIGHT[0]!/LIGHT[2]!,y:p.y-p.z*LIGHT[1]!/LIGHT[2]!,z:0}));return {lit,shadow};
 }
 export function stoneWords(l:Lyrics) { return l.get('crack my claws').words.slice(5); }
 export function wordStone(j:number,l:Lyrics,a:AudioData):Box3 {
@@ -96,16 +109,19 @@ export function cursorAt(t:number,a:AudioData,l:Lyrics,T=platformTimes(a,l)):P3 
 export function underline(row:number):[P3,P3] {
   const b=ledgeBox(row);return [{x:b.lo.x,y:b.lo.y-.03,z:.357},{x:b.hi.x,y:b.lo.y-.03,z:.357}];
 }
-export function leadLayout(l:Lyrics,a:AudioData) {
-  const v=new Voice(l,a);return layoutPath(l.get('crack my claws').words.slice(0,5),{capH:.32,axes:w=>v.form(w,w.end).axes,upper:true});
+export function leadLayouts(l:Lyrics,a:AudioData) {
+  const v=new Voice(l,a),words=l.get('crack my claws').words;
+  return [words.slice(0,3),words.slice(3,5)].map(ws=>layoutPath(ws,{capH:.3,axes:w=>v.form(w,w.end).axes,upper:true}));
 }
-export function leadPath(t:number,a:AudioData,T:PlatformTimes) {
-  const b=drawerBox(0,t,a,T);return path3([{x:(b.lo.x+b.hi.x)/2+.2,y:b.hi.y,z:b.hi.z},{x:b.hi.x+16,y:b.hi.y,z:b.hi.z}]);
+export function leadLayout(l:Lyrics,a:AudioData) {return leadLayouts(l,a)[0]!;}
+export function leadPath(t:number,a:AudioData,T:PlatformTimes,row=0) {
+  const b=drawerBox(0,t,a,T),z=b.hi.z-row*.5;
+  return path3([{x:b.lo.x,y:b.hi.y,z},{x:b.hi.x,y:b.hi.y,z}]);
 }
 export function cameraAt(t:number,a:AudioData,l:Lyrics,T=platformTimes(a,l)):ProjectCam {
-  const beat1=afterBeats(a,T.start,1),p=clawdAt(t,a,l,T),center={x:p.x,y:p.y+VOXEL*2.5,z:p.z+.32};
+  const beat1=afterBeats(a,T.start,5/3),p=clawdAt(t,a,l,T),center={x:p.x,y:p.y+VOXEL*2.5,z:p.z+.32};
   if(t<=beat1) {
-    const u=ease.outExpo(span(t,T.start+1/60,beat1)),px=lerp(CUT.clawd04px,14,u);
+    const u=ease.outQuad(span(t,T.start,beat1)),px=lerp(CUT.clawd04px,14,u);
     return solvePoint(center,px/VOXEL,{x:lerp(1204,930,u),y:lerp(440.5,520,u)},0,0,34);
   }
   const crack=l.get('crack my claws').words[2]!,hit=t>=crack.start?Math.exp(-(t-crack.start)/.1):0;
@@ -115,7 +131,7 @@ export function cameraAt(t:number,a:AudioData,l:Lyrics,T=platformTimes(a,l)):Pro
   if(t<T.read)return close;
   const stair=orbitCam({x:-.7,y:.7,z:1},.1,.42,17,34);
   if(t<T.scroll)return mixCam(close,stair,ease.inOutCubic(span(t,T.read,T.scroll)));
-  const follow:ProjectCam={...orbitCam({x:p.x+1.2,y:p.y,z:p.z},.35,.12,6.5,34,.3),offsetX:-380};
+  const follow=stoneCamera(t,a,l,p);
   const [A,B]=underline(FINAL_ROW),exit=solveLine(A,B,{x0:HANDOFF.strike05.x0,y0:538,x1:HANDOFF.strike05.x1,y1:538},.35,.12,34);
   const end=T.end-.1,last=afterBeats(a,T.end,-1);
   return mixProject(follow,exit,ease.inCubic(span(t,last,end)));
@@ -134,6 +150,14 @@ export function exitPrim(t:number,a:AudioData,l:Lyrics):Prim {
   return {kind:'line',x0:P.x,y0:P.y,x1:Q.x,y1:Q.y,w:3};
 }
 export function stoneBounds(t:number,a:AudioData,l:Lyrics) {
-  return projectedBounds(rigAt(t,a,l),stoneWords(l).flatMap((w,j)=>t>=w.start?boxCorners(wordStone(j,l,a)):[]),true);
+  return projectedBounds(rigAt(t,a,l),stoneWords(l).flatMap((w,j)=>boxCorners(wordStone(j,l,a))));
+}
+/** Fit the complete, unclipped stair hull with a 48 px safety inset. */
+export function stoneCamera(t:number,a:AudioData,l:Lyrics,p=clawdAt(t,a,l)):ProjectCam {
+  const points=stoneWords(l).flatMap((_,j)=>{const b=wordStone(j,l,a),dy=stoneSink(j,t,a,l);return boxCorners({lo:{...b.lo,y:b.lo.y+dy},hi:{...b.hi,y:b.hi.y+dy}});});
+  const target={x:p.x+1.2,y:p.y,z:p.z},r=new Rig();let lo=1,hi=40,c:ProjectCam=orbitCam(target,.35,.12,20,34,.3);
+  for(let i=0;i<36;i++){c=orbitCam(target,.35,.12,(lo+hi)/2,34,.3);setCamera(r,c);const b=projectedBounds(r,points);
+    if(b.w>1824||b.h>984)lo=(lo+hi)/2;else hi=(lo+hi)/2;}
+  setCamera(r,c);const b=projectedBounds(r,points);c.offsetX=b.x+b.w/2-960;c.offsetY=b.y+b.h/2-540;return c;
 }
 export function stoneLetters(w:Word,t:number) {return letterTimes(w).map(g=>({visible:t>=g.t0,z:ease.outExpo(span(t,g.t0,g.t0+.12))}));}
