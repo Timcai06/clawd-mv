@@ -9,8 +9,9 @@ export interface Anchor {
   sub?: number;
   /** 1-based syllable of the word (uses the aligned `syl` spans), e.g. 2 = the stressed -MIT of com-MIT. */
   syl?: number;
-  /** 'cut' = pdoom's timeline cut(): the last beat at/before the word's start (+20 ms tolerance), so a
-   *  scene boundary never lands after the first sung word of its line (docs/reference/pdoom-transitions-lyrics.md, R1). */
+  /** 'cut' = pdoom's timeline cut(): the last beat at/before the word's start + 50 ms (pdoom's dense
+   *  tolerance: a beat up to 50 ms after the first word is preferred to cutting the previous line's last
+   *  word in half), so a scene boundary sits between lines (docs/reference/pdoom-transitions-lyrics.md, R1). */
   snap: 'downbeat' | 'beat' | 'none' | 'cut';
   offset_beats?: number;
 }
@@ -76,7 +77,7 @@ function snapTime(t: number, snap: Anchor['snap'], audio: AudioData): number {
   if (snap === 'cut') {
     const b = audio.beats;
     let best = b[0] ?? t;
-    for (const p of b) if (p <= t + 0.02) best = p; else break;
+    for (const p of b) if (p <= t + 0.05) best = p; else break;
     return best;
   }
   const grid = snap === 'downbeat' ? audio.downbeats : audio.beats;
