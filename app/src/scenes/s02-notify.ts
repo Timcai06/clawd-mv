@@ -1,87 +1,150 @@
-import { PrintOverlay } from '../kit/print-overlay';
-import { drawNote } from '../kit/note';
-// S02: one giant printed PING crossing an ink/paper split; no editor behind the headline.
-import type * as THREE from 'three';
-import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { Layer2D } from '../engine/gl';
-import { css } from '../theme';
-import { Ground, postFor } from '../kit/ground';
-import { heatColor, Voice, gridSnap, drawSet, setLine } from '../kit/lyric-moves';
+// V6 S02: extruded P/N/G, an emissive cursor-I, a two-light engraved poster.
+import * as THREE from 'three';
+import { Scene, type Frame } from '../engine/scene';
+import { Layer2D, SCALE, clearRT } from '../engine/gl';
+import { noise1 } from '../engine/util';
+import { css, lin, POSTER_POST } from '../theme';
+import { SolidText } from '../kit/solidtype';
+import { engraveMaterial } from '../kit/engrave-mat';
+import { Rig } from '../kit/rig';
+import { letterTimes } from '../kit/pathtext';
+import { audio, lyrics, T, voice } from './parts/s01-timing';
+import { pingLayout, SPLIT_X } from './parts/s02-layout';
+import { drawAffine, affineBounds, projectedBox } from './parts/s01-print';
+import { S02_GLSL, BEVEL, DEPTH, FRONT, cameraAt, letterPose, lightIntensity, cursorAt, continuationGlyphs,
+  continuationAffines, line01Incoming, screenAffines, landingAt, rippleCenters, gain, KEY_INTENSITY, AMBIENT_TONE, PAPER_LUMA, KEY, cursorEmission } from './parts/s02-world';
+export { cursorAt } from './parts/s02-world';
+export const TYPE_LEVELS={giant:625,lyric:50.8,label:20};
 import { varRun } from '../kit/vartype';
-import { drawCursor } from '../kit/cursor';
-import { afterBeats, beatsSince, span } from '../kit/time';
-import { ease, lerp } from '../engine/util';
-import { Lens } from '../kit/lens';
-import * as Clawd from '../kit/clawd';
-import { openingTimes } from './parts/s01-timing';
-import { mono } from './parts/s01-drafting';
-import { printInBox, grain, cursorFromTop } from './parts/s01-print';
-import { notifyLayout, handoffIn, PING_BOX, WAKE_CLAWD } from './parts/s02-layout';
-import { drawReportLyrics } from './parts/s03-form';
-export const TYPE_LEVELS = { giant: 625, lyric: 50.8, label: 20 };
-class NotifyWorld {
-  print = new PrintOverlay('step(edge, p.x)', { edge: { value: 0 } }, 'uniform float edge;');
-  users = 0; ground = new Ground(); layer = new Layer2D(); lens = new Lens(); T; voice;
-  constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
-  dispose() { this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.layer.texture.dispose(); }
+export function configureSolid(material:THREE.Material){
+  const lay=pingLayout(),run=varRun('PING',lay.size,lay.axes);
+  const solid=new SolidText('PING',{capH:run.capH/100,axes:lay.axes,depth:DEPTH,bevel:BEVEL,material});
+  const sy=625/(625+2*BEVEL*100);
+  solid.group.scale.set(lay.scaleX,sy,1);
+  solid.group.position.set(lay.x/100-9.6,5.4-lay.y/100+BEVEL*sy,0);
+  solid.setLetter(1,{visible:false});return solid;
 }
-let shared: NotifyWorld | undefined;
-export default class S02Notify extends Scene {
-  private w!: NotifyWorld;
-  override init() { this.w = shared ??= new NotifyWorld(this.ctx); this.w.users++; }
-  override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
-  /** v4 motion: PING lands as a sprung hit with a roll; each word of "on my screen" nudges; identity on the S03 cut. */
-  private view(t: number) {
-    const au = this.ctx.audio, T = this.w.T;
-    const b = Math.max(0, beatsSince(au, t, T.ping));
-    let zoom = 1 + 0.14 * Math.exp(-b * 5) * Math.cos(b * 8), rot = t >= T.ping ? 0.03 * Math.exp(-b * 4) * Math.sin(b * 10) : 0;
-    const line = this.w.voice.line(0);
-    for (const wd of line.words.slice(4)) if (t >= wd.start) { const k = Math.pow(0.5, (t - wd.start) / 0.08); zoom += 0.02 * k; rot += (wd.index % 2 ? 0.006 : -0.006) * k; }
-    const settle = ease.inOutCubic(span(t, afterBeats(au, T.issue, -0.5), T.issue));
-    return { zoom: lerp(zoom, 1, settle), fx: 960, fy: 600, rot: rot * (1 - settle) };
+export function poseLetter(solid:SolidText,i:number,t:number){
+  const p=letterPose(i,t),letter=solid.letters[i]!,box=letter.mesh.geometry.boundingBox!,cy=(box.min.y+box.max.y)/2,cz=(box.min.z+box.max.z)/2;
+  const dy=cy*(Math.cos(p.rotX)-1)-cz*Math.sin(p.rotX),dz=cy*Math.sin(p.rotX)+cz*(Math.cos(p.rotX)-1);
+  solid.setLetter(i,{d:{x:0,y:p.dy+dy,z:p.z+dz},rot:{x:p.rotX,y:0,z:0},scale:{x:1,y:1,z:p.scaleZ},visible:p.visible});
+  letter.mesh.castShadow=p.castShadow;
+}
+/** CPU hard-shadow reference on the actual posed triangles at the R2 exposure time. */
+export function posterExposureSamples(t:number){
+  const material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide}),solid=configureSolid(material);
+  for(const i of [0,2,3])poseLetter(solid,i,t);solid.group.updateMatrixWorld(true);
+  const dir=new THREE.Vector3(KEY.x,KEY.y,KEY.z).normalize(),ray=new THREE.Raycaster(),lit:{p:{x:number;y:number;z:number};tone:number}[]=[],shadow:typeof lit=[];
+  for(let y=-5;y<=5;y+=0.5)for(let x=-9;x<=9;x+=0.5){
+    const p={x,y,z:0};ray.set(new THREE.Vector3(x,y,0.001),dir);
+    const blocked=ray.intersectObjects(solid.letters.filter(l=>l.mesh.visible&&l.mesh.castShadow).map(l=>l.mesh),false).length>0;
+    const tone=AMBIENT_TONE+KEY_INTENSITY/Math.PI*PAPER_LUMA*dir.z*(blocked?0:1);
+    (blocked?shadow:lit).push({p,tone});
   }
-
-  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
-    const out = this.w.lens.rt;
-    const w = this.w, au = this.ctx.audio, t = f.t, s = notifyLayout(t, au, w.T), c = w.layer.ctx;
-    // The paper wipe starts from the shared cursor, reaching the measured 1/3 split on the ping beat.
-    w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, flipTo: 'ink', wipe: s.edge / 1920 * (1 - s.exit) });
-    w.layer.clear();
-    const line = w.voice.line(0), ping = w.voice.form(line.words[3]!, t);
-    if (ping.born > 0 && s.exit < 1) {
-      const drop = -180 * (1 - span(t, ping.t0, afterBeats(au, ping.t0, 0.18))) ** 2;
-      const box = { ...PING_BOX, y: PING_BOX.y + drop };
-      const run = varRun('PING', 100, { wdth: ping.axes.wdth, wght: Math.max(800, ping.axes.wght) });
-      for (const left of [true, false]) {
-        c.save(); c.beginPath(); c.rect(left ? 0 : s.edge, 0, left ? s.edge : 1920 - s.edge, 1080); c.clip();
-        c.globalAlpha = (1 - s.exit) * Math.min(1, ping.born * 1.6);
-        const hit = t < afterBeats(au, ping.t0, 0.18);
-        c.fillStyle = heatColor(ping.stress && hit ? 'clay' : left ? 'paper' : 'ink', left ? 'ink' : 'paper', ping.age); printInBox(c, run, box); c.restore();
-      }
-      grain(c, box, 22, 500);
-    }
-    const pos = WAKE_CLAWD;
-    Clawd.draw(c, pos.x, pos.y, Clawd.pose('A2', { beat: f.beat, beat0: au.beatAt(w.T.ping) - 1, p: span(t, w.T.ping, w.T.screen) }), { px: pos.px, alpha: 1 - s.exit });
-    const card = s.card;
-    c.fillStyle = css('paper'); c.fillRect(card.x, card.y, card.w, card.h);
-    c.strokeStyle = css('ink', 0.6); c.lineWidth = 1.5; c.strokeRect(card.x, card.y, card.w, card.h);
-    mono(c, 'Issue #1031 · calendar', card.x + 24, card.y + card.h * 0.65, 20, 'ink', 0.6);
-    drawCursor(c, { x: card.x + card.w - 42, y: card.y + card.h * 0.65, h: 28 });
-    if (t < afterBeats(au,w.T.ping,1)) drawCursor(c, { ...cursorFromTop(handoffIn(t, au, w.T)), on: 1-span(t,w.T.ping,afterBeats(au,w.T.ping,1)) });
-    for (const left of [true, false]) {
-      const edge = s.edge * (1-s.exit);
-      c.save(); c.beginPath(); c.rect(left?0:edge,0,left?edge:1920-edge,1080); c.clip();
-      drawSet(c,setLine(w.voice.forms(line,t).slice(0,3),74),96,1008,{on:left?'ink':'paper',alpha:w.voice.presence(line,t)});
-      c.restore();
-    }
-    gridSnap(c, w.voice.forms(line, t).slice(4), { x: 720, y: 948, colW: 160, rowH: 80, cols: 7, size: 74, on: 'paper', t, alpha: w.voice.presence(line, t) });
-    drawNote(c, { ax: card.x + card.w - 30, ay: card.y, x: card.x + card.w - 250, y: card.y - 58, text: '1 unread', sub: 'priority: weird', t0: afterBeats(au, w.T.ping, 1), on: 'paper' }, t);
-    // Got/a/bug can precede the bug-snapped S03 cut. Same TITLE positions on both sides.
-    if (t >= w.voice.line(1).start) drawReportLyrics(c, w.voice, t);
-    this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
-    w.print.pass.u.edge!.value = s.edge * (1 - s.exit);
-    w.print.render(this.ctx.renderer, out);
-    w.lens.film(this.ctx.renderer, finalOut, this.view(t));
-    return { ...postFor('paper'), hud: 0, bloom: 0, grain: 0.03, vignette: 0 };
+  const sample=(ps:typeof lit)=>Array.from({length:5},(_,i)=>ps[Math.floor((ps.length-1)*i/4)]!);
+  solid.dispose();material.dispose();return {at:t,lit:sample(lit),shadow:sample(shadow)};
+}
+export function pingBounds(t:number){
+  const solid=configureSolid(new THREE.MeshBasicMaterial()),rig=new Rig();rig.set(cameraAt(t));
+  const points=[0,2,3].flatMap(i=>solid.letterCorners(i));
+  const b=pingLayout().letters[1]!;
+  points.push(...[b.x,b.x+b.w].flatMap(x=>[b.y,b.y+b.h].map(y=>({x:x/100-9.6,y:5.4-y/100,z:FRONT}))));
+  const rect=projectedBox(rig,points);solid.dispose();(solid.letters[0]!.mesh.material as THREE.Material).dispose();return rect;
+}
+export function printMaterial(letters:boolean){
+  const m=engraveMaterial({ink:lin(letters?'paper':'ink'),paper:lin(letters?'ink':'paper'),splitX:SPLIT_X,angle:0.6,pitch:5,faceAngles:letters});
+  const compile=m.onBeforeCompile;
+  m.onBeforeCompile=(shader,renderer)=>{
+    compile(shader,renderer);
+    // A printed split swaps the palette, while both solid families retain
+    // normal dark-line exposure. No maxCov or paperMap is applied to PING.
+    shader.fragmentShader=shader.fragmentShader.replace('bool engraveLL = (engraveLightLines > 0.5) != engraveSwap;',
+      'bool engraveLL = engraveLightLines > 0.5;')
+      .replace('uniform vec3 engraveInk, engravePaper;',`uniform vec3 engraveInk, engravePaper;
+float solidLineIntegral(float x,float width){return floor(x)*width+min(fract(x),width);}
+float solidLightLine(float u,float tone){
+  float width=0.01*clamp(tone,0.0,1.0),aa=max(fwidth(u),1e-4)*0.5,x=u+width*0.5;
+  return clamp((solidLineIntegral(x+aa,width)-solidLineIntegral(x-aa,width))/(2.0*aa),0.0,1.0);
+}`)
+      .replace('outgoingLight = mix(engraveP,engraveI,engraveCov)+totalEmissiveRadiance;',`
+bool solidInk=${letters?'!engraveSwap':'engraveSwap'};
+// Opaque ink bodies carry fine light-cut lines; shadows reduce that real-light
+// line field. Paper bodies retain the kit's normal engraved shadows. No maxCov.
+outgoingLight = solidInk
+  ? mix(${letters?'engraveBase,engraveInk':'engraveInk,engraveBase'},solidLightLine(engraveU,engraveT))+totalEmissiveRadiance
+  : mix(engraveP,engraveI,engraveCov)+totalEmissiveRadiance;`);
+  };
+  m.customProgramCacheKey=()=>`s02-solid-print-${letters}-${SCALE}`;
+  return m;
+}
+class NotifyWorld {
+  users=0;scene=new THREE.Scene();rig=new Rig();layer=new Layer2D();
+  material=printMaterial(true);
+  posterMaterial=printMaterial(false);
+  poster=new THREE.Mesh(new THREE.PlaneGeometry(80,45),this.posterMaterial);
+  solid=configureSolid(this.material);
+  cursorMat=new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false});
+  cursor=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),this.cursorMat);
+  point=new THREE.PointLight(new THREE.Color().setRGB(...lin('paper')),1,60,2);
+  key=new THREE.DirectionalLight(new THREE.Color().setRGB(...lin('paper')),KEY_INTENSITY);
+  rippleUniforms={rippleAge:{value:new THREE.Vector3()},rippleCenters:{value:[0,2,3].map(i=>new THREE.Vector2(rippleCenters()[i]!.x,1080-rippleCenters()[i]!.y))}};
+  constructor(){
+    // Keep the kit's lighting/shadow conversion; alter only the scene's hatch
+    // coordinate to produce the specified 1.5× moving engraving spacing.
+    const compile=this.posterMaterial.onBeforeCompile;
+    this.posterMaterial.onBeforeCompile=(shader,renderer)=>{
+      compile(shader,renderer);Object.assign(shader.uniforms,this.rippleUniforms);
+      shader.fragmentShader=shader.fragmentShader.replace('uniform vec3 engraveInk, engravePaper;',
+        'uniform vec3 engraveInk, engravePaper;\nuniform vec3 rippleAge;uniform vec2 rippleCenters[3];\n'+S02_GLSL)
+        .replace('float engraveU = dot(engravePx,vec2(-sin(engraveA),cos(engraveA)))/engravePitch;',
+          `float ripple=1.0;for(int i=0;i<3;i++)ripple=max(ripple,posterRipple(engravePx,rippleCenters[i],rippleAge[i]));
+          float engraveU=dot(engravePx,vec2(-sin(engraveA),cos(engraveA)))/(engravePitch*ripple);`);
+    };
+    this.posterMaterial.customProgramCacheKey=()=>`s02-engrave-ripple-${SCALE}`;
+    this.poster.receiveShadow=true;this.scene.add(this.poster,this.solid.group,this.cursor,this.point,this.key,this.key.target,
+      new THREE.AmbientLight(new THREE.Color().setRGB(...lin('paper')),Math.PI*AMBIENT_TONE/PAPER_LUMA));
+    this.point.castShadow=this.key.castShadow=true;
+    this.point.shadow.mapSize.set(512*SCALE,512*SCALE);this.point.shadow.camera.near=0.05;this.point.shadow.camera.far=60;this.point.shadow.bias=-0.0004;
+    this.key.position.set(-12,14,8);this.key.target.position.set(0,0,0);this.key.shadow.mapSize.set(1024*SCALE,1024*SCALE);
+    Object.assign(this.key.shadow.camera,{left:-15,right:15,top:12,bottom:-12,near:0.1,far:60});this.key.shadow.bias=-0.0002;
+  }
+  dispose(){this.poster.geometry.dispose();this.material.dispose();this.posterMaterial.dispose();this.cursor.geometry.dispose();this.cursorMat.dispose();
+    this.solid.dispose();this.layer.texture.dispose();this.point.shadow.dispose();this.key.shadow.dispose();}
+}
+let shared:NotifyWorld|undefined;
+export default class S02Notify extends Scene {
+  private w!:NotifyWorld;
+  override init(){this.w=shared??=new NotifyWorld();this.w.users++;}
+  override dispose(){if(--this.w.users===0){this.w.dispose();shared=undefined;}}
+  override render(f:Frame,out:THREE.WebGLRenderTarget){
+    const w=this.w,t=f.t,r=this.ctx.renderer;w.rig.set(cameraAt(t));
+    for(const i of [0,2,3])poseLetter(w.solid,i,t);
+    const cur=cursorAt(t),rect=pingLayout().letters[1]!,k=1-cur.h/rect.h,ip=letterPose(1,t);
+    const pxPerUnit=540/Math.tan(34*Math.PI/360)/(w.rig.cam.position.z-FRONT);
+    const width=rect.w*(1-k)+7*k,height=cur.h;
+    w.cursor.scale.set(width/pxPerUnit,height/pxPerUnit,DEPTH);
+    w.cursor.position.set((cur.x-960)/pxPerUnit,(540-cur.y)/pxPerUnit,FRONT-DEPTH/2);
+    w.cursor.rotation.x=ip.rotX;w.cursor.position.y+=(height/pxPerUnit/2)*(Math.cos(ip.rotX)-1)+ip.dy;
+    w.cursor.position.z+=(height/pxPerUnit/2)*Math.sin(ip.rotX);w.cursor.visible=ip.emissive||ip.visible;
+    w.cursorMat.color.setRGB(...(ip.emissive?[0,0,0] as [number,number,number]:lin('paper')));
+    w.cursorMat.emissiveIntensity=ip.emissive?cursorEmission(t):0;
+    w.cursor.castShadow=!ip.emissive&&ip.visible;
+    w.point.position.set(w.cursor.position.x,w.cursor.position.y,DEPTH+0.1);w.point.intensity=ip.emissive?lightIntensity(t):0;
+    if(t>=T.issue-1/60)w.cursorMat.emissiveIntensity*=gain(t);
+    w.rippleUniforms.rippleAge.value.set(...[0,2,3].map(i=>t-landingAt(i)) as [number,number,number]);
+    const enabled=r.shadowMap.enabled,type=r.shadowMap.type;
+    try{r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFShadowMap;clearRT(r,out,lin('ink'));r.render(w.scene,w.rig.cam);}
+    finally{r.shadowMap.enabled=enabled;r.shadowMap.type=type;}
+    w.layer.clear();const c=w.layer.ctx,initial=lyrics.lines[0]!.words.slice(0,3),times=initial.flatMap(word=>letterTimes(word));
+    line01Incoming().forEach((g,i)=>{if(t<times[i]!.t0)return;const word=initial.find(wd=>t>=wd.start&&times[i]!.t0>=wd.start&&times[i]!.t0<wd.end)??initial.at(-1)!;
+      drawAffine(c,g,voice.form(word,word.end).axes,t-times[i]!.t0,affineBounds(g,voice.form(word,word.end).axes).x+affineBounds(g,voice.form(word,word.end).axes).w/2<SPLIT_X?'ink':'paper',1,true);});
+    const glyphs=continuationGlyphs(),aff=continuationAffines(t),screen=screenAffines(t);let si=0;
+    glyphs.forEach((g,i)=>{const a=g.word.index===6?screen[si++]!:aff[i]!;if(t<g.t0)return;
+      drawAffine(c,a,voice.form(g.word,t).axes,t-g.t0,affineBounds(a,voice.form(g.word,t).axes).x+affineBounds(a,voice.form(g.word,t).axes).w/2<SPLIT_X?'ink':'paper');});
+    // The relay block sits on the actual paper edge's upper endpoint.
+    if(k>=0.999){c.fillStyle=css('clay');c.fillRect(cur.x-3.5,cur.y-6,7,12);}
+    this.ctx.comp.draw(r,w.layer.upload(),out);
+    let shake=0;if(t<T.issue-0.1)for(const i of [0,2,3])if(t>=landingAt(i))shake+=6*Math.exp(-(t-landingAt(i))/0.08);
+    return {...POSTER_POST,bloom:0,hud:0,shake:[noise1(t*71,2)*shake,noise1(t*83,3)*shake] as [number,number]};
   }
 }

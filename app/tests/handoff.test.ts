@@ -4,7 +4,9 @@ import { accelerando, exitEnvelope, primError, type Cut, type Prim } from '../sr
 import './kit-pathtext.test';
 
 // Scene tasks register their exported pure primitives here; no scene is migrated by V6-K.
-export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim };
+export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim;
+  /** A moving hand-off (the motion continues through the cut): both sides are compared at the same instants. */
+  motion?: boolean };
 import { Lyrics } from '../src/engine/lyrics';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
@@ -21,9 +23,21 @@ export const CUTS: RegisteredCut[] = [
   {id:'C15',out:'S15',in:'S16',cut:G.start,exitPrim:t=>exit15(t,song,F),entryPrim:t=>entry16(t,G)},
   {id:'C16',out:'S16',in:'S17',cut:G.end,exitPrim:t=>exit16(t,G),entryPrim:t=>({kind:'rect',...entry17(t,song,R)})},
 ];
+// g3 owns C7's incoming face and C8's outgoing line. S07 is still v5 on this
+// worktree's main baseline, so C7's outgoing side is explicitly the V6 contract,
+// not a claim that the unmodified predecessor already supplies it.
+import { entryPrim as entry08, exitPrim as exit08 } from '../src/scenes/parts/s08-world';
+import { handoffIn as entry09 } from '../src/scenes/parts/s09-scope';
+import { resolveX9Times } from '../src/scenes/s09-z-shared';
+const g3Audio = new AudioData(audioJSON), g3Lyrics = new Lyrics(lyricsJSON);
+const g3Score = commitScore(g3Audio,g3Lyrics), g3Next = resolveX9Times({ audio:g3Audio,lyrics:g3Lyrics });
+CUTS.push({ id:'C8',out:'S08',in:'S09',cut:g3Score.end,exitPrim:exit08,entryPrim:t => {
+  const p=entry09(t,g3Audio,g3Next); return { kind:'line',x0:p.x0,y0:p.y,x1:p.x1,y1:p.y,w:2 };
+} });
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
-    const out = cut.exitPrim(cut.cut-(1-i/4)/60), incoming = cut.entryPrim(cut.cut+i/4/60), err = primError(out,incoming);
+    const ta = cut.motion ? cut.cut : cut.cut-(1-i/4)/60, tb = cut.motion ? cut.cut : cut.cut+i/4/60;
+    const out = cut.exitPrim(ta), incoming = cut.entryPrim(tb), err = primError(out,incoming);
     expect(err.px,cut.id).toBeLessThanOrEqual(2); expect(err.size,cut.id).toBeLessThanOrEqual(0.02);
   }
 });
@@ -92,7 +106,6 @@ function rainVelocityPrim(t:number):Prim {
   return {kind:'line',x0:0,y0:0,x1:(b.x-a.x)*960/0.00001,y1:-(b.y-a.y)*540/0.00001,w:1};
 }
 CUTS.push(
- {id:'C8-g4-entry',out:'S08',in:'S09',cut:g4T.terminal,exitPrim:t=>{const h=hashOut(t,g4Audio,g4Commit);return {kind:'line',x0:h.x0,y0:h.y,x1:h.x1,y1:h.y,w:2};},entryPrim:g4Scope.entryPrim},
  {id:'C9',out:'S09',in:'S10',cut:g4T.wallStart,exitPrim:g4Scope.exitPrim,entryPrim:g4Glass.entryPrim},
  {id:'C10-motion',out:'S10',in:'S11',cut:g4T.rainStart,exitPrim:shardVelocityPrim,entryPrim:rainVelocityPrim},
  {id:'C11',out:'S11',in:'S12',cut:g4T.rerunStart,exitPrim:g4Rain.exitPrim,entryPrim:t=>g4Copy.entryPrim(g4Voice,t,g4T)},
@@ -101,9 +114,45 @@ CUTS.push(
 );
 test('G4 registers five owned cut contracts (C12 incoming implementation is external)',()=>{
  const own=CUTS.filter(c=>c.id.startsWith('C8')||c.id==='C9'||c.id.startsWith('C10')||c.id==='C11'||c.id.startsWith('C12'));
- expect(own.length).toBe(5);
+ expect(own.length).toBe(5); // C8 is registered once (S08 v6 exit against S09 entry)
  for(const cut of own){
   const errors=Array.from({length:5},(_,i)=>primError(cut.exitPrim(cut.cut-(1-i/4)/60),cut.entryPrim(cut.cut+i/4/60)));
   console.log('G4_CUT',cut.id,JSON.stringify({px:Math.max(...errors.map(e=>e.px)),size:Math.max(...errors.map(e=>e.size))}));
  }
+});
+// g1 owns C1/C2 and C3's outgoing side. G2 replaces the C3 incoming
+// GRID04 contract below with S04's exported entryPrim when S04 is migrated.
+import { T as G1_T } from '../src/scenes/parts/s01-timing';
+import { exitPrim as g1Out01 } from '../src/scenes/parts/s01-world';
+import { entryPrim as g1In02, exitPrim as g1Out02 } from '../src/scenes/parts/s02-world';
+import { entryPrim as g1In03, exitPrim as g1Out03 } from '../src/scenes/parts/s03-world';
+CUTS.push(
+  {id:'C1',out:'S01',in:'S02',cut:G1_T.ping,exitPrim:g1Out01,entryPrim:g1In02},
+  {id:'C2',out:'S02',in:'S03',cut:G1_T.issue,exitPrim:g1Out02,entryPrim:g1In03},
+);
+// G2 owns C3 entry, both C4/C5/C6 sides, and C7 exit. Neighbor groups
+// have not migrated on this worktree's main snapshot: C3/C7 compare our
+// actual projected geometry to their specified contracts, not their old scenes.
+import { Lyrics as G2Lyrics } from '../src/engine/lyrics';
+import g2AudioJSON from '../../data/audio.json';import g2LyricsJSON from '../../data/lyrics.json';
+import * as g2s04 from '../src/scenes/parts/s04-city-model';
+import * as g2s05 from '../src/scenes/parts/s05-world';
+import * as g2s06 from '../src/scenes/parts/s06-world';
+import * as g2s07 from '../src/scenes/parts/s07-terrain';
+import {resolveCTimes as g2Times} from '../src/scenes/parts/s06-timing';
+import {platformTimes as g2PlatformTimes} from '../src/scenes/parts/s05-platform-model';
+import {CUT as G2CUT} from '../src/kit/handoff';
+const g2a=new AudioData(g2AudioJSON),g2l=new G2Lyrics(g2LyricsJSON),g2C=g2s04.cityTimes(g2a,g2l),g2P=g2PlatformTimes(g2a,g2l),g2T=g2Times(g2a,g2l);
+CUTS.push(
+  {id:'C3',out:'S03',in:'S04',cut:g2C.start,exitPrim:g1Out03,entryPrim:t=>g2s04.entryPrim(t,g2a,g2C)},
+  {id:'C4',motion:true,out:'S04',in:'S05',cut:g2P.start,exitPrim:t=>g2s04.exitPrim(t,g2a,g2C),entryPrim:t=>g2s05.entryPrim(t,g2a,g2l)},
+  {id:'C5',out:'S05',in:'S06',cut:g2T.todo,exitPrim:t=>g2s05.exitPrim(t,g2a,g2l),entryPrim:t=>g2s06.entryPrim(t,g2a,g2T)},
+  {id:'C6',out:'S06',in:'S07',cut:g2T.keyboard,exitPrim:t=>g2s06.exitPrim(t,g2a,g2T),entryPrim:t=>g2s07.entryPrim(t,g2a,g2T)},
+  {id:'C7',out:'S07',in:'S08',cut:g2T.end,exitPrim:t=>g2s07.exitPrim(t,g2a,g2T),entryPrim:entry08},
+);
+test('G2 C3/C5/C6/C7 retain their full adjacent-frame contracts',()=>{
+  for(const cut of CUTS.filter(c=>['C3','C5','C6','C7'].includes(c.id)))for(let i=0;i<=4;i++){
+    const err=primError(cut.exitPrim(cut.cut-(1-i/4)/60),cut.entryPrim(cut.cut+i/4/60));
+    expect(err.px,cut.id).toBeLessThanOrEqual(2);expect(err.size,cut.id).toBeLessThanOrEqual(.02);
+  }
 });
