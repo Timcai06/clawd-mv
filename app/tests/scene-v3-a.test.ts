@@ -11,9 +11,7 @@ import { TYPE_LEVELS as L01 } from '../src/scenes/s01-boot';
 import { TYPE_LEVELS as L02 } from '../src/scenes/s02-notify';
 import { TYPE_LEVELS as L03 } from '../src/scenes/s03-issue';
 import { TYPE_LEVELS as L04 } from '../src/scenes/s04-calendar';
-import { bootBounds, openingTimes, handoffOut as out01 } from '../src/scenes/parts/s01-timing';
-import { notifyLayout, handoffIn as in02, handoffOut as out02 } from '../src/scenes/parts/s02-layout';
-import { formBounds, handoffIn as in03, handoffOut as out03 } from '../src/scenes/parts/s03-form';
+import { openingTimes } from '../src/scenes/parts/s01-timing';
 import { cityTimes, cityBounds, cityState, cameraAt, handoffIn as in04, handoffOut as out04 } from '../src/scenes/parts/s04-city-model';
 import { drawCursor } from '../src/kit/cursor';
 import { cursorFromTop, inkBounds } from '../src/scenes/parts/s01-print';
@@ -45,7 +43,7 @@ const targets = {
 };
 function error(a:Rect,b:Rect){return {center:Math.hypot(a.x+a.w/2-b.x-b.w/2,a.y+a.h/2-b.y-b.h/2),width:Math.abs(a.w-b.w)/b.w,height:Math.abs(a.h-b.h)/b.h};}
 function assertBox(a:Rect,b:Rect){const e=error(a,b);expect(e.center).toBeLessThanOrEqual(96);expect(e.width).toBeLessThanOrEqual(.15);expect(e.height).toBeLessThanOrEqual(.15);return e;}
-const layouts={S01:()=>bootBounds(audio,anchor('S01'),T),S02:()=>notifyLayout(anchor('S02'),audio,T),S03:()=>formBounds(anchor('S03'),audio,T),S04:()=>cityBounds(audio,anchor('S04'),C)};
+const layouts={S04:()=>cityBounds(audio,anchor('S04'),C)};
 
 // Load the actual bundled font outlines in Bun; restore browser shims immediately. No canvas or
 // screenshot is involved. loadFonts fills the production registry consumed by varRun.
@@ -59,7 +57,7 @@ beforeAll(async()=>{
 afterAll(()=>{globalThis.fetch=oldFetch;(globalThis as any).document=oldDoc;(globalThis as any).FontFace=oldFace;});
 
 describe('A / storyboard composition',()=>{
-  for(const scene of ['S01','S02','S03','S04'] as const)test(`${scene} original-image bounds vs production layout / projection`,()=>{
+  for(const scene of ['S04'] as const)test(`${scene} original-image bounds vs production layout / projection`,()=>{
     const actual=layouts[scene](),target=targets[scene];
     const errors={dominant:assertBox(actual.dominant,target.dominant),clawd:assertBox(actual.clawd,target.clawd)};
     console.log(scene,JSON.stringify({t:anchor(scene),actual,errors}));
@@ -79,21 +77,9 @@ describe('A / match cuts and one-beat limits',()=>{
   function match(actual:Record<string,number>,target:Record<string,number>){
     for(const [key,value] of Object.entries(target))expect(Math.abs(actual[key]!-value)).toBeLessThanOrEqual(2);
   }
-  test('all seven owned sides reach their shared objects',()=>{
-    match(out01(T.ping-1/60,audio,T),HANDOFF.cursor01);match(in02(T.ping,audio,T),HANDOFF.cursor01);
-    match(out02(T.issue-1/60,audio,T),HANDOFF.card02);match(in03(T.issue,audio,T),HANDOFF.card02);
-    match(out03(C.start-1/60),HANDOFF.month03);match(in04(C.start,audio,C),HANDOFF.month03);
-    match(out04(C.end-1/60,audio,C),HANDOFF.clawd04);
-    console.log('handoff max error 0 px (seven owned sides)');
-  });
-  test('cursor drawing converts top-left handoff y to the kit baseline exactly',()=>{
-    let rect:number[]=[];const ctx={save(){},restore(){},globalAlpha:1,fillStyle:'',fillRect(...v:number[]){rect=v;}};
-    drawCursor(ctx as any,cursorFromTop(out01(T.ping-1/60,audio,T)));
-    expect(rect).toEqual([HANDOFF.cursor01.x,HANDOFF.cursor01.y,HANDOFF.cursor01.h*.55,HANDOFF.cursor01.h]);
-  });
-  test('outgoing object holds until the last measured beat; incoming finishes in one beat',()=>{
-    expect(out02(afterBeats(audio,T.issue,-1)-.01,audio,T)).toEqual(out02(T.ping,audio,T));
-    expect(in03(afterBeats(audio,T.issue,1),audio,T)).toEqual(in03(T.attachment,audio,T));
+  // S01/S02/S03 V3 sprite/card cuts are replaced by scene-v6-g1.test.ts.
+  test('unchanged S04 V3 handoff and beat limits remain covered',()=>{
+    match(in04(C.start,audio,C),HANDOFF.month03);match(out04(C.end-1/60,audio,C),HANDOFF.clawd04);
     expect(in04(afterBeats(audio,C.start,1),audio,C).alpha).toBe(0);
     expect(out04(C.end-1/60,audio,C)).toEqual(out04(C.end,audio,C));
   });
@@ -120,8 +106,7 @@ describe('A / levels, vocal timing and seek order',()=>{
     expect(lyrics.get('Got a bug').words[0]!.start).toBeGreaterThanOrEqual(T.issue-0.02);
   });
   test('layout, camera, handoff and sound forms are independent of seek history',()=>{
-    const states=[(t:number)=>bootBounds(audio,t,T),(t:number)=>notifyLayout(t,audio,T),(t:number)=>formBounds(t,audio,T),
-      (t:number)=>cityBounds(audio,t,C),(t:number)=>cameraAt(audio,t,C,cityState(audio,t,C)),(t:number)=>out04(t,audio,C),
+    const states=[(t:number)=>cityBounds(audio,t,C),(t:number)=>cameraAt(audio,t,C,cityState(audio,t,C)),(t:number)=>out04(t,audio,C),
       (t:number)=>voice.forms(lyrics.lines[2]!,t)];
     for(const fn of states){const t=anchor('S04'),a=fn(t);expect(fn(t)).toEqual(a);fn(C.end);fn(T.start);expect(fn(t)).toEqual(a);}
   });
