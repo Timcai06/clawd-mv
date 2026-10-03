@@ -9,7 +9,7 @@ import { afterBeats, beatsSince, span } from '../../kit/time';
 import { ease } from '../../engine/util';
 import { Rig } from '../../kit/rig';
 import { starDirections, skyPoint, constellationPoint, cameraAt, entryPrim, CITY, clawdAt } from './s18-world';
-export interface OutroTimes { shots: ResolvedShot[]; start: number; end: number; dawn: number; ohs: Word[]; carried: Line[] }
+export interface OutroTimes { shots: ResolvedShot[]; start: number; end: number; dawn: number; flatAt:number; ohs: Word[]; carried: Line[] }
 export const SIGNATURE_LABEL = 'A FILM BY  ·  作品';
 export const CODE_LINE = '每一帧都由代码画出';
 export function resolveOutroTimes(audio: AudioData, lyrics: Lyrics): OutroTimes {
@@ -17,7 +17,7 @@ export function resolveOutroTimes(audio: AudioData, lyrics: Lyrics): OutroTimes 
   const start = shots[0]!.start, end = shots.at(-1)!.end;
   const events = audio.events('vocal', start, end).slice(0, 80);
   const ohs = events.map(([at], i): Word => ({ w: 'oh', start: at, end: Math.min(at + 0.4, events[i + 1]?.[0] ?? end), line: -1, index: i, gi: i }));
-  return { shots, start, end, dawn: afterBeats(audio, shots[4]!.start, 8), ohs, carried: [] };
+  return { shots, start, end, flatAt:afterBeats(audio,shots[6]!.start,4), dawn: afterBeats(audio, shots[4]!.start, 8), ohs, carried: [] };
 }
 export function handoffIn(t: number, _audio: AudioData, _T: OutroTimes) { const p = entryPrim(t); return p.kind === 'points' ? p.pts : []; }
 export const STAR_TARGETS = starDirections().map(skyPoint);
@@ -28,8 +28,8 @@ export function starState(audio: AudioData, _voice: Voice, t: number, T: OutroTi
   const born = [...STAR_TARGETS.map(p => ({ p, at: T.start })), ...T.ohs.map((w, i) => ({ p: constellationPoint(i), at: w.start }))];
   return born.map(({ p, at }, i) => {
     const q = rig.proj(p.x, p.y, p.z), age = t - at;
-    return { ...p, world: p, x: q?.x ?? -10000, y: q?.y ?? -10000, r: 2.5 + 1.5 * Math.exp(-Math.max(0, age) / 0.4),
-      at, hot: Math.exp(-Math.max(0, age) / 0.4), alpha: age < 0 ? 0 : loop, i };
+    return { ...p, world: p, x: q?.x ?? -10000, y: q?.y ?? -10000, r: i<STAR_TARGETS.length ? 10 : age<0.4 ? 18 : 10,
+      at, hot: i<STAR_TARGETS.length ? 0 : Math.max(0,1-Math.max(0,age)/0.4), alpha: age < 0 ? 0 : loop, i };
   });
 }
 export function outroState(audio: AudioData, t: number, T: OutroTimes) {

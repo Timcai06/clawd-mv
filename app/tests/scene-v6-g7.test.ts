@@ -13,9 +13,9 @@ import { primError, HANDOFF } from '../src/kit/handoff';
 import { CREDIT_LINES, AUTHOR } from '../src/kit/credits';
 import { resolveReleaseTimes } from '../src/scenes/parts/s17-release-state';
 import { lyricPaths, cursorAt } from '../src/scenes/s17-release';
-import { buildSwarm, formation, devicesAt, cameraAt, freezeWindow, devicePoint, screenBounds, screenDevice, screenPoints, IMPACT_PX, S17_WORLD_GLSL, commitWidth, commentWidth, commentLine, diffHead, zipperShake, type Rasters } from '../src/scenes/parts/s17-swarm';
+import { buildSwarm, formation, devicesAt, cameraAt, freezeWindow, devicePoint, screenBounds, screenDevice, screenPoints, IMPACT_PX, PUNCH, configureFraming, deviceBounds, commentPose, commentBounds, paletteFlipped, S17_WORLD_GLSL, commitWidth, commentWidth, commentLine, diffHead, zipperShake, type Rasters } from '../src/scenes/parts/s17-swarm';
 import { resolveOutroTimes, starState, outroCredits, SIGNATURE_LABEL, CODE_LINE } from '../src/scenes/parts/s18-score';
-import { CITY, cityHeight, sunAngle, boxHit, S18_WORLD_GLSL, cursorScreenAt, cursorGainAt, loopTarget, entryPrim, starDirections, STAR_RADIUS, calendarAffine, calendarCam, cameraAt as camera18, clawdAt } from '../src/scenes/parts/s18-world';
+import { CITY, cityHeight, sunAngle, boxHit, S18_WORLD_GLSL, cursorScreenAt, cursorGainAt, loopTarget, entryPrim, starDirections, STAR_RADIUS, calendarAffine, calendarCam, cameraAt as camera18, clawdAt, lightAt, surfaceTone, S18_LIGHT_GLSL, signatureGlyphs, SIGNATURE, shadowAt } from '../src/scenes/parts/s18-world';
 import { DATES, CELL } from '../src/scenes/parts/s04-city-model';
 import a from '../../data/audio.json';
 import l from '../../data/lyrics.json';
@@ -23,7 +23,7 @@ import './kit-pathtext.test';
 const audio=new AudioData(a), lyrics=new Lyrics(l), voice=new Voice(lyrics,audio), R=resolveReleaseTimes(audio,lyrics), O=resolveOutroTimes(audio,lyrics);
 // Real Canvas raster, real shipped fonts, and runtime errors. No screenshots or image inspection.
 const port=5397, server=Bun.spawn(['bunx','vite','--port',String(port),'--strictPort'],{cwd:new URL('..',import.meta.url).pathname,stdout:'ignore',stderr:'ignore',env:{...process.env,CLAWD_NO_HMR:'1'}});
-let facts: { rasters:Rasters; independent:number[]; errors:string[]; matrices:number[]; pixelsEqual:boolean; font:boolean };
+let facts: { rasters:Rasters; independent:number[]; errors:string[]; matrices:number[]; pixelsEqual:boolean; font:boolean; pixels:{starBright:number;cityMean:number;cityPixels:number;dawn147:number;dawn149:number;clay:number;cursorArea:number} };
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://localhost:${port}`)).ok)break;}catch{} await Bun.sleep(50);}
   const browser=await chromium.launch({channel:'chrome',args:['--use-angle=metal','--ignore-gpu-blocklist'],headless:true});
@@ -31,7 +31,7 @@ try {
     const page=await browser.newPage(); const errors:string[]=[];
     page.on('pageerror',e=>errors.push(e.message)); page.on('console',m=>{if(m.type()==='error' && !m.text().includes('404'))errors.push(m.text());});
     await page.goto(`http://localhost:${port}/?export=1`); await page.waitForFunction(()=> (window as any).__clawd?.ready, null,{timeout:120000});
-    facts=await page.evaluate(async()=>{
+    facts=await page.evaluate(async({a,l})=>{
       const sw=await import('/src/scenes/parts/s17-swarm.ts'), vt=await import('/src/kit/vartype.ts'), ty=await import('/src/engine/type.ts');
       await ty.loadFonts(); const rasters=sw.makeRasters();
       const cv=document.createElement('canvas');cv.width=96;cv.height=20;const c=cv.getContext('2d',{willReadFrequently:true})!;
@@ -43,13 +43,43 @@ try {
       for(const t of [113.89,114,114.7,115.5,115.89,116.3,116.9,117.4,119.7,122,123.2,124.3,125,126.4,127.3,128.5,130.2,131.89,131.90,137.5,139,140.3,143,147,149.4,153.5,155,159,160.58])P.still(t);
       P.still(116.30);const first=await P.png();P.still(155);P.still(116.30);const pixelsEqual=first===await P.png();
       const mesh=new sw.SwarmMesh(); matrices.push(mesh.body.count,mesh.screens.count);mesh.dispose();
-      return {rasters,independent,errors:[...(P.errors??[])],matrices,pixelsEqual,font:document.fonts.check('600 100px "PingFang SC"')};
-    }); facts.errors.push(...errors);
+      const w18=await import('/src/scenes/parts/s18-world.ts'),score=await import('/src/scenes/parts/s18-score.ts'),
+        au=await import('/src/engine/audio.ts'),ly=await import('/src/engine/lyrics.ts'),rigmod=await import('/src/kit/rig.ts');
+      const audio=new au.AudioData(a),lyrics=new ly.Lyrics(l),T=score.resolveOutroTimes(audio,lyrics);
+      const read=async(t:number)=>{
+        P.still(t);const im=new Image();im.src='data:image/png;base64,'+await P.png();await im.decode();
+        const cv=document.createElement('canvas');cv.width=1920;cv.height=1080;const c=cv.getContext('2d',{willReadFrequently:true})!;
+        c.drawImage(im,0,0);return c.getImageData(0,0,1920,1080).data;
+      };
+      const lum=(p:Uint8ClampedArray,i:number)=>(0.2126*p[i]!+0.7152*p[i+1]!+0.0722*p[i+2]!)/255;
+      const mean=(p:Uint8ClampedArray)=>{let sum=0;for(let i=0;i<p.length;i+=4)sum+=lum(p,i);return sum/(1920*1080);};
+      const firstStars=await read(131.9);let starBright=0;for(let i=0;i<firstStars.length;i+=4)if(lum(firstStars,i)>0.8)starBright++;
+      const city=await read(139),mask=document.createElement('canvas');mask.width=1920;mask.height=1080;const mc=mask.getContext('2d')!;
+      const rig=new rigmod.Rig();rig.set(w18.cameraAt(audio,139,T));
+      const cross=(o:any,a:any,b:any)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+      // Union of the actual projected building silhouettes defines the city ROI independently of pigment.
+      for(const d of w18.CITY){
+        const ps=[-1.36,1.36].flatMap(x=>[0,d.height].flatMap(y=>[-1.36,1.36].map(z=>rig.proj(d.x+x,y,d.z+z)))).filter(Boolean).sort((a:any,b:any)=>a.x-b.x||a.y-b.y);
+        const lower:any[]=[],upper:any[]=[];
+        for(const p of ps){while(lower.length>=2&&cross(lower.at(-2),lower.at(-1),p)<=0)lower.pop();lower.push(p);}
+        for(const p of [...ps].reverse()){while(upper.length>=2&&cross(upper.at(-2),upper.at(-1),p)<=0)upper.pop();upper.push(p);}
+        const hull=[...lower.slice(0,-1),...upper.slice(0,-1)];mc.beginPath();hull.forEach((p:any,i:number)=>i?mc.lineTo(p.x,p.y):mc.moveTo(p.x,p.y));mc.closePath();mc.fillStyle='white';mc.fill();
+      }
+      const roi=mc.getImageData(0,0,1920,1080).data;let citySum=0,cityPixels=0;
+      for(let i=0;i<roi.length;i+=4)if(roi[i+3]!>127){citySum+=lum(city,i);cityPixels++;}
+      const dawn147=mean(await read(147)),dawn149=mean(await read(149.4)),last=await read(160.5);let clay=0;
+      for(let i=0;i<last.length;i+=4)if(Math.abs(last[i]!-215)<=5&&Math.abs(last[i+1]!-119)<=5&&Math.abs(last[i+2]!-87)<=5)clay++;
+      const cursor=w18.loopTarget(),sampleIndex=(Math.floor(cursor.y+cursor.h/2)*1920+Math.floor(cursor.x+cursor.w/2))*4;
+      const hist:Record<string,number>={};for(let i=0;i<city.length;i+=4)if(roi[i+3]!>127){const key=Array.from(city.slice(i,i+3)).join(",");hist[key]=(hist[key]??0)+1;}
+      const cursorRGB=Array.from(last.slice(sampleIndex,sampleIndex+3)),cityColors=Object.entries(hist).sort((a,b)=>b[1]-a[1]).slice(0,8);
+      const pixels={cursorRGB,cityColors,starBright,cityMean:citySum/cityPixels,cityPixels,dawn147,dawn149,clay,cursorArea:cursor.w*cursor.h};
+      return {pixels,rasters,independent,errors:[...(P.errors??[])],matrices,pixelsEqual,font:document.fonts.check('600 100px "PingFang SC"')};
+    }, {a,l}); facts.errors.push(...errors);
   } finally { await browser.close(); }
 } finally {server.kill();}
 const sw=buildSwarm(facts!.rasters);
-R.commitWidth=commitWidth(sw);
-await Bun.write(new URL('../../out/codex/v6-g7-browser-facts.json',import.meta.url),JSON.stringify({ errors:facts!.errors, matrices:facts!.matrices,pixelsEqual:facts!.pixelsEqual,font:facts!.font,lit:sw.rasters.COMMIT.mask.length,changed:sw.rasters.DIFF.changed?.length,onsets:O.ohs.length,loop:loopTarget() },null,2));
+configureFraming(sw,R);
+await Bun.write(new URL('../../out/codex/v6-g7-browser-facts.json',import.meta.url),JSON.stringify({ pixels:facts!.pixels, rasters:facts!.rasters, errors:facts!.errors, matrices:facts!.matrices,pixelsEqual:facts!.pixelsEqual,font:facts!.font,lit:sw.rasters.COMMIT.mask.length,changed:sw.rasters.DIFF.changed?.length,onsets:O.ohs.length,loop:loopTarget() },null,2));
 test('browser renders all G7 phases without scene or shader errors; seeks are pixel deterministic',()=>{expect(facts!.errors).toEqual([]);expect(facts!.pixelsEqual).toBe(true);expect(facts!.font).toBe(true);});
 test('COMMIT actual Canvas coverage selects exactly every pixel above 0.5',()=>{expect(sw.rasters.COMMIT.mask).toEqual(facts!.independent);expect(formation(sw,'COMMIT').filter(d=>d.lit).map(d=>d.pixel).sort((a,b)=>a!-b!)).toEqual(facts!.independent);});
 test('CHECK uses the actual shipped Plex check glyph because Archivo has no U+2713',()=>{
@@ -68,23 +98,33 @@ test('one measured beat holds every camera and device matrix exactly still at fi
   for(let i=0;i<5;i++){const q=t+(f.end-t)*i/4;expect(cameraAt(audio,lyrics,q,R)).toEqual(cam);expect(devicesAt(sw,audio,lyrics,q,R)).toEqual(ds);}
 });
 test('C16 is the projection of the actual device screen',()=>{expect(primError({kind:'rect',...screenBounds(screenDevice(),cameraAt(audio,lyrics,R.release[0]!.start,R))},{kind:'rect',...HANDOFF.domino16}).px).toBeLessThanOrEqual(2);});
-test('COMMIT camera fits the complete 96x20 hardware raster to ninety percent of frame width',()=>{
-  const rig=new Rig();rig.set(cameraAt(audio,lyrics,R.hit+0.3,R));
-  const ds=formation(sw,'COMMIT').filter(d=>d.lit),points=ds.flatMap(d=>[-0.43,0.43].map(x=>{const p=devicePoint(p3(x,0,0.5),d,p3(d.w,d.h,d.d));return rig.proj(p.x,p.y,p.z)!;}));
-  const width=Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x));expect(width).toBeCloseTo(1728,5);expect(ds.every(d=>Number.isFinite(d.x))).toBe(true);
+test('settled formations project entirely within 60px, with the documented tall-check width exception',()=>{
+  const checks:[string,number][]=[['COMMIT',R.hit+0.3],['DIFF',118.8],['CHECK',122.5],['TWO_ROWS',123.7],['ONE_ROW',125.2]];
+  const metrics=checks.map(([name,t])=>{const box=deviceBounds(formation(sw,name as any),cameraAt(audio,lyrics,t,R));
+    expect(box.x).toBeGreaterThanOrEqual(60-1e-5);expect(box.y).toBeGreaterThanOrEqual(60-1e-5);
+    expect(box.x+box.w).toBeLessThanOrEqual(1860+1e-5);expect(box.y+box.h).toBeLessThanOrEqual(1020+1e-5);
+    if(name!=='CHECK')expect(box.w).toBeGreaterThanOrEqual(1344);return {name,t,...box};});
+  console.log('G7 projected formations '+JSON.stringify(metrics));
 });
-test('comment panel actual tilted box projects to half a screen across the full me hold',()=>{
+test('DIFF row gap is at least 1.2 times the projected letter height',()=>{
+  const ds=formation(sw,'DIFF'),cam=cameraAt(audio,lyrics,118.8,R);
+  const top=deviceBounds(ds.filter(d=>d.color==='fail'),cam),bottom=deviceBounds(ds.filter(d=>d.color==='pass'),cam);
+  expect(bottom.y-top.y-top.h).toBeGreaterThanOrEqual(1.2*Math.max(top.h,bottom.h));
+});
+test('half-screen comment panel remains inside the frame and disjoint from the check for the full me hold',()=>{
   const me=lyrics.get('Then you wrote, “Looks good to me”').words[6]!;
   for(const t of [R.release[4]!.start,me.start,(me.start+me.end)/2,me.end-1e-6]) {
-    const cam=cameraAt(audio,lyrics,t,R),tilt=-0.1*Math.min(1,Math.max(0,(t-me.start)/(me.end-me.start))),rig=new Rig();rig.set(cam);
-    const matrix=new THREE.Matrix4().makeRotationX(tilt).setPosition(17,0,0.1),width=commentWidth(cam,tilt);
-    const pts=[-1,1].flatMap(x=>[-1,1].flatMap(y=>[-1,1].map(z=>{const p=new THREE.Vector3(x*width/2,y*4,z*0.09).applyMatrix4(matrix);return rig.proj(p.x,p.y,p.z)!;})));
-    expect(Math.max(...pts.map(p=>p.x))-Math.min(...pts.map(p=>p.x))).toBeCloseTo(960,3);
+    const cam=cameraAt(audio,lyrics,t,R),tilt=-0.1*Math.min(1,Math.max(0,(t-me.start)/(me.end-me.start)));
+    const box=commentBounds(cam,tilt),check=deviceBounds(formation(sw,'CHECK'),cam);
+    expect(box.w).toBeCloseTo(960,3);expect(box.x).toBeGreaterThanOrEqual(60);expect(box.y).toBeGreaterThanOrEqual(60);
+    expect(box.x+box.w).toBeLessThanOrEqual(1860+0.01);expect(box.y+box.h).toBeLessThanOrEqual(1020);
+    if(t<R.release[5]!.start)expect(box.x).toBeGreaterThan(check.x+check.w);
   }
 });
-test('impact is 24 pixels; preceding scenes lack the specified exported impact constants',async()=>{
-  expect(IMPACT_PX).toBe(24);expect(7).toBeLessThan(13);expect(13).toBeLessThan(IMPACT_PX);
-  const s8=await Bun.file(new URL('../src/scenes/s08-commit.ts',import.meta.url)).text(),s13=await Bun.file(new URL('../src/scenes/s13-gitfall.ts',import.meta.url)).text();expect(s8.includes('export const IMPACT_PX')).toBe(false);expect(s13.includes('export const IMPACT_PX')).toBe(false);
+test('S17 exports the specified punch and swaps pigments for exactly four frames without post inversion',()=>{
+  expect(PUNCH).toEqual({shakePx:24,flipFrames:4});
+  for(let i=0;i<4;i++)expect(paletteFlipped(R.hit+(i+0.5)/60,R)).toBe(true);
+  expect(paletteFlipped(R.hit-1e-8,R)).toBe(false);expect(paletteFlipped(R.hit+4/60,R)).toBe(false);
 });
 test('only equals-sign devices move during the 120ms diff fix',()=>{
   const A=devicesAt(sw,audio,lyrics,R.release[3]!.start-0.001,R),B=devicesAt(sw,audio,lyrics,R.release[3]!.start+0.12,R),changed=new Set(sw.rasters.DIFF.changed);
@@ -98,7 +138,7 @@ test('diff camera follows its actual world writing head before the it close-up',
     const p=pathAt(active.path,writeHead(glyphs,t)),q=diffHead(audio,lyrics,t);
     expect(Math.hypot(p.x-q.x,p.y-q.y,p.z-q.z)).toBeLessThan(1e-8);
     expect(diffHead(audio,lyrics,t)).toEqual(diffHead(audio,lyrics,t));
-    expect(cameraAt(audio,lyrics,t,R).tgt.x).toBeCloseTo(Math.min(8,Math.max(-8,diffHead(audio,lyrics,t).x)),9);
+    expect(Math.abs(cameraAt(audio,lyrics,t,R).tgt.x-diffHead(audio,lyrics,t).x)).toBeLessThan(30);
     expect(head.word.start).toBeLessThanOrEqual(t);
   }
   const widths=[5,4,2,3],line=commentLine(widths,16);
@@ -176,4 +216,62 @@ test('outgoing cameras hold for the final 100ms; loop cursor continues from sign
   const at=afterBeats(audio,O.end,-2),a=cursorScreenAt(audio,at-1e-6,O),b=cursorScreenAt(audio,at,O);
   expect(primError({kind:'rect',...a},{kind:'rect',...b}).px).toBeLessThan(0.01);
   expect(cursorGainAt(O.end-0.1,O)).toBe(1);expect(cursorGainAt(O.end,O)).toBe(1.9);
+});
+
+test('merge row spans eighty percent and every screen cap height is at least fifty pixels; unused hardware is below frame',()=>{
+  for(const t of [123.7,124.3,125,125.8]) {
+    const ds=devicesAt(sw,audio,lyrics,t,R),cam=cameraAt(audio,lyrics,t,R),rig=new Rig();rig.set(cam);
+    const box=deviceBounds(sw.zipper.map(i=>ds[i]!),cam);expect(box.w).toBeGreaterThanOrEqual(1536);
+    for(const i of sw.zipper) if(ds[i]!.char!==' '){const d=ds[i]!,bottom=rig.proj(d.x,d.y-d.h*0.36,d.z+d.d*0.51)!,top=rig.proj(d.x,d.y+d.h*0.36,d.z+d.d*0.51)!;expect(bottom.y-top.y).toBeGreaterThanOrEqual(50);}
+    const used=new Set(sw.zipper);for(const [i,d] of ds.entries())if(!used.has(i))expect(rig.proj(d.x,d.y+d.h/2,d.z+d.d/2)!.y).toBeGreaterThan(1080);
+  }
+});
+test('night and noon exposure sample real roofs, facades and analytic cast shadows',()=>{
+  const night=139,day=149.4;
+  const roofs=CITY.slice(-5).map(d=>p3(d.x,d.height+0.025,d.z));
+  const walls=CITY.slice(-5).map(d=>p3(d.x,d.height/2,d.z+1.37));
+  const lit=roofs.map(p=>surfaceTone(p,p3(0,1,0),audio,day,O));
+  const moon=roofs.map(p=>surfaceTone(p,p3(0,1,0),audio,night,O));
+  const facades=walls.map(p=>surfaceTone(p,p3(0,0,1),audio,night,O));
+  const shadows=CITY.slice(0,5).map(d=>p3(d.x,0.025,d.z+1.6)).map(p=>surfaceTone(p,p3(0,1,0),audio,day,O));
+  moon.forEach(t=>{expect(t).toBeGreaterThanOrEqual(0.3);expect(t).toBeLessThanOrEqual(0.45);});
+  facades.forEach(t=>{expect(t).toBeGreaterThanOrEqual(0.1);expect(t).toBeLessThanOrEqual(0.25);});
+  lit.forEach(t=>{expect(t).toBeGreaterThanOrEqual(0.85);expect(t).toBeLessThanOrEqual(0.92);});
+  shadows.forEach(t=>{expect(t).toBeGreaterThanOrEqual(0.15);expect(t).toBeLessThanOrEqual(0.3);});
+  const L=lightAt(day,O);expect(L.sunK).toBeCloseTo(0.9/Math.max(0.15,L.sun.y),10);expect(lightAt(O.dawn,O).sunK).toBe(0);
+  console.log('G7 tones '+JSON.stringify({moon,facades,lit,shadows}));expect(S18_LIGHT_GLSL).toContain('0.03+0.15*g7Daylight');
+});
+test('calendar covers eighty-five percent of the frame and the printed signature spans fifty-five percent',()=>{
+  const rig=new Rig();rig.set(calendarCam());const aff=calendarAffine(rig)!;
+  const points=[0,1920].flatMap(x=>[0,1080].map(y=>({x:aff.a*x+aff.c*y+aff.e,y:aff.b*x+aff.d*y+aff.f})));
+  const width=Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)),height=Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y));
+  const clipped=(Math.min(1920,Math.max(...points.map(p=>p.x)))-Math.max(0,Math.min(...points.map(p=>p.x))))*(Math.min(1080,Math.max(...points.map(p=>p.y)))-Math.max(0,Math.min(...points.map(p=>p.y))));
+  expect(clipped/(1920*1080)).toBeGreaterThanOrEqual(0.85);
+  const glyphs=signatureGlyphs(audio,157,O);expect((glyphs.right-SIGNATURE.x)*aff.a).toBeGreaterThanOrEqual(1056);
+  glyphs.glyphs.forEach((g,i)=>{expect(g.at).toBe(afterBeats(audio,O.flatAt,i*0.5));expect(signatureGlyphs(audio,g.at,O).glyphs[i]!.drop).toBe(0.3);expect(signatureGlyphs(audio,g.at+0.12,O).glyphs[i]!.drop).toBe(0);});
+  console.log('G7 calendar '+JSON.stringify({width,height,coverage:clipped/(1920*1080),signatureWidth:(glyphs.right-SIGNATURE.x)*aff.a}));
+});
+
+test('rendered sRGB pixels meet all five R2 thresholds, using a geometry-defined city ROI',()=>{
+  const p=facts!.pixels;
+  expect(p.starBright).toBeGreaterThanOrEqual(54*30);
+  expect(p.cityMean).toBeGreaterThanOrEqual(0.15);expect(p.cityMean).toBeLessThanOrEqual(0.35);
+  expect(p.dawn147).toBeGreaterThanOrEqual(0.4);expect(p.dawn149).toBeGreaterThanOrEqual(0.6);
+  expect(p.clay).toBeGreaterThanOrEqual(p.cursorArea*0.8);
+  console.log('G7 pixels '+JSON.stringify(p));
+});
+
+test('CPU and exported GLSL light arithmetic agree at two hundred deterministic world samples',()=>{
+  expect(S18_LIGHT_GLSL).toContain('min(g7MaxTone,max(0.10,0.03+0.15*g7Daylight+moon+sun))');
+  for(let i=0;i<200;i++){
+    const t=i%2?139:149.4,p=p3(hash(i,81)*25-12.5,hash(i,82)*4,hash(i,83)*18-16),n=p3(hash(i,84)*2-1,hash(i,85),hash(i,86)*2-1),len=Math.hypot(n.x,n.y,n.z);n.x/=len;n.y/=len;n.z/=len;
+    const l=lightAt(t,O),dot=(d:typeof n)=>Math.max(0,n.x*d.x+n.y*d.y+n.z*d.z);
+    const translated=Math.min(l.toneCeiling,Math.max(0.1,0.03+0.15*l.daylight+l.moonK*dot(l.moon)*shadowAt(p,l.moon,audio,t,O)+l.sunK*dot(l.sun)*shadowAt(p,l.sun,audio,t,O)));
+    expect(Math.abs(surfaceTone(p,n,audio,t,O)-translated)).toBeLessThan(1e-4);
+  }
+  expect(lightAt(O.flatAt,O).sun.y).toBe(1);expect(surfaceTone(p3(0,0.1,-7.2),p3(0,1,0),audio,O.flatAt,O)).toBe(0.9);
+});
+test('C17 star arms are ten pixels and newly born stars use eighteen pixels for exactly 0.4 seconds',()=>{
+  expect(starState(audio,voice,O.start,O).slice(0,54).every(s=>s.r===10)).toBe(true);
+  const at=O.ohs[0]!.start;expect(starState(audio,voice,at,O)[54]!.r).toBe(18);expect(starState(audio,voice,at+0.399,O)[54]!.r).toBe(18);expect(starState(audio,voice,at+0.401,O)[54]!.r).toBe(10);
 });

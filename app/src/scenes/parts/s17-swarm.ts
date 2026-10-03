@@ -6,7 +6,7 @@ import { W, H } from '../../engine/gl';
 import { clamp, ease, frameIdx, hash, lerp } from '../../engine/util';
 import { F, font } from '../../engine/type';
 import { lin } from '../../theme';
-import { engraveMaterial } from '../../kit/engrave-mat';
+import { engraveMaterial, setEngrave } from '../../kit/engrave-mat';
 import { exitEnvelope, HANDOFF, type Prim } from '../../kit/handoff';
 import { Rig, mixCam, orbitCam, p3, type Cam, type P3 } from '../../kit/rig';
 import { afterBeats, span } from '../../kit/time';
@@ -16,7 +16,9 @@ import { Voice } from '../../kit/lyric-moves';
 import { wallCam, wallDevices } from './s17-world';
 import type { ReleaseTimes } from './s17-release-state';
 
-export const N = 1400, IMPACT_PX = 24, PITCH = 0.6;
+export const PUNCH = { shakePx: 24, flipFrames: 4 } as const;
+export const N = 1400, IMPACT_PX = PUNCH.shakePx, PITCH = 0.6;
+export const DIFF_ROW_OFFSET = 4.6;
 export type FormationName = 'SCREEN' | 'COMMIT' | 'DIFF' | 'DIFF_FIXED' | 'CHECK' | 'TWO_ROWS' | 'ONE_ROW' | 'SCATTER' | 'CLAWD';
 export interface Device extends P3 { w: number; h: number; d: number; yaw: number; lit: number; color: 'clay' | 'pass' | 'fail'; pixel?: number; char?: string; warm?: number }
 export interface Raster { width: number; height: number; alpha: number[]; mask: number[]; changed?: number[]; replacement?: number[] }
@@ -65,7 +67,7 @@ function grid(r: Raster, diff = false): Device[] {
   });
   if (r.mask.length > N) throw new Error('formation exceeds 1400 lit devices');
   const ds = [...r.mask, ...dark.slice(0, N - r.mask.length)].map(i => ({
-    ...unitDevice(p3((i % r.width - (r.width - 1) / 2) * PITCH, ((r.height - 1) / 2 - Math.floor(i / r.width)) * PITCH, 0), lit.has(i) ? 1 : 0,
+    ...unitDevice(p3((i % r.width - (r.width - 1) / 2) * PITCH, ((r.height - 1) / 2 - Math.floor(i / r.width)) * PITCH + (diff ? (i < r.width*r.height/2 ? DIFF_ROW_OFFSET : -DIFF_ROW_OFFSET) : 0), 0), lit.has(i) ? 1 : 0,
       diff ? (i < r.width * r.height / 2 ? 'fail' : 'pass') : 'clay'), pixel: i,
   }));
   while (ds.length < N) { const i = ds.length; ds.push({ ...unitDevice(p3((i % 70 - 34.5) * PITCH, -12 - Math.floor(i / 70) * PITCH, -2)), pixel: -i - 1 }); }
@@ -90,7 +92,7 @@ export function buildSwarm(rasters: Rasters): Swarm {
   const fixed = diff.map(d => {
     if (!changed.has(d.pixel!)) return { ...d };
     const pixels = rasters.DIFF.replacement ?? [], p = pixels[replacement++ % pixels.length];
-    return p === undefined ? { ...d, lit:0 } : { ...d, x:(p%90-44.5)*PITCH,y:(12.5-Math.floor(p/90))*PITCH,z:0.002,lit:1 };
+    return p === undefined ? { ...d, lit:0 } : { ...d, x:(p%90-44.5)*PITCH,y:(12.5-Math.floor(p/90))*PITCH+DIFF_ROW_OFFSET,z:0.002,lit:1 };
   });
   const check = sort(grid(rasters.CHECK).map(d => ({ ...d, color: 'pass' as const })));
   const text = Array.from('Merged to main,');
@@ -106,6 +108,7 @@ export function buildSwarm(rasters: Rasters): Swarm {
   // Unused row devices keep the 80-device band without occupying the 15 text slots.
   const used = new Set(zipper); let extra = 0;
   for (let i = 0; i < 80; i++) if (!used.has(i)) one[i]!.x = (extra++ < 33 ? -8 - extra : 7 + extra - 33) * PITCH;
+  for (const ds of [two, one]) for (let i=0;i<N;i++) if (!used.has(i)) { ds[i]!.y=-35-Math.floor(i/70)*PITCH; ds[i]!.lit=0; }
   const scatter = Array.from({ length: N }, (_, i) => {
     const y = 2 * hash(i, 31) - 1, a = hash(i, 32) * Math.PI * 2, r = 30 * Math.sqrt(1 - y * y);
     return unitDevice(p3(r * Math.cos(a), y * 30, r * Math.sin(a)), 1);
@@ -213,7 +216,7 @@ export function diffHead(audio:AudioData,lyrics:Lyrics,t:number):P3 {
     layouts={audio,branch:layoutPath(words.slice(0,2),o),main:layoutPath(words.slice(2),o)};diffLayouts.set(lyrics,layouts);
   }
   const main=t>=words[2]!.start,layout=main?layouts.main:layouts.branch;
-  return p3(-layout.s1/2+writeHead(layout.glyphs,t),main?0.6:8.4,0.3);
+  return p3(-layout.s1/2+writeHead(layout.glyphs,t),main?0.6-DIFF_ROW_OFFSET:8.4+DIFF_ROW_OFFSET,0.3);
 }
 export function cameraAt(audio: AudioData, lyrics: Lyrics, t: number, T: ReleaseTimes): Cam {
   const R = T.release, at = (i: number) => R[i]!.start, hook = lyrics.get('I need one last commit'), freeze = freezeWindow(audio, T);
@@ -231,11 +234,20 @@ export function cameraAt(audio: AudioData, lyrics: Lyrics, t: number, T: Release
     return mixCam(orbitCam(p3(), 0, 0, distance, 34), front, ease.inOutCubic(span(t, hook.words[4]!.start, T.hit)));
   }
   if (t < at(4)) {
-    const head=clamp(diffHead(audio,lyrics,t).x,-8,8),close = ease.outExpo(span(t, at(3), at(3) + 0.25));
-    return orbitCam(p3(head*(1-close)-5*close,0,0),0,0,lerp(40,28,close),34);
+    const b=T.framing?.DIFF ?? {x:-26,y:-12.2,w:52,h:24.4};
+    const close=ease.outExpo(span(t,at(3),at(3)+0.25));
+    const px=lerp(1536,1728,close), scale=px/b.w;
+    const room=(1920-px)/2-60;
+    const head=diffHead(audio,lyrics,t).x;
+    return orbitCam(p3(b.x+b.w/2+clamp(head*(1-close)-5*close,-room/scale,room/scale),b.y+b.h/2,0),0,0,distForWidth(b.w,px)+0.275,34);
   }
-  if (t < at(5)) return orbitCam(p3(4, 0, 0), -0.04, 0.05, 36, 34);
-  if (t < at(6)) return orbitCam(p3(), 0, 0.08, 26, 34);
+  if (t < at(5)) return checkCamera(T);
+  if (t < at(6)) {
+    const b=T.framing?.TWO_ROWS ?? {x:-4.44,y:-0.19,w:8.88,h:1.58};
+    const distance=distForWidth(b.w,1728)+0.275;
+    const settle=ease.inOutCubic(span(t,T.zipEnd,T.zipEnd+0.15));
+    return orbitCam(p3(b.x+b.w/2,lerp(b.y+b.h/2,0,settle),0),0,0,distance,34);
+  }
   if (t < at(7)) return orbitCam(p3(), 0, 0, lerp(26, 92, ease.outCubic(span(t, at(6), at(7)))), 40);
   const every = lyrics.get('And it works on every machine').words[4]!.start;
   return wallCam(span(t, every, afterBeats(audio, R.at(-1)!.end, -0.4)));
@@ -243,7 +255,41 @@ export function cameraAt(audio: AudioData, lyrics: Lyrics, t: number, T: Release
 export function impactAt(t: number, T: ReleaseTimes) {
   const age = Math.max(0, t - T.hit), active = t >= T.hit && t < T.hit + 0.25;
   const k = active ? Math.exp(-age * 20) : 0, frame = frameIdx(t);
-  return { shake: [Math.cos(frame * 2.4) * IMPACT_PX * k, Math.sin(frame * 1.9) * IMPACT_PX * k] as [number, number], zoom: 1 + 0.06 * k, invert: t >= T.hit && t < T.hit + 4 / 60 ? 1 : 0 };
+  return { shake: [Math.cos(frame * 2.4) * IMPACT_PX * k, Math.sin(frame * 1.9) * IMPACT_PX * k] as [number, number], zoom: 1 + 0.06 * k, invert: 0 };
+}
+export const paletteFlipped = (t:number,T:ReleaseTimes) => t>=T.hit && t<T.hit+PUNCH.flipFrames/60;
+export function deviceBounds(ds:Device[],cam?:Cam) {
+  const rig=cam?new Rig():null;if(rig&&cam)rig.set(cam);
+  const ps=ds.filter(d=>d.lit>0).flatMap(d=>[-0.5,0.5].flatMap(x=>[-0.5,0.5].flatMap(y=>[-0.5,0.5].map(z=>{
+    const p=devicePoint(p3(x,y,z),d,p3(d.w,d.h,d.d),d.yaw);return rig?rig.proj(p.x,p.y,p.z)!:p;
+  }))));
+  const x=Math.min(...ps.map(p=>p.x)),y=Math.min(...ps.map(p=>p.y));
+  return {x,y,w:Math.max(...ps.map(p=>p.x))-x,h:Math.max(...ps.map(p=>p.y))-y};
+}
+export function configureFraming(sw:Swarm,T:ReleaseTimes) {
+  T.commitWidth=commitWidth(sw);
+  T.framing=Object.fromEntries(['COMMIT','DIFF','CHECK','TWO_ROWS','ONE_ROW'].map(n=>[n,deviceBounds(formation(sw,n as FormationName))]));
+}
+export function checkCamera(T:ReleaseTimes):Cam {
+  const b=T.framing?.CHECK ?? {x:-6.54,y:-8.29,w:13.08,h:16.58};
+  // The unmodified tall check cannot meet 70% width within the vertical safety margin.
+  const scale=Math.min(1344/b.w,960/b.h), distance=540/(scale*Math.tan(34*Math.PI/360))+0.275;
+  const checkCenter=60+b.w*scale/2;
+  return orbitCam(p3(b.x+b.w/2+(960-checkCenter)/scale,b.y+b.h/2,0),0,0,distance,34);
+}
+export function commentPose(cam:Cam,tilt:number) {
+  const scale=540/((cam.pos.z-0.19)*Math.tan(cam.fov*Math.PI/360));
+  // Half-screen panel, right aligned with 60px safety; same world plane as the check.
+  return {x:cam.tgt.x+(1360-960)/scale,y:cam.tgt.y,z:0.1,width:commentWidth(cam,tilt),height:Math.min(8,600/scale)};
+}
+export function commentBounds(cam:Cam,tilt:number) {
+  const rig=new Rig();rig.set(cam);const pose=commentPose(cam,tilt);
+  const ps=[-1,1].flatMap(x=>[-1,1].flatMap(y=>[-1,1].map(z=>{
+    const py=y*pose.height/2,pz=z*0.09;
+    return rig.proj(pose.x+x*pose.width/2,pose.y+py*Math.cos(tilt)-pz*Math.sin(tilt),pose.z+py*Math.sin(tilt)+pz*Math.cos(tilt))!;
+  })));
+  const x=Math.min(...ps.map(p=>p.x)),y=Math.min(...ps.map(p=>p.y));
+  return {x,y,w:Math.max(...ps.map(p=>p.x))-x,h:Math.max(...ps.map(p=>p.y))-y};
 }
 export function screenBounds(d: Device, cam: Cam) {
   const rig = new Rig(); rig.set(cam);
@@ -255,19 +301,20 @@ export function screenBounds(d: Device, cam: Cam) {
 }
 export function commentWidth(cam: Cam, tilt: number): number {
   const rig=new Rig(); rig.set(cam); let lo=1,hi=40;
+  const scale=540/((cam.pos.z-0.19)*Math.tan(cam.fov*Math.PI/360)),height=Math.min(8,600/scale);
   for(let i=0;i<24;i++) {
     const width=(lo+hi)/2;
     const ps=[-1,1].flatMap(x=>[-1,1].flatMap(y=>[-1,1].map(z=>{
-      const py=y*4,pz=z*0.09;
-      return rig.proj(17+x*width/2,py*Math.cos(tilt)-pz*Math.sin(tilt),0.1+py*Math.sin(tilt)+pz*Math.cos(tilt))!;
+      const py=y*height/2,pz=z*0.09;
+      return rig.proj(cam.tgt.x+x*width/2,py*Math.cos(tilt)-pz*Math.sin(tilt),0.1+py*Math.sin(tilt)+pz*Math.cos(tilt))!;
     })));
     if(Math.max(...ps.map(p=>p.x))-Math.min(...ps.map(p=>p.x))<960)lo=width;else hi=width;
   }
   return (lo+hi)/2;
 }
-export function commentLine(widths:number[],panelWidth:number) {
+export function commentLine(widths:number[],panelWidth:number,center=17) {
   const gap=0.35,total=widths.reduce((a,b)=>a+b,0)+gap*(widths.length-1),scale=Math.min(1,panelWidth*0.8/total);
-  let x=17-total*scale/2;
+  let x=center-total*scale/2;
   return {scale,x:widths.map(w=>{const center=x+w*scale/2;x+=(w+gap)*scale;return center;})};
 }
 export function entryPrim(t: number, audio: AudioData, lyrics: Lyrics, T: ReleaseTimes): Prim {
@@ -310,15 +357,17 @@ export class SwarmMesh {
     const L = new THREE.DirectionalLight(0xffffff, 1); L.position.set(-0.5, 0.6, 0.62);
     this.scene.add(this.body, this.screens, L, new THREE.AmbientLight(0xffffff, 0.12));
   }
-  update(ds: Device[], cam: Cam, visible = N) {
+  update(ds: Device[], cam: Cam, visible = N, flipped = false) {
+    setEngrave(this.bodyMaterial,{paper:lin(flipped?'ink':'paper'),ink:lin(flipped?'paper':'ink')});
+    (this.screenMaterial.uniforms.paper!.value as THREE.Vector3).set(...lin(flipped?'ink':'paper'));
     this.rig.set(cam); this.body.count = this.screens.count = visible;
-    const color = new THREE.Color(), ink = lin('ink');
+    const color = new THREE.Color(), ink = lin(flipped?'paper':'ink');
     for (let i = 0; i < visible; i++) {
       const d = ds[i]!; this.q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), d.yaw);
       this.pos.set(d.x, d.y, d.z); this.scale.set(d.w, d.h, d.d); this.matrix.compose(this.pos, this.q, this.scale); this.body.setMatrixAt(i, this.matrix);
       const p = devicePoint(p3(0, 0, 0.501), d, p3(d.w, d.h, d.d), d.yaw);
       this.pos.set(p.x, p.y, p.z); this.scale.set(d.w, d.h, 1); this.matrix.compose(this.pos, this.q, this.scale); this.screens.setMatrixAt(i, this.matrix);
-      const rgb = lin(d.color).map((c,i)=>d.warm===undefined?c:lerp(c,lin('clay')[i]!,d.warm)) as [number,number,number]; color.setRGB(...rgb, THREE.LinearSRGBColorSpace).multiplyScalar(d.lit).add(new THREE.Color().setRGB(...ink).multiplyScalar(1 - d.lit)); this.screens.setColorAt(i, color);
+      const rgb = lin(flipped?'ink':d.color).map((c,i)=>d.warm===undefined?c:lerp(c,lin('clay')[i]!,d.warm)) as [number,number,number]; color.setRGB(...rgb, THREE.LinearSRGBColorSpace).multiplyScalar(d.lit).add(new THREE.Color().setRGB(...ink).multiplyScalar(1 - d.lit)); this.screens.setColorAt(i, color);
     }
     this.body.instanceMatrix.needsUpdate = this.screens.instanceMatrix.needsUpdate = true; this.screens.instanceColor!.needsUpdate = true;
   }
