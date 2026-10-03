@@ -13,6 +13,7 @@ import { afterBeats, beatsSince, span } from '../kit/time';
 import { planeAffine, p3 } from '../kit/rig';
 import { TomorrowCity, CITY, cityHeight, calendarAffine, cursorScreenAt, cursorGainAt, shadowAt, lightAt, signatureGlyphs, SIGNATURE } from './parts/s18-world';
 import { resolveOutroTimes, outroCredits, starState, SIGNATURE_LABEL, CODE_LINE, type OutroTimes } from './parts/s18-score';
+import { creditInkBoxes, quietCalendarInk } from './parts/s18-print';
 export const LYRIC_SIZE = 80;
 export const TYPE_LEVELS = { giant: null, lyric: 54.88, label: 20 } as const;
 class World {
@@ -20,7 +21,8 @@ class World {
   cursor = new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({toneMapped:false,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
   cursorScene = new THREE.Scene(); cursorCamera = new THREE.OrthographicCamera(0,1920,0,1080,-1,1);
   times: OutroTimes; voice: Voice;
-  constructor(ctx: SceneCtx) { this.times = resolveOutroTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); this.cursorScene.add(this.cursor); }
+  calendarInk=document.createElement('canvas');
+  constructor(ctx: SceneCtx) { this.times = resolveOutroTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); this.cursorScene.add(this.cursor);this.calendarInk.width=1920;this.calendarInk.height=1080; }
   dispose() { this.city.dispose(); this.layer.texture.dispose(); this.stars.geo.dispose(); this.stars.mat.dispose(); this.cursor.geometry.dispose(); this.cursor.material.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
@@ -46,12 +48,15 @@ export default class S18Tomorrow extends Scene {
   }
   private roofText(c: CanvasRenderingContext2D, t: number) {
     const w = this.w, T = w.times;
+    const destination=c;c=w.calendarInk.getContext('2d')!;c.clearRect(0,0,1920,1080);
     for (const d of CITY) {
       const aff = planeAffine(w.city.rig, p3(d.x - 0.4, cityHeight(d, this.ctx.audio, t, T) + 0.012, d.z - 0.3), p3(1, 0, 0), p3(0, 0, 1), 0.012);
       if (!aff) continue;
       const light=lightAt(t,T),dir=light.sunK>0?light.sun:light.moon;
       c.save(); c.setTransform(aff.a, aff.b, aff.c, aff.d, aff.e, aff.f); c.font = font(F.mono(600), 55); c.fillStyle = css(t < T.dawn ? 'paper' : 'ink',0.3+0.7*shadowAt(p3(d.x,cityHeight(d,this.ctx.audio,t,T)+0.02,d.z),dir,this.ctx.audio,t,T)); c.fillText(String(d.day), 0, 0); c.restore();
     }
+    quietCalendarInk(c,creditInkBoxes(c,w.city.rig,this.ctx.audio,t,T),.15);
+    destination.drawImage(w.calendarInk,0,0);c=destination;
     if (t >= T.shots[5]!.start && t < T.shots[6]!.start) {
       const d = CITY[0]!, aff = planeAffine(w.city.rig, p3(d.x - 1.1, d.height + 0.02, d.z), p3(1, 0, 0), p3(0, 0, 1), 0.009);
       if (aff) { c.save(); c.setTransform(aff.a, aff.b, aff.c, aff.d, aff.e, aff.f); c.font = font(F.mono(500), 22); c.fillStyle = css('ink'); c.fillText('Issue #1032 · calendar', 0, 0); c.restore(); }
@@ -60,12 +65,15 @@ export default class S18Tomorrow extends Scene {
   private credits(c: CanvasRenderingContext2D, t: number) {
     const w = this.w, T = w.times, au = this.ctx.audio, at = T.shots[6]!.start;
     const aff = calendarAffine(w.city.rig); if (!aff) return;
-    c.save(); c.setTransform(aff.a, aff.b, aff.c, aff.d, aff.e, aff.f);
+    const grid=w.calendarInk.getContext('2d')!;grid.clearRect(0,0,1920,1080);
+    grid.save();grid.setTransform(aff.a,aff.b,aff.c,aff.d,aff.e,aff.f);
     // The card is ink printed on the world calendar, with the original credit rows intact.
     // The underlying engraved, noon-lit floor is the paper; this layer prints only ink.
-    c.strokeStyle = css('ink', 0.12); c.lineWidth = 1.3;
-    for (let i = 0; i <= 7; i++) { c.beginPath(); c.moveTo(i * 1920 / 7, 0); c.lineTo(i * 1920 / 7, 1080); c.stroke(); }
-    for (let i = 0; i <= 5; i++) { c.beginPath(); c.moveTo(0, i * 216); c.lineTo(1920, i * 216); c.stroke(); }
+    grid.strokeStyle = css('ink', 0.12); grid.lineWidth = 1.3;
+    for (let i = 0; i <= 7; i++) { grid.beginPath(); grid.moveTo(i * 1920 / 7, 0); grid.lineTo(i * 1920 / 7, 1080); grid.stroke(); }
+    for (let i = 0; i <= 5; i++) { grid.beginPath(); grid.moveTo(0, i * 216); grid.lineTo(1920, i * 216); grid.stroke(); }
+    grid.restore();quietCalendarInk(grid,creditInkBoxes(grid,w.city.rig,au,t,T),.3);c.drawImage(w.calendarInk,0,0);
+    c.save();c.setTransform(aff.a,aff.b,aff.c,aff.d,aff.e,aff.f);
     const b = beatsSince(au, t, at);
     c.font = font(F.mono(500), 22); c.fillStyle = css('ink', Math.min(1, Math.max(0, b / 0.6))); c.fillText(SIGNATURE_LABEL, 1920/7, 216);
     c.restore();

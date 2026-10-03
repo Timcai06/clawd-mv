@@ -106,7 +106,7 @@ export function cameraAt(audio: AudioData, time: number, T: ChorusScore): Cam {
   const t = Math.min(time, T.end - 0.1), top = settledTop(t, T);
   const a = orbitCam(p3(0, 1, 0), 0, -0.18, 25, 34);
   const b = orbitCam(p3(TOWER_X - 4.5, 0.7, TOWER_Z), 0, -0.18, 23, 34);
-  const c = orbitCam(p3(TOWER_X, top + 0.15, TOWER_Z + 0.6), 0.05, 0.04, 8.4, 34);
+  const c = orbitCam(p3(TOWER_X, top + 1.0, TOWER_Z + 0.6), 0.05, 0.55, 9.15, 34);
   const d = orbitCam(p3(TOWER_X, top - 5.85, TOWER_Z), 0, 1.0, 21, 38);
   const e = orbitCam(p3(TOWER_X, top - 1.5, TOWER_Z), 0, -0.18, 21, 34);
   const fallDistance = 540 / (Math.tan(38 * Math.PI / 360) * (HANDOFF.fall13.pitch / SLAB.h));

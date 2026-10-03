@@ -111,12 +111,12 @@ test('DIFF row gap is at least 1.2 times the projected letter height',()=>{
   const top=deviceBounds(ds.filter(d=>d.color==='fail'),cam),bottom=deviceBounds(ds.filter(d=>d.color==='pass'),cam);
   expect(bottom.y-top.y-top.h).toBeGreaterThanOrEqual(1.2*Math.max(top.h,bottom.h));
 });
-test('half-screen comment panel remains inside the frame and disjoint from the check for the full me hold',()=>{
+test('P1 comment panel remains inside the frame and disjoint from the check for the full me hold',()=>{
   const me=lyrics.get('Then you wrote, “Looks good to me”').words[6]!;
   for(const t of [R.release[4]!.start,me.start,(me.start+me.end)/2,me.end-1e-6]) {
     const cam=cameraAt(audio,lyrics,t,R),tilt=-0.1*Math.min(1,Math.max(0,(t-me.start)/(me.end-me.start)));
     const box=commentBounds(cam,tilt),check=deviceBounds(formation(sw,'CHECK'),cam);
-    expect(box.w).toBeCloseTo(960,3);expect(box.x).toBeGreaterThanOrEqual(60);expect(box.y).toBeGreaterThanOrEqual(60);
+    expect(box.w).toBeCloseTo(860,3);expect(box.x).toBeGreaterThanOrEqual(60);expect(box.y).toBeGreaterThanOrEqual(60);
     expect(box.x+box.w).toBeLessThanOrEqual(1860+0.01);expect(box.y+box.h).toBeLessThanOrEqual(1020);
     if(t<R.release[5]!.start)expect(box.x).toBeGreaterThan(check.x+check.w);
   }

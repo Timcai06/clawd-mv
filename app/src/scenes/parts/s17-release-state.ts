@@ -17,6 +17,7 @@ export interface ReleaseTimes {
   zipEnd: number;
   commitWidth?: number;
   framing?: Record<string, { x: number; y: number; w: number; h: number }>;
+  checkCorners?: { x:number;y:number;z:number }[];
 }
 
 export function resolveReleaseTimes(audio: AudioData, lyrics: Lyrics): ReleaseTimes {

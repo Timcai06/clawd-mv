@@ -269,18 +269,43 @@ export function deviceBounds(ds:Device[],cam?:Cam) {
 export function configureFraming(sw:Swarm,T:ReleaseTimes) {
   T.commitWidth=commitWidth(sw);
   T.framing=Object.fromEntries(['COMMIT','DIFF','CHECK','TWO_ROWS','ONE_ROW'].map(n=>[n,deviceBounds(formation(sw,n as FormationName))]));
+  T.checkCorners=formation(sw,'CHECK').filter(d=>d.lit).flatMap(d=>[-.5,.5].flatMap(x=>[-.5,.5].flatMap(y=>[-.5,.5].map(z=>devicePoint(p3(x,y,z),d,p3(d.w,d.h,d.d),d.yaw)))));
 }
+const checkCameras=new WeakMap<ReleaseTimes,{points:ReleaseTimes['checkCorners'];cam:Cam}>();
 export function checkCamera(T:ReleaseTimes):Cam {
+  const cached=checkCameras.get(T);if(cached&&cached.points===T.checkCorners)return cached.cam;
   const b=T.framing?.CHECK ?? {x:-6.54,y:-8.29,w:13.08,h:16.58};
-  // The unmodified tall check cannot meet 70% width within the vertical safety margin.
-  const scale=Math.min(1344/b.w,960/b.h), distance=540/(scale*Math.tan(34*Math.PI/360))+0.275;
-  const checkCenter=60+b.w*scale/2;
-  return orbitCam(p3(b.x+b.w/2+(960-checkCenter)/scale,b.y+b.h/2,0),0,0,distance,34);
+  const points=T.checkCorners??[b.x,b.x+b.w].flatMap(x=>[b.y,b.y+b.h].flatMap(y=>[-.275,.275].map(z=>p3(x,y,z))));
+  const rig=new Rig(),pitch=.72;
+  let distance=distForWidth(b.w,870),cx=b.x+b.w/2,cy=b.y+b.h/2,cam:Cam;
+  for(let i=0;i<24;i++){
+    cam=orbitCam(p3(cx,cy,0),0,pitch,distance,34);rig.set(cam);
+    const ps=points.map(p=>rig.proj(p.x,p.y,p.z)!),x0=Math.min(...ps.map(p=>p.x)),x1=Math.max(...ps.map(p=>p.x)),
+      y0=Math.min(...ps.map(p=>p.y)),y1=Math.max(...ps.map(p=>p.y));
+    const scale=rig.proj(b.x+b.w/2,b.y+b.h/2,0)!.s;
+    distance*=(x1-x0)/880;
+    cx+=((x0+x1)/2-500)/scale;cy-=((y0+y1)/2-540)/(scale*Math.cos(pitch));
+  }
+  const result=orbitCam(p3(cx,cy,0),0,pitch,distance,34);
+  checkCameras.set(T,{points:T.checkCorners,cam:result});return result;
 }
 export function commentPose(cam:Cam,tilt:number) {
-  const scale=540/((cam.pos.z-0.19)*Math.tan(cam.fov*Math.PI/360));
-  // Half-screen panel, right aligned with 60px safety; same world plane as the check.
-  return {x:cam.tgt.x+(1360-960)/scale,y:cam.tgt.y,z:0.1,width:commentWidth(cam,tilt),height:Math.min(8,600/scale)};
+  const rig=new Rig();rig.set(cam);
+  const screenPoint=(x:number,y:number)=>{
+    const q=new THREE.Vector3(x/960-1,1-y/540,.5).unproject(rig.cam),p=rig.cam.position,k=(.1-p.z)/(q.z-p.z);
+    return p3(p.x+(q.x-p.x)*k,p.y+(q.y-p.y)*k,.1);
+  };
+  const center=screenPoint(1380,540),scale=rig.proj(center.x,center.y,.1)!.s;
+  const height=Math.min(8,500/scale);
+  let lo=1,hi=40;
+  for(let i=0;i<30;i++){
+    const width=(lo+hi)/2,ps=[-1,1].flatMap(x=>[-1,1].flatMap(y=>[-1,1].map(z=>{
+      const py=y*height/2,pz=z*.09;return rig.proj(center.x+x*width/2,center.y+py*Math.cos(tilt)-pz*Math.sin(tilt),.1+py*Math.sin(tilt)+pz*Math.cos(tilt))!;
+    })));
+    const min=Math.min(...ps.map(p=>p.x)),max=Math.max(...ps.map(p=>p.x));
+    if(max-min<860)lo=width;else hi=width;
+  }
+  return {...center,width:(lo+hi)/2,height};
 }
 export function commentBounds(cam:Cam,tilt:number) {
   const rig=new Rig();rig.set(cam);const pose=commentPose(cam,tilt);
@@ -300,17 +325,7 @@ export function screenBounds(d: Device, cam: Cam) {
   return { x, y, w: Math.max(...points.map(p => p.x)) - x, h: Math.max(...points.map(p => p.y)) - y };
 }
 export function commentWidth(cam: Cam, tilt: number): number {
-  const rig=new Rig(); rig.set(cam); let lo=1,hi=40;
-  const scale=540/((cam.pos.z-0.19)*Math.tan(cam.fov*Math.PI/360)),height=Math.min(8,600/scale);
-  for(let i=0;i<24;i++) {
-    const width=(lo+hi)/2;
-    const ps=[-1,1].flatMap(x=>[-1,1].flatMap(y=>[-1,1].map(z=>{
-      const py=y*height/2,pz=z*0.09;
-      return rig.proj(cam.tgt.x+x*width/2,py*Math.cos(tilt)-pz*Math.sin(tilt),0.1+py*Math.sin(tilt)+pz*Math.cos(tilt))!;
-    })));
-    if(Math.max(...ps.map(p=>p.x))-Math.min(...ps.map(p=>p.x))<960)lo=width;else hi=width;
-  }
-  return (lo+hi)/2;
+  return commentPose(cam,tilt).width;
 }
 export function commentLine(widths:number[],panelWidth:number,center=17) {
   const gap=0.35,total=widths.reduce((a,b)=>a+b,0)+gap*(widths.length-1),scale=Math.min(1,panelWidth*0.8/total);
@@ -364,10 +379,11 @@ export class SwarmMesh {
     const color = new THREE.Color(), ink = lin(flipped?'paper':'ink');
     for (let i = 0; i < visible; i++) {
       const d = ds[i]!; this.q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), d.yaw);
+      if(flipped&&d.lit===0){this.matrix.makeScale(0,0,0);this.body.setMatrixAt(i,this.matrix);this.screens.setMatrixAt(i,this.matrix);continue;}
       this.pos.set(d.x, d.y, d.z); this.scale.set(d.w, d.h, d.d); this.matrix.compose(this.pos, this.q, this.scale); this.body.setMatrixAt(i, this.matrix);
       const p = devicePoint(p3(0, 0, 0.501), d, p3(d.w, d.h, d.d), d.yaw);
       this.pos.set(p.x, p.y, p.z); this.scale.set(d.w, d.h, 1); this.matrix.compose(this.pos, this.q, this.scale); this.screens.setMatrixAt(i, this.matrix);
-      const rgb = lin(flipped?'ink':d.color).map((c,i)=>d.warm===undefined?c:lerp(c,lin('clay')[i]!,d.warm)) as [number,number,number]; color.setRGB(...rgb, THREE.LinearSRGBColorSpace).multiplyScalar(d.lit).add(new THREE.Color().setRGB(...ink).multiplyScalar(1 - d.lit)); this.screens.setColorAt(i, color);
+      const rgb = lin(flipped?'paper':d.color).map((c,i)=>d.warm===undefined?c:lerp(c,lin('clay')[i]!,d.warm)) as [number,number,number]; color.setRGB(...rgb, THREE.LinearSRGBColorSpace).multiplyScalar(d.lit).add(new THREE.Color().setRGB(...lin('ink')).multiplyScalar(1 - d.lit)); this.screens.setColorAt(i, color);
     }
     this.body.instanceMatrix.needsUpdate = this.screens.instanceMatrix.needsUpdate = true; this.screens.instanceColor!.needsUpdate = true;
   }

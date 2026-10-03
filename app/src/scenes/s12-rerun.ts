@@ -38,15 +38,24 @@ class World {
   lineUniforms={copierA:{value:new THREE.Vector3()},copierB:{value:new THREE.Vector3()},copierI:{value:0}};
   paper=engraveMaterial({paper:lin('paper'),ink:lin('ink'),paperMap:true,pitch:5,angle:0.6});
   table=engraveMaterial({paper:lin('ink'),ink:lin('paper'),lightLines:true,pitch:5});
-  numberMat=engraveMaterial({paper:lin('paper'),ink:lin('ink'),pitch:5});
+  numberMat=engraveMaterial({paper:lin('ink'),ink:lin('paper'),lightLines:true,maxCov:0.3,pitch:5,gamma:18});
   clay=new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false});
   scan=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.05,3.4),new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false}));
-  scraper=new THREE.Mesh(new THREE.BoxGeometry(6,0.15,0.3),this.numberMat);
+  scraperMat=engraveMaterial({paper:lin('paper'),ink:lin('ink'),pitch:5});
+  scraper=new THREE.Mesh(new THREE.BoxGeometry(6,0.15,0.3),this.scraperMat);
+  desk=new THREE.Mesh(new THREE.PlaneGeometry(300,300),this.table);
 
   constructor(ctx:SceneCtx) {
     this.times=resolveX9Times(ctx);this.voice=new Voice(ctx.lyrics,ctx.audio);
-    const desk=new THREE.Mesh(new THREE.PlaneGeometry(300,300),this.table);desk.rotation.x=-Math.PI/2;desk.receiveShadow=true;this.scene.add(desk);
-    lineLit(this.table,this.lineUniforms);lineLit(this.numberMat,this.lineUniforms);
+    const desk=this.desk;desk.rotation.x=-Math.PI/2;desk.receiveShadow=true;this.scene.add(desk);
+    lineLit(this.table,this.lineUniforms);lineLit(this.numberMat,this.lineUniforms);lineLit(this.scraperMat,this.lineUniforms);
+    const numberCompile=this.numberMat.onBeforeCompile;
+    this.numberMat.onBeforeCompile=(shader,renderer)=>{
+      numberCompile(shader,renderer);
+      shader.fragmentShader=shader.fragmentShader.replace('float engraveT = engraveSat(engraveL);','float engraveT = min(0.92,engraveSat(engraveL));')
+        .replace('float engraveCov = min(engraveMaxCov, engraveTone(engraveU,engraveLL ? 1.0-engraveT : engraveT));',
+          'float engraveCov = engraveMaxCov * engraveHatch(engraveU,max(engraveMinCov,pow(engraveT,engraveGamma)*0.95));');
+    };this.numberMat.customProgramCacheKey=()=> 's12-ink-number-p1';
     this.scene.add(new THREE.AmbientLight(0xffffff,AMBIENT_TONE*Math.PI));
     const key=new THREE.DirectionalLight(0xffffff,KEY_INTENSITY);key.position.set(5,10,4);key.castShadow=true;
     key.shadow.mapSize.set(1024,1024);Object.assign(key.shadow.camera,{left:-15,right:25,top:12,bottom:-12,near:0.1,far:50});key.shadow.bias=-0.0003;
@@ -72,7 +81,7 @@ class World {
   dispose() {
     this.scene.traverse(o=>{if(o instanceof THREE.Mesh && !this.numbers.some(n=>n.letters.some(l=>l.mesh===o)))o.geometry.dispose();});
     for(const s of this.sheets){s.texture.dispose();(s.mesh.material as THREE.Material).dispose();}
-    this.numbers.forEach(n=>n.dispose());this.paper.dispose();this.table.dispose();this.numberMat.dispose();this.clay.dispose();
+    this.numbers.forEach(n=>n.dispose());this.paper.dispose();this.table.dispose();this.numberMat.dispose();this.scraperMat.dispose();this.clay.dispose();
     (this.scan.material as THREE.Material).dispose();this.ground.pass.mat.dispose();this.layer.texture.dispose();
   }
 }
@@ -84,6 +93,9 @@ export default class S12Rerun extends Scene {
   override render(f:Frame,out:THREE.WebGLRenderTarget) {
     const w=this.w,v=w.voice,t=f.t,T=w.times,r=this.ctx.renderer;
     w.ground.render(r,out,{kind:'ink',t,grid:0,haze:0});w.rig.set(cameraAt(v,t,T));
+    // At the parked macro cut only the clay stem remains against ink space.
+    // The engraved table otherwise projects through the entire right half.
+    w.desk.visible=t<T.end-.1;
     for(let k=0;k<5;k++){
       const s=w.sheets[k]!,pose=sheetAt(v,k,t);s.mesh.visible=pose.visible;
       s.mesh.position.set(pose.x,pose.y,pose.z);s.mesh.rotation.set(pose.rx,pose.ry,pose.rz);
@@ -98,6 +110,7 @@ export default class S12Rerun extends Scene {
     for(let k=0;k<11;k++){
       const number=w.numbers[k]!,pose=numberAt(v,k,t);number.group.visible=pose.visible;
       number.group.position.set(pose.x,pose.y,pose.z);number.group.rotation.x=pose.rx;
+      if(k<10&&t>=T.end-.1)number.group.visible=false;
       if(k===9){
         for(const letter of number.letters)letter.mesh.geometry=solidLetterGeometry(letter.ch,pose.axes,1.6,0.2,0.015);
         const run=v.form(v.line('Clear the cache and count to ten').words[6]!,t).axes;
@@ -118,7 +131,10 @@ export default class S12Rerun extends Scene {
     const why=whyIncoming(v,T,t);if(why.draw)drawCarry(c,why.spec,why.aff);
     if(t>=T.clear && t<T.count){const ly=clearLyrics(v,t);drawPathText(c,w.rig,ly.path,ly.layout,t,{mode:'lie',normal:()=>({x:0,y:1,z:0}),base:'paper',on:'ink',pop:0,axes:(g,at)=>v.form(g.word,at).axes});}
     if(t>=v.line('Clear the cache and count to ten').words[3]!.start) {
-      const ly=countLyrics(v);drawPathText(c,w.rig,ly.path,ly.layout,t,{mode:'stand',base:'paper',on:'ink',pop:0,minPx:50,maxPx:110,axes:(g,at)=>v.form(g.word,at).axes});
+      const ly=countLyrics(v);
+      const ink=new Proxy(c,{set(target,key,value){Reflect.set(target,key,key==='fillStyle'?css('ink'):value,target);return true;},
+        get(target,key){const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+      drawPathText(ink,w.rig,ly.path,ly.layout,t,{mode:'stand',base:'ink',on:'paper',pop:0,minPx:50,maxPx:110,axes:(g,at)=>v.form(g.word,at).axes});
     }
     if(t>=copies(v)[0]!.start && t<T.clear) {
       const k=copies(v).reduce((a,w,i)=>t>=w.start?i:a,0),p=w.rig.proj(k*2.4+1.15,0.1,0);
