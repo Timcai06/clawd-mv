@@ -194,7 +194,10 @@ T 2026-10-03：v5 方向对；剩下的场景继续按 v5 方法优化；**场�
 ### 阶段 8 进度
 - ✅ 2026-10-03 研究：`docs/reference/pdoom-transitions-lyrics.md`（交接、歌词、18 场对照、v6 规则 R1–R7）。Tim 同意第 6 节三点，并要求 Codex 严格按设计执行（见 CONTEXT 决策表）。
 - ✅ R1 落地：`storyboard.ts` 新增 `snap: "cut"`；`shots.json` 6 个切点前移（S05-2/S05-3 改锚 claws/read）；旧测试里断言「句中切」的 5 处改成新规则；277 项测试通过，分镜检查 0 过短 0 不递增。
-- 🔜 公共部件 V6-K（pathtext、wordplane、handoff v2）→ 各场 V6-SNN → 整片预览 v6。
+- ✅ 2026-10-03 设计规格：`docs/tasks/V6-common.md`（共同约定）、`V6-cuts.md`（17 个切点 + 片尾闭环的交接表、光标接力）、`V6-S01` … `V6-S18`（每场的世界、镜头、逐字母歌词、交接、光、验收）、`V6-groups.md`（分组）。COMMIT 三级：S08 活字印刷（纸）→ S13 提交塔（栈）→ S17 设备群拼字（世界）。
+- ✅ R1 容差改为 50 ms（照 pdoom dense），S03→S04、S05→S06 不再切断上一句的最后一个词。
+- ✅ 公共部件已合并：V6-K（`kit/pathtext.ts`、`kit/wordplane.ts`、`kit/carry.ts`、`kit/handoff.ts` v2）、V6-K2（`kit/solidtype.ts`、`kit/engrave-mat.ts`）；C 补：`engraveMaterial` 的 `lightLines`/`splitX`/`paperMap`，`layoutPath` 按词的轴占位，`CUT` 常量和 `points` 原语。331 项测试通过。
+- 🔜 7 组场景任务（g1–g7）已并行派给 Codex；逐组审查 → 合并 → 交接联调 → 整片预览 v6。
 
 ## ⏳ 阶段 9：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。
