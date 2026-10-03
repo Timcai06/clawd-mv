@@ -2,6 +2,7 @@
 import type { AudioData } from '../../engine/audio';
 import { HANDOFF, CUT, type Prim } from '../../kit/handoff';
 import { carryLayout, lerpAffines, type CarrySpec, type GlyphAffine } from '../../kit/carry';
+import { runInkBounds } from '../../kit/pathtext';
 import { varRun } from '../../kit/vartype';
 import type { Voice } from '../../kit/lyric-moves';
 import { afterBeats, span } from '../../kit/time';
@@ -58,7 +59,8 @@ export function freeState(audio: AudioData, t: number, T: FTimes) {
 /** Same immutable carry axes on both sides of C15; measured at the actual editorial cut. */
 export function freeCarrySpec(voice: Voice, T: FTimes): CarrySpec {
   const word=voice.line('Snip the extra line and set October free').words.at(-1)!;
-  return {...CUT.free15,axes:{...voice.form(word,T.s16[0]!).axes}};
+  const axes={...voice.form(word,T.s16[0]!).axes},run=varRun('free',100,axes),ink=runInkBounds(run);
+  return {...CUT.free15,x:CUT.free15.right-(ink.x1-ink.x0)*CUT.free15.size/run.capH,axes};
 }
 export function freeCarryAffines(audio:AudioData,voice:Voice,t:number,T:FTimes):GlyphAffine[] {
   const spec=freeCarrySpec(voice,T),to=carryLayout(spec),start=afterBeats(audio,T.s16[0]!,-0.5);

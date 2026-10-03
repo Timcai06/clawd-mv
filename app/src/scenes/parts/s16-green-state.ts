@@ -26,7 +26,7 @@ export function greenTimes(audio:AudioData,lyrics:Lyrics):GreenTimes {
   return {start,end,cuts:shots.map(s=>s.start),triggers,launches,greens:[count[2]!,...launches,final[1]!],nineteen:final[0]!,count,
     free:lyrics.get('Snip the extra line and set October free').words.at(-1)!,incomingEnd:afterBeats(audio,start,1),outgoingStart:afterBeats(audio,end,-1),outgoingEnd:end-1/60};
 }
-export function greenHit(t:number,T:GreenTimes){const i=T.greens.findLastIndex(w=>t>=w.start);return i<0?null:{i,word:T.greens[i]!,wdth:GREEN_WIDTHS[i]!,drop:1.5*(1-Math.min(1,Math.max(0,(t-T.greens[i]!.start)/0.12))**2)};}
+export function greenHit(t:number,T:GreenTimes){const i=T.greens.findLastIndex(w=>t>=w.start);return i<0?null:{i,target:i===5?'check' as const:'monument' as const,word:T.greens[i]!,wdth:GREEN_WIDTHS[i]!,drop:i===5?0:1.5*(1-Math.min(1,Math.max(0,(t-T.greens[i]!.start)/0.12))**2)};}
 export function handoffIn(t:number,_audio:AudioData,T:GreenTimes){return projectBounds(cameraAt(t,T),faceCorners(0,t,T,false));}
 export function handoffOut(t:number,_audio:AudioData,T:GreenTimes){return projectBounds(cameraAt(t,T),faceCorners(18,t,T));}
 export function greenState(_audio:AudioData,_lyrics:Lyrics,_voice:Voice,t:number,T:GreenTimes){

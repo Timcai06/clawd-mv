@@ -2,7 +2,7 @@
 import { NIGHT } from '../../kit/night';
 import { hash } from '../../engine/util';
 import { css } from '../../theme';
-import { F, font } from '../../engine/type';
+import { F, font, ot } from '../../engine/type';
 import { fillRun, runPath, type VarRun } from '../../kit/vartype';
 import type { Rect, Pt } from '../../kit/handoff';
 import * as THREE from 'three';
@@ -50,22 +50,33 @@ export function printRun(c: CanvasRenderingContext2D, run: VarRun, box: Rect,
 }
 
 
-/** One texture atlas, separate UV tiles for fail/pass/numbered sides. */
+export const PRINT = { tile:256, height:768, columns:4, rows:5, markWidth:D.w*0.7, stroke:D.w*0.09, numberCap:D.w*0.16 } as const;
+export function atlasTile(i:number,face:number){return {x:(i%4)*768+face*256,y:Math.floor(i/4)*768,w:256,h:768};}
+export function markUV(i:number){const a=atlasTile(i,1);return {x:(a.x+128)/3072,y:1-(a.y+384)/3840};}
+/** One atlas, with square printed marks on the 1:3 wide faces and ink on the edges. */
 export function dominoAtlas():THREE.CanvasTexture {
-  const cv=document.createElement('canvas');cv.width=1536;cv.height=2048;const c=cv.getContext('2d')!;
-  c.fillStyle=css('paper');c.fillRect(0,0,cv.width,cv.height);
-  for(let i=0;i<19;i++){
-    const y=i*104; c.font=font(F.mono(600),24);c.fillStyle=css('ink');
-    c.fillText(`TEST ${String(i+1).padStart(2,'0')}`,16,y+30);c.fillText('PASS',528,y+30);c.fillText(String(i+1).padStart(2,'0'),1040,y+50);
-    c.lineWidth=14;c.lineCap='square';c.strokeStyle=css('fail');c.beginPath();c.moveTo(188,y+46);c.lineTo(316,y+91);c.moveTo(316,y+46);c.lineTo(188,y+91);c.stroke();
-    c.strokeStyle=css('pass');c.beginPath();c.moveTo(684,y+62);c.lineTo(734,y+88);c.lineTo(838,y+44);c.stroke();
+  const cv=document.createElement('canvas');cv.width=3072;cv.height=3840;const c=cv.getContext('2d')!;
+  c.fillStyle=css('ink');c.fillRect(0,0,cv.width,cv.height);
+  for(let i=0;i<19;i++)for(let face=0;face<3;face++){
+    const a=atlasTile(i,face);c.save();c.translate(a.x,a.y);
+    if(face<2){
+      c.fillStyle=css('paper');c.fillRect(0,0,256,768);
+      const mono=ot(F.mono(600)),cap=mono.charToGlyph('H').getBoundingBox().y2/mono.unitsPerEm;
+      c.font=font(F.mono(600),256*0.16/cap);c.fillStyle=css('ink');c.textAlign='center';
+      c.fillText(face===0?`TEST ${String(i+1).padStart(2,'0')}`:'PASS',128,82);
+      c.strokeStyle=css(face===0?'fail':'pass');c.lineWidth=256*0.09;c.lineCap='square';c.lineJoin='miter';
+      // The control endpoints leave half a stroke on either side: total ink width = 70%.
+      const half=(256*0.7-c.lineWidth*Math.SQRT2)/2;c.beginPath();
+      if(face===0){c.moveTo(128-half,384-half);c.lineTo(128+half,384+half);c.moveTo(128+half,384-half);c.lineTo(128-half,384+half);}
+      else{c.moveTo(128-half,384);c.lineTo(128-half*0.35,384+half);c.lineTo(128+half,384-half);}
+      c.stroke();
+    }else{c.fillStyle=css('paper');c.font=font(F.mono(600),40);c.fillText(String(i+1).padStart(2,'0'),80,80);}
+    c.restore();
   }
   const tx=new THREE.CanvasTexture(cv);tx.colorSpace=THREE.SRGBColorSpace;tx.anisotropy=8;return tx;
 }
 export function dominoGeometry(i:number):THREE.BoxGeometry {
-  const g=new THREE.BoxGeometry(D.w,D.h,D.d);g.translate(0,D.h/2,0);
-  const uv=g.attributes.uv!;
-  // BoxGeometry groups: +/-x, +/-y, +z (red front), -z (green back).
-  for(let face=0;face<6;face++){const tile=face===4?0:face===5?1:2;for(let j=0;j<4;j++){const k=face*4+j,u=uv.getX(k),v=uv.getY(k);uv.setXY(k,(tile*512+8+u*496)/1536,1-(i*104+4+(1-v)*96)/2048);}}
+  const g=new THREE.BoxGeometry(D.w,D.h,D.d);g.translate(0,D.h/2,0);const uv=g.attributes.uv!;
+  for(let face=0;face<6;face++){const a=atlasTile(i,face===4?0:face===5?1:2);for(let j=0;j<4;j++){const k=face*4+j,u=uv.getX(k),v=uv.getY(k);uv.setXY(k,(a.x+u*a.w)/3072,1-(a.y+(1-v)*a.h)/3840);}}
   return g;
 }
