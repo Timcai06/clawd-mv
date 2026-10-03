@@ -18,7 +18,7 @@ export default class GalleryPathtext extends Scene {
   override init() {
     this.layer = new Layer2D(); this.sparks = new SparkLines(); this.voice = new Voice(this.ctx.lyrics,this.ctx.audio);
     const words = this.ctx.lyrics.get('There’s a thirty-second day in October').words;
-    this.lay = layoutPath(words,{ capH: 0.38, axes: { wdth: 100,wght: 800 }, space: 0.32 });
+    this.lay = layoutPath(words,{ capH: 0.38, axes: (w) => this.voice.form(w,w.end).axes, space: 0.32 });
     const L = this.lay.s1*1.1;
     this.ridge = samplePath(u => ({ x: (u-0.5)*L, y: 2.5+0.35*Math.sin(u*Math.PI*4), z: -0.8*Math.sin(u*Math.PI*2) }),256);
     this.spiral = samplePath(u => {

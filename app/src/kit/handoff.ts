@@ -52,7 +52,8 @@ export type Prim =
   | { kind: 'point'; x: number; y: number; r: number }
   | { kind: 'line'; x0: number; y0: number; x1: number; y1: number; w: number }
   | { kind: 'rect'; x: number; y: number; w: number; h: number; roll?: number }
-  | { kind: 'carry'; spec: CarrySpec };
+  | { kind: 'carry'; spec: CarrySpec }
+  | { kind: 'points'; pts: Pt[] };
 export interface Cut { id: string; out: string; in: string }
 export function primError(a: Prim, b: Prim): { px: number; size: number } {
   if (a.kind !== b.kind) throw new Error('cannot compare different primitive kinds');
@@ -84,6 +85,10 @@ export function primError(a: Prim, b: Prim): { px: number; size: number } {
     });
     return { px,size };
   }
+  if (a.kind === 'points' && b.kind === 'points') {
+    if (a.pts.length !== b.pts.length) return { px: Infinity, size: Infinity };
+    return { px: Math.max(0, ...a.pts.map((p, i) => dist(p.x, p.y, b.pts[i]!.x, b.pts[i]!.y))), size: 0 };
+  }
   throw new Error('unsupported primitive');
 }
 export function exitEnvelope(t: number, end: number, peak = 1.9): { still: number; gain: number } {
@@ -103,3 +108,21 @@ export function accelerando(audio: AudioData, t0: number, tSwitch: number, end: 
   add(t0,sw,0.5); add(sw,end,0.25);
   return out;
 }
+
+/**
+ * v6 cut constants (docs/tasks/V6-cuts.md; C owns this table, scene groups read it). Screen px.
+ * Prims computed by a scene (I_STEM from S02's PING layout, P14 from S14's first frame, S17's lit
+ * screens) are exported by those scenes, not stored here.
+ */
+export const CUT = {
+  /** C3: S03's attached month grid at the cut = S04's top-down month grid (7 × 5 cells, no header). */
+  grid04: { x: 300, y: 150, w: 1320, h: 870 } as Rect,
+  /** C4: Clawd's screen pixel size at the S04→S05 cut (the push continues in S05 to 14). */
+  clawd04px: 9,
+  /** C8: the held "machine" carried from S08 into S09 (top-left of the ink box at baseline y). */
+  machine08: { text: 'machine', x: 96, y: 470, size: 110, color: 'paper' as const },
+  /** C12: the clay/ink boundary S12's clay 11 hands to S13 (a full-height line). */
+  diag13: { x0: 1010, y0: 0, x1: 760, y1: 1080 },
+  /** C15: the held "free" carried from S15 into S16, where it falls as domino zero. */
+  free15: { text: 'free', x: 1100, y: 560, size: 90, color: 'clay' as const },
+} as const;

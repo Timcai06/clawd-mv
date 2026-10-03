@@ -54,27 +54,32 @@ export interface PathGlyph {
 }
 export interface PathLayout { glyphs: PathGlyph[]; s0: number; s1: number; capH: number }
 // Keep the specified public layout shape; retain the original font metrics for animated axes.
-const layoutMetrics = new WeakMap<PathLayout, { axes: Axes; cap: number; adv: number[] }>();
+const layoutMetrics = new WeakMap<PathLayout, { axes: Axes; cap: number; adv: number[]; gAxes: Axes[] }>();
 export function layoutPath(words: Word[], o: {
-  capH: number; s0?: number; axes?: Axes; space?: number; tracking?: number; upper?: boolean; notBefore?: (s: number) => number;
+  capH: number; s0?: number;
+  /** One value, or per word. Pass the axes a word has when it is fully sung (e.g. `voice.form(w, w.end).axes`)
+   *  so a held word that stretches while sung grows into its slot instead of overrunning its neighbours. */
+  axes?: Axes | ((w: Word) => Axes);
+  space?: number; tracking?: number; upper?: boolean; notBefore?: (s: number) => number;
 }): PathLayout {
-  const axes = { ...(o.axes ?? { wdth: 100, wght: 800 }) }, cap = varRun('H', 100, axes).capH;
-  const m = o.capH / cap, glyphs: PathGlyph[] = [], adv: number[] = [], s0 = o.s0 ?? 0;
+  const axesOf = (w: Word): Axes => ({ ...((typeof o.axes === 'function' ? o.axes(w) : o.axes) ?? { wdth: 100, wght: 800 }) });
+  const axes = words[0] ? axesOf(words[0]) : { wdth: 100, wght: 800 }, cap = varRun('H', 100, axes).capH;
+  const m = o.capH / cap, glyphs: PathGlyph[] = [], adv: number[] = [], gAxes: Axes[] = [], s0 = o.s0 ?? 0;
   let s = s0;
   words.forEach((word, wi) => {
     const display = o.upper ? word.w.toUpperCase() : word.w;
-    const run = varRun(display, 100, axes, (o.tracking ?? 0) * 100);
+    const wAxes = axesOf(word), run = varRun(display, 100, wAxes, (o.tracking ?? 0) * 100);
     const times = letterTimes({ ...word, w: display });
     for (const g of run.glyphs) {
       const gs = s + g.x * m, time = times[g.i]!;
       const t0 = Math.max(word.start, time.t0, o.notBefore?.(gs) ?? -Infinity);
       glyphs.push({ ch: g.ch, word, wi, s: gs, w: g.adv * m, t0, t1: time.t1 + t0 - time.t0, i: glyphs.length });
-      adv.push(g.adv);
+      adv.push(g.adv); gAxes.push(wAxes);
     }
     s += run.width * m + (wi < words.length - 1 ? (o.space ?? 0.32) * 100 * m : 0);
   });
   const lay = { glyphs, s0, s1: s, capH: o.capH };
-  layoutMetrics.set(lay, { axes, cap, adv });
+  layoutMetrics.set(lay, { axes, cap, adv, gAxes });
   return lay;
 }
 export function writeHead(glyphs: PathGlyph[], t: number, s0?: number): number {
@@ -159,7 +164,7 @@ export function drawPathText(c: CanvasRenderingContext2D, rig: Rig, path: Path3,
       const n = st.mode === 'stand' ? up : unit(st.normal!(g.s));
       const a = displaced(pathAt(path, g.s), n, off?.d);
       if (st.visible && !st.visible(a)) continue;
-      const q = shape(g.ch, st.axes?.(g, t) ?? axes);
+      const q = shape(g.ch, st.axes?.(g, t) ?? meta?.gAxes[g.i] ?? axes);
       const pop = st.pop ?? 0.16, popY = pop <= 0 ? 1 : 0.3 + 0.7 * ease.outBack(clamp((t - g.t0) / pop));
       let aff: { a: number; b: number; c: number; d: number; e: number; f: number };
       const layoutAdv = meta?.adv[g.i] ?? varRun(g.ch, 100, axes).glyphs[0]!.adv;

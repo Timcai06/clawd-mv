@@ -21,6 +21,7 @@
 
 ## 3. 歌词（R5）
 - 唱出来的词长在世界上：`kit/pathtext.ts`（路径上，stand / lie）、`kit/wordplane.ts`（3D 平面）、或刻进实体（着色器里按字的平面切刻线，照 pdoom shoggoth）。每场规格写明每句的载体。
+- `layoutPath` 的 `axes` 传函数 `(w) => voice.form(w, w.end).axes`（每个词按唱完时的轴占位），绘制时 `axes: (g, t) => voice.form(g.word, t).axes`：长音词在唱的过程中从窄长到正好填满自己的位置，不压到相邻的字。
 - 逐字母时刻（`letterTimes`），字母不早于它的时刻出现；白热冷却（`heatColor`）；长音词随 `Voice.form(...).axes` 变宽变重。
 - 正对镜头的平面排版（`drawSet` / `gridSnap` / `fillRun` 直接画在屏幕上）只允许用于**机器的声音**（终端、打字、Mono），规格里会写明。
 - 层级：每个镜头一个主导元素；字号最多三级（巨字 / 歌词 / 标注），歌词大写高 50–110 px（投影后），标注 Plex Mono 14–22 px、同屏 ≤ 2 处。
