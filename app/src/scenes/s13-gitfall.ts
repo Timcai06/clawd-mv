@@ -1,3 +1,5 @@
+import { drawPickup, pickupHits } from "../kit/hookslam";
+import { impact } from "../kit/impact";
 import { PrintOverlay } from '../kit/print-overlay';
 // S13: diagonal clay/ink print, perspective COMMIT, an upward log and colliding solid panels.
 import { drawNote } from '../kit/note';
@@ -158,7 +160,7 @@ export default class S13Gitfall extends Scene {
     const line = this.ctx.lyrics.lastLine(t);
     if (line && v.presence(line, t, 1) > 0) {
       const hook = /one more commit/i.test(line.text);
-      if (s.frozen || !hook) {
+      if (!hook) {
         if (/fix a bit/i.test(line.text)) this.stack(c, t, stripGlow);
         else {
           // One readable row below the panel collision; born words cross shot cuts unchanged.
@@ -178,15 +180,24 @@ export default class S13Gitfall extends Scene {
         }
       }
     }
-    if (s.frozen) {
+    // Pickup level 2 (kit/hookslam): the cursor holds until the I, then one word per hit.
+    const pick = this.ctx.lyrics.find("I need one more commit")[s.second ? 3 : 2]!;
+    const hitK = impact(t, pickupHits(2, au, pick), T.end), swapped = s.frozen && hitK.swap;
+    if (s.frozen && t < pick.words[0]!.start + 0.05) {
       const cursor = { x: 960 - 19.8, y: 576, h: 72, on: blink(au.beatAt(t)) };
       drawCursor(c, cursor); glowDraw(c, g, g => drawCursor(g, cursor));
     }
     g.restore();
     for (const paint of stripGlow) paint(); stripGlow.length = 0;
     c.restore(); c.restore();
-    const imp = implode(t, au, T);
-    if (imp > 0) { // what the page leaves: S14's cursor (glowing on the ink)
+    if (s.frozen) {
+      // In screen space (the creep would crop a full-frame word). An impact frame swaps the ground.
+      if (swapped) { c.fillStyle = css("paper"); c.fillRect(0, 0, 1920, 1080); }
+      // S13 previews its own COMMIT from the first syllable, so the pickup stops at "commit".
+      drawPickup(c, v, pick, t, 2, au, { on: swapped ? "paper" : "ink", from: pick.words[0]!.start + 0.05 });
+    }
+    const inward = implode(t, au, T);
+    if (inward > 0) { // what the page leaves: S14's cursor (glowing on the ink)
       const q = w.target, cur = { x: q.x, y: q.y + q.h, h: q.h };
       drawCursor(c, cur); glowDraw(c, w.glow.ctx, g => drawCursor(g, cur));
     }
@@ -195,7 +206,8 @@ export default class S13Gitfall extends Scene {
     w.printMask.upload(); w.print.render(this.ctx.renderer, out, 0.04);
     w.glow.composite(this.ctx, out, 1.6);
     const fi = frameIdx(t),
-      magnitude = (s.split ? 4 * s.crush : 10 * s.impact) * (1 - implode(t, au, T));
+      magnitude = (s.split ? 4 * s.crush : 13 * s.impact) * (1 - implode(t, au, T));
+    const kick = s.frozen ? hitK.shake : [0, 0];
     return {
       ...postFor("ink"),
       hud: 0,
@@ -203,8 +215,8 @@ export default class S13Gitfall extends Scene {
       ca: 0.6,
       vignette: 0,
       shake: [
-        (hash(fi, 131) - 0.5) * magnitude,
-        (hash(fi, 132) - 0.5) * magnitude,
+        (hash(fi, 131) - 0.5) * magnitude + kick[0]!,
+        (hash(fi, 132) - 0.5) * magnitude + kick[1]!,
       ] as [number, number],
     };
   }

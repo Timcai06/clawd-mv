@@ -1,3 +1,5 @@
+import { drawPickup, pickupHits } from "../kit/hookslam";
+import { impact } from "../kit/impact";
 import { PrintOverlay } from '../kit/print-overlay';
 // S08: the flat, bilateral-bleed COMMIT print in kf-S08; one shared world for all twelve cuts.
 import type * as THREE from "three";
@@ -66,7 +68,11 @@ export default class S08Commit extends Scene {
     const s = commitLayout(au, this.ctx.lyrics, t, T, v),
       c = w.layer.ctx;
     const clay = s.hook && !s.frozen;
-    w.layer.clear(css(clay ? "clay" : "paper"));
+    // Pickup level 1 (kit/hookslam): one word per hit, full frame; impact frames swap the ground.
+    const pick = this.ctx.lyrics.find("I need one more commit")[s.second ? 1 : 0]!;
+    const hits = pickupHits(1, au, pick), imp = impact(t, hits, T.end);
+    const swapped = s.frozen && imp.swap;
+    w.layer.clear(css(clay ? "clay" : swapped ? "ink" : "paper"));
     const cam = this.camera(t, s, T);
     c.save();
     c.translate(cam.fx, cam.fy); c.rotate(cam.rot); c.scale(cam.zoom, cam.zoom); c.translate(-cam.fx, -cam.fy);
@@ -120,7 +126,7 @@ export default class S08Commit extends Scene {
     const line = this.ctx.lyrics.lastLine(t);
     if (line && v.presence(line, t, 1) > 0) {
       const hook = /one more commit/i.test(line.text);
-      if (!hook || s.frozen) {
+      if (!hook) {
         // The preceding scene's last line survives the cut; forms retain already sung words.
         const forms = v.forms(line, t);
         const pres = v.presence(line, t, 1);
@@ -146,10 +152,14 @@ export default class S08Commit extends Scene {
     if (s.frozen) {
       const t0 = s.second ? T.pick2 : T.start;
       const p = handoffIn(t, au, { ...T, start: t0 });
-      // Blink phase counts from the cut, so the cursor S07 hands over is lit on the first frame (C7).
-      drawCursor(c, { ...p, on: blink(au.beatAt(t) - au.beatAt(t0)) });
+      // Blink phase counts from the cut, so the cursor S07 hands over is lit on the first frame (C7);
+      // it gives way to the slammed I.
+      if (t < pick.words[0]!.start + 0.05) drawCursor(c, { ...p, on: blink(au.beatAt(t) - au.beatAt(t0)) });
     }
     c.restore();
+    // Pickup words in screen space (the camera's creep would crop a full-frame word); the inherited
+    // cursor stands for the I for three frames, then the I slams.
+    if (s.frozen) drawPickup(c, v, pick, t, 1, au, { on: swapped ? "ink" : "paper", from: pick.words[0]!.start + 0.05, hit: s.second ? T.hit2 : T.hit1 });
     // The hash's hairline is the only outgoing object; no transition outside the last beat.
     if (t >= T.hit1) {
       const p = handoffOut(t, au, T);
@@ -168,6 +178,7 @@ export default class S08Commit extends Scene {
     w.print.render(this.ctx.renderer, out, clay ? 0.04 : 0.05);
     const magnitude = 10 * s.impact,
       fi = frameIdx(t);
+    const kickShake = s.frozen ? imp.shake : [0, 0];
     return {
       ...postFor(clay ? "clay" : "paper"),
       hud: 0,
@@ -175,8 +186,8 @@ export default class S08Commit extends Scene {
       bloom: 0,
       vignette: 0,
       shake: [
-        (hash(fi, 81) - 0.5) * magnitude,
-        (hash(fi, 82) - 0.5) * magnitude,
+        (hash(fi, 81) - 0.5) * magnitude + kickShake[0]!,
+        (hash(fi, 82) - 0.5) * magnitude + kickShake[1]!,
       ] as [number, number],
     };
   }

@@ -11,6 +11,8 @@ import { css } from '../theme';
 import { Ground, postFor } from '../kit/ground';
 import { drawCursor } from '../kit/cursor';
 import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { drawPickup, pickupHits, strobe } from '../kit/hookslam';
+import { impact } from '../kit/impact';
 import { fillRun, varRun } from '../kit/vartype';
 import { afterBeats, beatsSince, span } from '../kit/time';
 import * as Clawd from '../kit/clawd';
@@ -140,16 +142,28 @@ export default class S17Release extends Scene {
     w.layer.clear(); const c = w.layer.ctx;
 
     if (state.shot <= 1) {
+      const hook = v.line('I need one last commit'), au = this.ctx.audio;
+      const flooded = state.shot === 1 || t >= afterBeats(au, T.release[0]!.start, 1);
+      // Pickup level 3 (kit/hookslam): once the incoming clay has flooded, the ground strobes on the
+      // 8ths and the words re-slam on every beat; COMMIT itself is this scene's own print below.
+      const strobeOn = flooded ? strobe(3, hook, t, f.beat, 'clay', hook.words.at(-1)!.start) : 'clay';
       if (state.shot === 0) {
-        c.fillStyle = css('clay'); const b = s.incoming; c.fillRect(b.x, b.y, b.w, b.h);
+        c.fillStyle = css(strobeOn); const b = flooded ? { x: 0, y: 0, w: 1920, h: 1080 } : s.incoming; c.fillRect(b.x, b.y, b.w, b.h);
       }
-      const hook = v.line('I need one last commit');
-      const flooded = state.shot === 1 || t >= afterBeats(this.ctx.audio, T.release[0]!.start, 1);
-      releaseLyric(c, v, hook, t, 96, 900, 1728, flooded ? 'clay' : 'paper', [0, 4]);
+      if (flooded) drawPickup(c, v, hook, t, 3, au, { on: strobeOn, hit: hook.words.at(-1)!.start });
+      else releaseLyric(c, v, hook, t, 96, 900, 1728, 'paper', [0, 4]);
       const commit = v.form(hook.words.at(-1)!, t, { minWidth: 62, maxWidth: 112.5, rest: 900 });
       if (commit.born > 0) {
-        const run = varRun('COMMIT', 760, commit.axes);
-        printRun(c, run, { x: -60, y: 205, w: 2040, h: 530 }, flooded ? 'ink' : 'clay', 17,
+        const run = varRun('COMMIT', 760, commit.axes), box = { x: -60, y: 205, w: 2040, h: 530 };
+        // level 3: six filled afterimages burst from the MIT slam and die out before the still beat
+        const age = t - T.hit;
+        if (age >= 0) for (let j = 6; j >= 1; j--) {
+          const k = 1 + j * 0.07 * (1 + age * 2.5), a = (0.42 - j * 0.06) * Math.pow(0.5, age / 0.18);
+          if (a < 0.01) continue;
+          c.save(); c.translate(960, 470); c.scale(k, k); c.translate(-960, -470);
+          printRun(c, run, box, j % 2 ? 'paper' : 'ink', 17, a); c.restore();
+        }
+        printRun(c, run, box, flooded ? 'ink' : 'clay', 17,
           Math.min(1, commit.born * 1.6), heatColor(flooded ? 'ink' : 'clay', flooded ? 'clay' : 'paper', commit.age));
       }
     } else {
@@ -189,6 +203,12 @@ export default class S17Release extends Scene {
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.print.render(this.ctx.renderer, out, state.ground === 'clay' ? 0.04 : 0.05);
     w.lens.film(this.ctx.renderer, finalOut, this.lensView(t, state.shot));
-    return { ...postFor(state.ground), hud: 0, frame: 0, grain: 0.035 };
+    // Level 3 impacts: every pickup slam and re-slam, the MIT at 20 px; then the film's one complete
+    // stillness, the last beat before "Pull request".
+    const pull = T.release[2]!.start, hook = v.line('I need one last commit');
+    const hits = [...pickupHits(3, this.ctx.audio, hook), { t: T.hit, shake: 20, kick: 0.03 }];
+    const still = t >= afterBeats(this.ctx.audio, pull, -1) && t < pull;
+    const shake = state.shot <= 1 && !still ? impact(t, hits).shake : [0, 0] as [number, number];
+    return { ...postFor(state.ground), hud: 0, frame: 0, grain: 0.035, shake };
   }
 }
