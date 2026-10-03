@@ -116,11 +116,8 @@ describe('A / levels, vocal timing and seek order',()=>{
     expect(words.length).toBeGreaterThan(0);
     for(const w of words)expect(voice.form(w,w.start-.01).born).toBe(0);
   });
-  test('the prefixes sung before snapped cuts keep their born forms',()=>{
-    for(const [line,t] of [[0,T.ping],[1,T.issue],[2,C.start],[3,C.end-1/60]] as const){
-      const words=voice.forms(lyrics.lines[line]!,t).filter(f=>f.t1<t);
-      expect(words.length).toBeGreaterThan(0);for(const f of words)expect(f.born).toBe(1);
-    }
+  test('v6 R1: the issue cut sits on the beat before "Got"',()=>{
+    expect(lyrics.get('Got a bug').words[0]!.start).toBeGreaterThanOrEqual(T.issue-0.02);
   });
   test('layout, camera, handoff and sound forms are independent of seek history',()=>{
     const states=[(t:number)=>bootBounds(audio,t,T),(t:number)=>notifyLayout(t,audio,T),(t:number)=>formBounds(t,audio,T),

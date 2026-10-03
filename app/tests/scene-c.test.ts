@@ -14,9 +14,11 @@ describe('C group musical events', () => {
   test('each check uses a distinct measured snare and completes before the keyboard cut', () => {
     expect(T.checks).toHaveLength(3);
     expect(new Set(T.checks).size).toBe(3);
-    for (const t of T.checks) expect(audio.events('snare', t, t + 0.0001).length).toBe(1);
+    // v6 R1: the third check now falls on the keyboard cut itself (S06 v6 re-times it; see docs/tasks/V6-S06.md).
+    for (const t of T.checks.slice(0, 2)) expect(audio.events('snare', t, t + 0.0001).length).toBe(1);
     for (const t of T.checks) expect(todoState(audio, t - 0.00001, T).completed).toBeLessThan(todoState(audio, afterBeats(audio, t, 0.3), T).completed);
-    const finished = todoState(audio, T.keyboard - 0.00001, T);
+    // v6 R1 moved the keyboard cut to the beat before "Claws"; the last check lands on that cut.
+    const finished = todoState(audio, afterBeats(audio, T.checks[2]!, 0.3), T);
     expect(finished.checks).toEqual([1, 1, 1]);
     expect(finished.strikes).toEqual([1, 1, 1]);
   });

@@ -191,6 +191,11 @@ T 2026-10-03：v5 方向对；剩下的场景继续按 v5 方法优化；**场�
 4. **剩余场景按 v5 方法重做**：S01–S03、S05、S06、S08、S12、S13、S16、S18（每场先写 `parts/sNN-world.ts`）。
 5. 每场出短片给 T；全部完成后出整片预览 v6。
 
+### 阶段 8 进度
+- ✅ 2026-10-03 研究：`docs/reference/pdoom-transitions-lyrics.md`（交接、歌词、18 场对照、v6 规则 R1–R7）。Tim 同意第 6 节三点，并要求 Codex 严格按设计执行（见 CONTEXT 决策表）。
+- ✅ R1 落地：`storyboard.ts` 新增 `snap: "cut"`；`shots.json` 6 个切点前移（S05-2/S05-3 改锚 claws/read）；旧测试里断言「句中切」的 5 处改成新规则；277 项测试通过，分镜检查 0 过短 0 不递增。
+- 🔜 公共部件 V6-K（pathtext、wordplane、handoff v2）→ 各场 V6-SNN → 整片预览 v6。
+
 ## ⏳ 阶段 9：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。
 - 先出 1080p60 完整版给 T 整片过一遍，满意再出 4K（加 `--scale 2`，估计一个多小时）。发不发、发到哪里，都由 T 决定。

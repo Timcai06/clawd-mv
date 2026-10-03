@@ -110,10 +110,9 @@ describe('V3 B / lyric birth, hierarchy and deterministic seeking',()=>{
   test('every word intersecting this group is unborn before its aligned onset',()=>{
     const lines=lyrics.lines.filter(l=>l.end>=P.start&&l.start<T.end);
     for(const line of lines)for(const w of line.words)expect(voice.form(w,w.start-0.01).born).toBe(0);
-    // Prefixes crossing S04/S05, S05/S06 and S06/S07 are already born on entry.
-    for(const [at,prefix] of [[P.start,'So I crack'],[T.todo,'Read the'],[T.keyboard,'Claws on']] as const){
-      const l=lyrics.lineAt(at)!;
-      expect(l.words.filter(w=>voice.form(w,at).born>0).map(w=>w.w).join(' ')).toStartWith(prefix);
+    // v6 R1: S05, S06 and S07 open on the beat before their line's first word (no mid-line cuts).
+    for(const [at,first] of [[P.start,'So I crack'],[T.todo,'Read the'],[T.keyboard,'Claws on']] as const){
+      expect(lyrics.get(first).words[0]!.start).toBeGreaterThanOrEqual(at-0.02);
     }
   });
   test('three CHECK onsets control continuous weights without anticipating the first',()=>{
