@@ -384,3 +384,7 @@ export function cursorScreenAt(t: number, S: StackScore) {
   const v = new THREE.Vector3(MX, y, HZ + 0.02).project(cam), h = clamp(34 * 14 / dist, 12, 40);
   return { x: (v.x * 0.5 + 0.5) * W + h * 0.005, y: (0.5 - v.y * 0.5) * H + h / 2, r: 8, w: h * 0.55, h };
 }
+/** C14 export only; the existing shaft renderer is unchanged. */
+export function exitPrim(_t: number): import('../kit/handoff').Prim {
+  return { kind: 'line', x0: 46, y0: 990, x1: 1872, y1: 990, w: 2 };
+}

@@ -7,17 +7,26 @@ import './kit-pathtext.test';
 export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; entryPrim: (t: number) => Prim;
   /** A moving hand-off (the motion continues through the cut): both sides are compared at the same instants. */
   motion?: boolean };
-export const CUTS: RegisteredCut[] = [];
-// g3 owns C7's incoming face and C8's outgoing line. S07 is still v5 on this
-// worktree's main baseline, so C7's outgoing side is explicitly the V6 contract,
-// not a claim that the unmodified predecessor already supplies it.
-import { commitScore } from '../src/scenes/parts/s08-layout';
-import { entryPrim as entry08, exitPrim as exit08 } from '../src/scenes/parts/s08-world';
-import { handoffIn as entry09 } from '../src/scenes/parts/s09-scope';
-import { resolveX9Times } from '../src/scenes/s09-z-shared';
 import { Lyrics } from '../src/engine/lyrics';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
+import { exitPrim as exit14 } from '../src/scenes/s14-shaft';
+import { entryPrim as entry15, exitPrim as exit15 } from '../src/scenes/parts/s15-layout';
+import { resolveFTimes } from '../src/scenes/parts/s15-f-timing';
+import { greenTimes } from '../src/scenes/parts/s16-green-state';
+import { entryPrim as entry16, exitPrim as exit16 } from '../src/scenes/parts/s16-world';
+import { resolveReleaseTimes } from '../src/scenes/parts/s17-release-state';
+const song=new AudioData(audioJSON),words=new Lyrics(lyricsJSON),F=resolveFTimes({audio:song,lyrics:words}),G=greenTimes(song,words),R=resolveReleaseTimes(song,words);
+export const CUTS: RegisteredCut[] = [
+  {id:'C14',out:'S14',in:'S15',cut:F.s15[0]!,exitPrim:exit14,entryPrim:entry15},
+  {id:'C15',out:'S15',in:'S16',cut:G.start,exitPrim:t=>exit15(t,song,F),entryPrim:t=>entry16(t,G)},
+];
+// g3 owns C7's incoming face and C8's outgoing line. S07 is still v5 on this
+// worktree's main baseline, so C7's outgoing side is explicitly the V6 contract,
+// not a claim that the unmodified predecessor already supplies it.
+import { entryPrim as entry08, exitPrim as exit08 } from '../src/scenes/parts/s08-world';
+import { handoffIn as entry09 } from '../src/scenes/parts/s09-scope';
+import { resolveX9Times } from '../src/scenes/s09-z-shared';
 const g3Audio = new AudioData(audioJSON), g3Lyrics = new Lyrics(lyricsJSON);
 const g3Score = commitScore(g3Audio,g3Lyrics), g3Next = resolveX9Times({ audio:g3Audio,lyrics:g3Lyrics });
 CUTS.push({ id:'C8',out:'S08',in:'S09',cut:g3Score.end,exitPrim:exit08,entryPrim:t => {
@@ -26,15 +35,15 @@ CUTS.push({ id:'C8',out:'S08',in:'S09',cut:g3Score.end,exitPrim:exit08,entryPrim
 // G7 owns only these sides. C16 currently compares against the worktree's main S16.
 import aG7 from '../../data/audio.json';
 import lG7 from '../../data/lyrics.json';
-import { greenTimes, handoffOut as greenExit } from '../src/scenes/parts/s16-green-state';
 import { resolveReleaseTimes } from '../src/scenes/parts/s17-release-state';
-import { entryPrim as entry17, exitPrim as exit17 } from '../src/scenes/parts/s17-swarm';
+import { entryPrim as entry17swarm, exitPrim as exit17 } from '../src/scenes/parts/s17-swarm';
 import { resolveOutroTimes } from '../src/scenes/parts/s18-score';
 import { entryPrim as entry18, exitPrim as exit18 } from '../src/scenes/parts/s18-world';
 import { exitPrim as s01CursorPrim } from '../src/scenes/parts/s01-world';
 const auG7 = new AudioData(aG7), lyG7 = new Lyrics(lG7), rG7 = resolveReleaseTimes(auG7,lyG7), oG7 = resolveOutroTimes(auG7,lyG7), gG7 = greenTimes(auG7,lyG7);
 CUTS.push(
-  {id:'C16',out:'S16',in:'S17',cut:rG7.release[0]!.start,exitPrim:t=>({kind:'rect',...greenExit(t,auG7,gG7)}),entryPrim:t=>entry17(t,auG7,lyG7,rG7)},
+  // C16 joined end to end: S16 v6 (the 19th domino's green face) vs S17 v6 (the first device screen).
+  {id:'C16',out:'S16',in:'S17',cut:rG7.release[0]!.start,exitPrim:t=>exit16(t,G),entryPrim:t=>entry17swarm(t,auG7,lyG7,rG7)},
   {id:'C17',out:'S17',in:'S18',cut:oG7.start,exitPrim:exit17,entryPrim:entry18},
   // C18 closes the loop: S18's last frame vs S01's real cursor at t = 0.
   {id:'C18',out:'S18',in:'S01',cut:oG7.end,exitPrim:()=>exit18(auG7,oG7.end-1/60,oG7),entryPrim:()=>s01CursorPrim(0)},
@@ -54,6 +63,7 @@ test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
     const ta = cut.motion ? cut.cut : cut.cut-(1-i/4)/60, tb = cut.motion ? cut.cut : cut.cut+i/4/60;
     const out = cut.exitPrim(ta), incoming = cut.entryPrim(tb), err = primError(out,incoming);
+    if (i === 4) console.log('CUT', cut.id, cut.out, '->', cut.in, 'px', err.px.toExponential(2), 'size', err.size.toExponential(2));
     expect(err.px,cut.id).toBeLessThanOrEqual(2); expect(err.size,cut.id).toBeLessThanOrEqual(0.02);
   }
 });
