@@ -15,9 +15,16 @@ import * as Clawd from '../kit/clawd';
 import { MONTH_SOURCE } from '../kit/content';
 import { exitEnvelope } from '../kit/handoff';
 import { platformTimes } from './parts/s05-platform-model';
-import { setCamera, type Box3 } from './parts/s05-print';
+import { setCamera, solidInkContext, type Box3 } from './parts/s05-print';
 import * as W from './parts/s05-world';
 export const TYPE_LEVELS={giant:320,lyric:64,label:18};
+export function drawLeadText(c:CanvasRenderingContext2D,rig:Rig,t:number,a:SceneCtx['audio'],l:SceneCtx['lyrics'],T=platformTimes(a,l),mask=false) {
+  const voice=new Voice(l,a);
+  return W.leadLayouts(l,a).flatMap((layout,row)=>['ink','clay'].map(pigment=>drawPathText(solidInkContext(c,mask?'white':css(pigment as 'ink'|'clay')),rig,W.leadPath(t,a,T,row),layout,t,
+    {mode:'stand',base:'ink',on:'ink',minPx:0,maxPx:90,axes:(g,t)=>voice.form(g.word,t).axes,
+      offset:(g,t)=>(g.word.w.toLowerCase()==='claws')!==(pigment==='clay')?null:
+        {d:{x:0,y:g.word.w.toLowerCase()==='crack'?.03*Math.sin(g.i*7+t*80)*Math.exp(-Math.max(0,t-g.t0)/.12):0,z:0}}})));
+}
 class Cliff {
   users=0; scene=new THREE.Scene();rig=new Rig();layer=new Layer2D();
   T;voice;clawd=new VoxelClawd();light=new THREE.DirectionalLight(0xffffff,1);
@@ -104,7 +111,7 @@ export default class S05Platform extends Scene {
     const reading=W.reading(t,a,l,w.T);
     W.SOURCE_ROWS.forEach(i=>{const b=W.ledgeBox(i);machine(MONTH_SOURCE[i]!.trimStart(),{x:b.lo.x,y:b.lo.y+.03,z:.357},.16,reading.rows.includes(i)&&i<=reading.row?.6:.45);});
     w.drawers.forEach((_,k)=>{const b=W.drawerBox(k,t,a,w.T);machine(['src','calendar','month.ts'][k]!,{x:b.lo.x+.12,y:b.lo.y+.28,z:b.hi.z+.005},.28,.6);});
-    W.leadLayouts(l,a).forEach((layout,row)=>drawPathText(c,w.rig,W.leadPath(t,a,w.T,row),layout,t,{mode:'stand',base:'clay',on:'ink',minPx:0,maxPx:1000,axes:(g,t)=>w.voice.form(g.word,t).axes,offset:(g,t)=>({alpha:.35+.65*Math.max(0,W.LIGHT[1]!),d:{x:0,y:g.word.w.toLowerCase()==='crack'?.03*Math.sin(g.i*7+t*80)*Math.exp(-Math.max(0,t-g.t0)/.12):0,z:0}})}));
+    drawLeadText(c,w.rig,t,a,l,w.T);
     if(t>=reading.start){const [A]=W.underline(reading.row),B=W.cursorAt(t,a,l,w.T),pa=w.rig.proj(A.x,A.y,A.z)!,pb=w.rig.proj(B.x,B.y,B.z)!;c.strokeStyle=new THREE.Color(...lin('clay')).multiplyScalar(exitEnvelope(t,w.T.end).gain).getStyle();c.lineWidth=3;c.beginPath();c.moveTo(pa.x,pa.y);c.lineTo(pb.x,pb.y);c.stroke();}
     if(t>=w.T.read&&t<w.T.scroll){const p=w.rig.proj(-5.8,3.8,1)!;c.fillStyle=css('paper',.6);c.font=font(F.mono(),18);c.fillText('month.ts · 48 lines',p.x,p.y);}
     this.ctx.comp.draw(r,w.layer.upload(),out);

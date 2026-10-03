@@ -92,3 +92,9 @@ export type Box3 = {lo:P3;hi:P3};
 export function boxCorners(b: Box3): P3[] {
   return [b.lo.x,b.hi.x].flatMap(x=>[b.lo.y,b.hi.y].flatMap(y=>[b.lo.z,b.hi.z].map(z=>({x,y,z}))));
 }
+
+/** Scene-owned pigment override; pathtext currently always applies heatColor. */
+export function solidInkContext(c:CanvasRenderingContext2D,color:string):CanvasRenderingContext2D {
+  return new Proxy(c,{set(target,key,value){Reflect.set(target,key,key==='fillStyle'?color:value,target);return true;},
+    get(target,key){const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+}

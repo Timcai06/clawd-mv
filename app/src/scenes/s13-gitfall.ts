@@ -141,7 +141,7 @@ vec3 objectNormal = normalize(vec3(-wg,1.0));`)
       this.echoes.push({ at, solid }); this.root.add(solid.text.group);
     }
     for (const plan of this.plans.planes) {
-      const plane = new WordPlane(plan.word.w.toUpperCase(), { capH: plan.capH, axes: plan.axes, engrave: plan.carrier === 'fix', outline: 0, ay: 0.5 });
+      const plane = new WordPlane(plan.word.w.toUpperCase(), { capH: plan.capH, axes: plan.axes, engrave: false, outline: 0, ay: 0.5 });
       this.planes.push({ plan, plane }); this.root.add(plane.mesh);
     }
     this.clawd.mesh.scale.setScalar(CLAWD_VOX);
@@ -234,7 +234,7 @@ export default class S13Gitfall extends Scene {
       plane.mesh.position.set(pose.at.x, pose.at.y, pose.at.z); plane.mesh.rotation.y = pose.yaw;
       plane.mesh.scale.x = pose.scaleX * form.axes.wdth / plan.axes.wdth;
       plane.mesh.visible = t >= plan.word.start;
-      const cold = plan.carrier === 'local' || T.slabs[plan.event]?.clay ? lin('ink') : lin('paper');
+      const cold = lin(plan.carrier === 'local' ? 'ink' : 'paper');
       plane.set({ prog: plane.karaoke({ ...plan.word, w: plan.word.w.toUpperCase() }, t), aDim: 0,
         cDim: cold, cSung: cold, cDone: cold, done: Math.min(1, Math.max(0, (t - plan.word.end) / 0.15)),
         heat: 0, tone: frontLight(pose.yaw), opacity: 1 });
@@ -299,13 +299,13 @@ export { cursorAt } from './parts/s13-layout';
 /** Technical ID pass of the last evaluated frame, for RGBA statistics, not a screenshot.
  * All other geometry writes black and retains depth, so masks exclude occluded surfaces.
  * The caller applies the same post shake/zoom to this raw camera-space mask. */
-export function pixelMask(renderer: THREE.WebGLRenderer, kind: 'commit' | 'clawd' | 'wall-text' | 'words') {
+export function pixelMask(renderer: THREE.WebGLRenderer, kind: 'commit' | 'clawd' | 'wall-text' | 'fix-text' | 'words') {
   if (!world) throw new Error('Render S13 before requesting a pixel mask');
   const w = world, target = new THREE.WebGLRenderTarget(1920,1080), saved: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
   const black = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
   const white = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   const special: THREE.Material[] = [], commitMeshes = new Set(w.commits.flatMap(s => s.solid.text.letters.map(l => l.mesh)));
-  const textMeshes = new Set(w.planes.filter(p => p.plan.carrier !== 'fix').map(p => p.plane.mesh));
+  const textMeshes = new Set(w.planes.filter(p => kind==='fix-text'?p.plan.carrier==='fix':p.plan.carrier!=='fix').map(p => p.plane.mesh));
   const wordMeshes = new Map<THREE.Mesh,number>();
   w.prefixes.forEach(p=>p.solid.text.letters.forEach(l=>wordMeshes.set(l.mesh,p.plan.word.gi+1)));
   w.commits.forEach(p=>p.solid.text.letters.forEach(l=>wordMeshes.set(l.mesh,p.solid.word.gi+1)));
@@ -338,7 +338,7 @@ export function pixelMask(renderer: THREE.WebGLRenderer, kind: 'commit' | 'clawd
         m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4(c, 1.0);',
           'gl_FragColor = vec4(vec3(vFront > 0.99 && vC.r > 0.1 ? 1.0 : 0.0),1.0);');
         special.push(m); o.material = m;
-      } else if (kind === 'wall-text' && textMeshes.has(o)) {
+      } else if ((kind === 'wall-text'||kind==='fix-text') && textMeshes.has(o)) {
         const m = (o.material as THREE.RawShaderMaterial).clone();
         m.uniforms.map!.value=(o.material as THREE.RawShaderMaterial).uniforms.map!.value;
         m.fragmentShader = m.fragmentShader.replace('fragColor = vec4(rgb,a);', 'fragColor = vec4(vec3(a),a);');

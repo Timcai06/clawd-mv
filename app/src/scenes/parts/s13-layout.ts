@@ -31,13 +31,13 @@ export function lyricPlans(T: ChorusScore, voice: Voice) {
     if (s.kind !== 'fix') return;
     let x = -1.8; // The left 1.4 units are reserved for the machine hash on the same face.
     for (const word of s.words) {
-      const m = metrics(word, 0.285);
-      planes.push({ word, carrier: 'fix', event, x, y: 0.035, capH: 0.285, ...m }); x += m.width + 0.16;
+      const m = metrics(word, 0.41);
+      planes.push({ word, carrier: 'fix', event, x, y: 0, capH: 0.41, ...m }); x += m.width + 0.16;
     }
   });
   T.lines[4]!.words.forEach((word, i) => {
     const local = i < 3;
-    planes.push({ word, carrier: local ? 'local' : 'ci', event: -1, x: local ? (i < 2 ? 11.5 : 9) : (i === 3 ? -10.1 : -14.2),
+    planes.push({ word, carrier: local ? 'local' : 'ci', event: -1, x: local ? (i < 2 ? 11.9 : 9.2) : (i === 3 ? -10.8 : -14.9),
       y: 3 - (local ? i : i - 3) * 1.4, capH: 0.8, ...metrics(word, 0.8) });
   });
   const paths: PathPlan[] = [

@@ -111,7 +111,14 @@ export function underline(row:number):[P3,P3] {
 }
 export function leadLayouts(l:Lyrics,a:AudioData) {
   const v=new Voice(l,a),words=l.get('crack my claws').words;
-  return [words.slice(0,3),words.slice(3,5)].map(ws=>layoutPath(ws,{capH:.3,axes:w=>v.form(w,w.end).axes,upper:true}));
+  return [words.slice(0,3),words.slice(3,5)].map((ws,row)=>{
+    const layout=layoutPath(ws,{capH:row?.40:.72,axes:w=>v.form(w,w.end).axes,upper:true});
+    // The cut camera is immutable. Fit the standing ink horizontally to its
+    // drawer while preserving the independently specified projected cap height.
+    const fit=Math.min(1,4.2/layout.s1);
+    layout.glyphs.forEach(g=>{g.s*=fit;g.w*=fit;});layout.s1*=fit;
+    return layout;
+  });
 }
 export function leadLayout(l:Lyrics,a:AudioData) {return leadLayouts(l,a)[0]!;}
 export function leadPath(t:number,a:AudioData,T:PlatformTimes,row=0) {
@@ -120,12 +127,19 @@ export function leadPath(t:number,a:AudioData,T:PlatformTimes,row=0) {
 }
 export function cameraAt(t:number,a:AudioData,l:Lyrics,T=platformTimes(a,l)):ProjectCam {
   const beat1=afterBeats(a,T.start,5/3),p=clawdAt(t,a,l,T),center={x:p.x,y:p.y+VOXEL*2.5,z:p.z+.32};
+  const crack=l.get('crack my claws').words[2]!;
+  // Reveal the paper top behind the standing ink, after the matched C4 entry
+  // velocity has passed. A frontal camera puts ink glyphs against the ink wall.
+  const leadPitch=.9*ease.inOutCubic(span(t,afterBeats(a,T.start,.7),crack.start));
   if(t<=beat1) {
     const u=ease.outQuad(span(t,T.start,beat1)),px=lerp(CUT.clawd04px,14,u);
-    return solvePoint(center,px/VOXEL,{x:lerp(1204,930,u),y:lerp(440.5,520,u)},0,0,34);
+    const cam=solvePoint(center,px/VOXEL,{x:lerp(1204,930,u),y:lerp(440.5,520,u)},0,leadPitch,34);
+    const extra=.4*Math.sin(leadPitch);
+    cam.pos.y+=extra*Math.sin(leadPitch);cam.pos.z+=extra*Math.cos(leadPitch);
+    return cam;
   }
-  const crack=l.get('crack my claws').words[2]!,hit=t>=crack.start?Math.exp(-(t-crack.start)/.1):0;
-  const close=solvePoint(center,lerp(14,32,ease.inOutCubic(span(t,beat1,T.read)))/VOXEL/(1-.03*hit),{x:930,y:520},lerp(-.1,.1,span(t,beat1,T.read)),.12,34);
+  const hit=t>=crack.start?Math.exp(-(t-crack.start)/.1):0;
+  const close=solvePoint(center,lerp(14,32,ease.inOutCubic(span(t,beat1,T.read)))/VOXEL/(1-.03*hit),{x:930,y:520},lerp(-.1,.1,span(t,beat1,T.read)),leadPitch,34);
   close.offsetX=(close.offsetX??0)+4*Math.sin((t-crack.start)*83)*hit;
   close.offsetY=(close.offsetY??0)+4*Math.sin((t-crack.start)*107)*hit;
   if(t<T.read)return close;

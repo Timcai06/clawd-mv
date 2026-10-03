@@ -211,10 +211,14 @@ export function clawdCorners(t: number, m: PrintWorld, frontOnly = false) {
 function frameWidth(points: P3[], target: P3, yaw: number, pitch: number, fraction: number, maxHeight = Infinity): Cam {
   let lo = 0.5, hi = 250;
   for (let n = 0; n < 30; n++) {
-    const d = (lo+hi)/2, box = projectedBox(points,orbitCam(target,yaw,pitch,d));
+    const d = (lo+hi)/2, cam=orbitCam(target,yaw,pitch,d),box = projectedBox(points,cam);
     if (box.w > 1920*fraction || box.h > maxHeight || !Number.isFinite(box.w)) lo=d; else hi=d;
   }
   return orbitCam(target,yaw,pitch,hi);
+}
+export function minimumViewDepth(points:P3[],cam:Cam) {
+  const dx=cam.tgt.x-cam.pos.x,dy=cam.tgt.y-cam.pos.y,dz=cam.tgt.z-cam.pos.z,len=Math.hypot(dx,dy,dz);
+  return Math.min(...points.map(p=>((p.x-cam.pos.x)*dx+(p.y-cam.pos.y)*dy+(p.z-cam.pos.z)*dz)/len));
 }
 const cameraMemo = new WeakMap<PrintWorld, Map<string,Cam>>();
 function framedEvent(e: PressEvent, m: PrintWorld, width: number, pitch: number, yaw = 0) {
@@ -239,20 +243,25 @@ export function cameraAt(t: number, m: PrintWorld): Cam {
     const e = events.find(e => e.kind === 'giant' && e.word === word)!;
     const cam = framedEvent(e,m,0.8,1.15), held = Math.max(0,t-word.start);
     const push = 1/(1+0.035*held);
-    const height=pressAt(e,t,m).y;
-    const live = { ...cam,tgt:p3(cam.tgt.x,cam.tgt.y+height,cam.tgt.z),
-      pos:p3(lerp(cam.tgt.x,cam.pos.x,push),lerp(cam.tgt.y,cam.pos.y,push)+height,lerp(cam.tgt.z,cam.pos.z,push)) };
+    const state=pressAt(e,t,m),center=onPaper(p3(state.x,state.y+e.capH*.25,state.z),t,m);
+    const live = { ...cam,tgt:center,
+      pos:p3(center.x+(cam.pos.x-cam.tgt.x)*push,center.y+(cam.pos.y-cam.tgt.y)*push,center.z+(cam.pos.z-cam.tgt.z)*push) };
     if (!second && t < T.start+0.15) {
       // Start within the upper clay face of I, whose lower face is the printing face.
       const surface = onPaper(p3(e.x,e.capH*0.5,e.z),e.tp,m);
       return mixCam(orbitCam(surface,0,1.55,0.3),live,ease.outExpo(span(t,T.start+1/60,T.start+0.15)));
     }
-    const points=pressCorners(e,t,m);
-    if(pressAt(e,t,m).visible && projectedBox(points,live).h > 1080*0.85) {
-      // Lifted metal stays within the revised cap; touch-time width is unchanged.
+    const points=pressCorners(e,t,m),box=projectedBox(points,live);
+    const visible=(second?events.filter(event=>pressAt(event,t,m).visible):[e]).flatMap(event=>pressCorners(event,t,m));
+    const maxHeight=1080*(second?.70:.85)-16;
+    if(state.visible && (second?(minimumViewDepth(visible,live)<.55 || box.h>maxHeight || box.x<24 || box.x+box.w>1896 || box.y<24 || box.y+box.h>1056):box.h>1080*.85)) {
+      // Keep the complete extrusion and approaching neighbours in front of the
+      // near plane; a projection helper must never silently drop rear vertices.
       const dx=live.pos.x-live.tgt.x,dy=live.pos.y-live.tgt.y,dz=live.pos.z-live.tgt.z;
       const distance=Math.hypot(dx,dy,dz),pitch=Math.asin(dy/distance),yaw=Math.atan2(dx,dz);
-      return frameWidth(points,live.tgt,yaw,pitch,0.8,1080*0.85);
+      const framed=frameWidth(points,live.tgt,yaw,pitch,.8,second?maxHeight:1080*.85),depth=minimumViewDepth(visible,framed);
+      if(depth<.55){const extra=.55-depth;framed.pos=p3(framed.pos.x+dx/distance*extra,framed.pos.y+dy/distance*extra,framed.pos.z+dz/distance*extra);}
+      return framed;
     }
     return live;
   }
