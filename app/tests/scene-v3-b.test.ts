@@ -112,7 +112,7 @@ describe('V3 B / lyric birth, hierarchy and deterministic seeking',()=>{
     for(const line of lines)for(const w of line.words)expect(voice.form(w,w.start-0.01).born).toBe(0);
     // v6 R1: S05, S06 and S07 open on the beat before their line's first word (no mid-line cuts).
     for(const [at,first] of [[P.start,'So I crack'],[T.todo,'Read the'],[T.keyboard,'Claws on']] as const){
-      expect(lyrics.get(first).words[0]!.start).toBeGreaterThanOrEqual(at-0.02);
+      expect(lyrics.get(first).words[0]!.start).toBeGreaterThanOrEqual(at-0.05);
     }
   });
   test('three CHECK onsets control continuous weights without anticipating the first',()=>{

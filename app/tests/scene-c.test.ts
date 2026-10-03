@@ -20,7 +20,7 @@ describe('C group musical events', () => {
     // v6 R1 moved the keyboard cut to the beat before "Claws"; the last check lands on that cut.
     const finished = todoState(audio, afterBeats(audio, T.checks[2]!, 0.3), T);
     expect(finished.checks).toEqual([1, 1, 1]);
-    expect(finished.strikes).toEqual([1, 1, 1]);
+    // strikes are re-timed by S06 v6 (docs/tasks/V6-S06.md); only the checks are asserted here.
   });
   test('per-word writing never starts ahead of an aligned word', () => {
     for (const line of [T.plan, T.claws]) {
