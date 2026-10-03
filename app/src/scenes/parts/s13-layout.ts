@@ -1,7 +1,9 @@
 import type { AudioData } from "../../engine/audio";
 import type { Lyrics } from "../../engine/lyrics";
 import { ease, lerp } from "../../engine/util";
-import { HANDOFF } from "../../kit/handoff";
+import { HANDOFF, type Prim } from "../../kit/handoff";
+import { stackScore } from "./s14-stack";
+import { shaftCursorRect } from "./s14-camera";
 import { Voice } from "../../kit/lyric-moves";
 import { afterBeats, beatsSince, span } from "../../kit/time";
 import { varRun } from "../../kit/vartype";
@@ -126,3 +128,20 @@ export function gitfallBounds(
     panels: bounds([...s.local, ...s.ci]),
   };
 }
+
+/** C13 (docs/CUTS.md): the whole COMMIT page implodes into S14's first cursor over the last half
+ *  beat (inCubic, like pdoom's hook1 numbers shrinking into the spark), done 0.1 s before the cut. */
+export function implode(t: number, audio: AudioData, T: ChorusScore) {
+  return ease.inCubic(span(t, afterBeats(audio, T.end, -0.5), T.end - 0.1));
+}
+/** The point everything implodes into: S14's cursor block on S14's first frame. */
+export function implodeTarget(audio: AudioData, lyrics: Lyrics, T: ChorusScore) {
+  const S = stackScore(audio, lyrics);
+  return shaftCursorRect(S, T.end);
+}
+export function exitPrim13(t: number, audio: AudioData, lyrics: Lyrics, T: ChorusScore): Prim {
+  const r = implodeTarget(audio, lyrics, T), k = implode(t, audio, T);
+  return k > 0 ? { kind: 'rect', ...r } : { kind: 'rect', x: 0, y: 0, w: 1920, h: 1080 };
+}
+/** C12: the clay 11 that S13's clay half grows from (identity camera while frozen). */
+export function entryPrim13(t: number, audio: AudioData, T: ChorusScore): Prim { return { kind: 'rect', ...handoffIn(t, audio, T) }; }

@@ -7,9 +7,9 @@
 import type { AudioData } from '../../engine/audio';
 import { clamp, ease, hash } from '../../engine/util';
 import { afterBeats, beatsSince, span } from '../../kit/time';
-import { orbitCam, mixCam, p3, type Cam } from '../../kit/rig';
+import { orbitCam, mixCam, p3, Rig, type Cam } from '../../kit/rig';
 import type { X9Times } from '../s09-z-shared';
-import { SCOPE, scopeY } from './s09-scope';
+import { SCOPE, scopeY, scopeHead } from './s09-scope';
 
 export const FRONT_DIST = 0.5 * 1080 / Math.tan((34 * Math.PI) / 360) / 100; // 1 unit = 100 px at z = 0
 export const wx = (sx: number) => (sx - 960) / 100;
@@ -47,3 +47,15 @@ export function ridgeY(k: number, sx: number) {
   return wy(SCOPE.y) + (wy(scopeY(local)) - wy(SCOPE.y)) * amp;
 }
 
+let probe: Rig | undefined;
+/** The scan head on screen (the glass plane through S09's camera); "pass" ends at its x. */
+export function scanHeadScreen(audio: AudioData, t: number, T: X9Times) {
+  const rig = (probe ??= new Rig()); rig.set(cameraAt(audio, t, T));
+  return rig.proj(wx(scopeHead(t, T)), wy(SCOPE.y), 0) ?? { x: scopeHead(t, T), y: SCOPE.y, s: 100, w: 1 };
+}
+/** C8: the oscilloscope baseline on S09's first frame (front camera: the glass maps 1:1). */
+export function baseScreen(audio: AudioData, t: number, T: X9Times, base: { x0: number; x1: number; y: number }) {
+  const rig = (probe ??= new Rig()); rig.set(cameraAt(audio, t, T));
+  const a = rig.proj(wx(base.x0), wy(base.y), 0)!, b = rig.proj(wx(base.x1), wy(base.y), 0)!;
+  return { x0: a.x, y0: a.y, x1: b.x, y1: b.y };
+}

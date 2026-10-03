@@ -44,9 +44,9 @@ export function handoffIn(t: number, audio: AudioData, T: CommitScore) {
   return { x: 960 - h * 0.275, y: 576 + (h - 72) / 2, h };
 }
 export function handoffOut(t: number, audio: AudioData, T: CommitScore) {
-  // Hit the exact endpoint on the last exported 60 fps frame.
+  // Reach the endpoint 0.1 s before the cut and hold it (R4, docs/CUTS.md).
   const p = ease.inOutCubic(
-    span(t, afterBeats(audio, T.end, -1), T.end - 1 / 60),
+    span(t, afterBeats(audio, T.end, -1), T.end - 0.1),
   );
   return {
     x0: lerp(1138, HANDOFF.base08.x0, p),

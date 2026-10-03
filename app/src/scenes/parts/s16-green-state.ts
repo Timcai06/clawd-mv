@@ -33,7 +33,7 @@ export function greenTimes(audio: AudioData, lyrics: Lyrics): GreenTimes {
   const start = shots[0]!.start, end = shots.at(-1)!.end;
   return { start, end, cuts: shots.map(s => s.start), triggers, greens, nineteen,
     incomingEnd: afterBeats(audio, start, 1), outgoingStart: afterBeats(audio, end, -1),
-    outgoingEnd: end - 1 / 60 };
+    outgoingEnd: end - 0.1 };
 }
 
 export function bounds(points: readonly Pt[]): Rect {

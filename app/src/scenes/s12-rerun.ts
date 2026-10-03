@@ -11,7 +11,8 @@ import { heatColor, Voice, stamp, drawSet, setLine } from '../kit/lyric-moves';
 import { fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
-import { mono, carry, enterBeat, toner, handoffBoxes } from './parts/s09-type';
+import { mono, enterBeat, toner, handoffBoxes } from './parts/s09-type';
+import { drawWhyLine } from './parts/s09-carry';
 import { xeroxSettings } from './parts/s12-copy';
 import { COPIES, countState, handoffIn } from './parts/s12-layout';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
@@ -82,19 +83,21 @@ export default class S12Rerun extends Scene {
     const clearK = ease.inCubic(span(t, T.clear, T.cache + 0.15));
     const stepZoom = run < 0 ? 1 : [1.06, 1.14, 1.26][run]!;
     const settle = ease.inOutCubic(span(t, T.clear, T.count));
-    const punch = t >= T.count ? Math.pow(0.5, ((f.beat * 2) % 1) / 0.12) * 0.035 * (1 - ease.inCubic(span(t, afterBeats(au, T.end, -1), T.end))) : 0;
+    const punch = t >= T.count ? Math.pow(0.5, ((f.beat * 2) % 1) / 0.12) * 0.035 * (1 - ease.inCubic(span(t, afterBeats(au, T.end, -1), T.end - 0.1))) : 0;
     const zoom = lerp(stepZoom, 1, settle) + punch;
     const dx = 420 * whip - 2200 * clearK * (t < T.count ? 1 : 0);
     const rot = run >= 0 && t < T.clear ? (run % 2 ? 0.012 : -0.012) * (1 - settle) : 0;
     this.ctx.comp.draw(this.ctx.renderer, w.copies.texture, out, { opacity: entrance, scale: [1 / zoom, 1 / zoom], offset: [-dx / (1920 * zoom), 0] });
     w.layer.clear(); const c = w.layer.ctx;
+    // C11 (R2): "why" is still sung for 0.86 s after the cut; finish it in S11's layout (outside the camera).
+    const why = v.line('Undefined, undefined, and I don’t know why').words.at(-1)!;
+    if (t < why.end + 0.12) drawWhyLine(c, v, t, 'paper', undefined, true);
     c.save(); c.translate(960 + (t < T.clear ? dx : 0), 540); c.rotate(rot); c.scale(zoom, zoom); c.translate(-960, -540);
     if (entrance < 1) {
       const h = handoffIn(t, au, T);
       c.strokeStyle = css('ink', 1 - entrance); c.lineWidth = 4;
       for (const b of handoffBoxes(h)) c.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
     }
-    carry(c, v, t, T.rerunStart, 96, 860, 'paper');
     const runs = v.line('Run it again, run it again, again');
     if (t < T.clear) {
       for (let i = 0; i < 3; i++) {

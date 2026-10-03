@@ -24,7 +24,8 @@ import { Rig, type P3 } from '../kit/rig';
 import { VoxelClawd } from '../kit/clawd3d';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
 import { handoffIn } from './parts/s10-glass';
-import { carry, counter19 } from './parts/s09-type';
+import { counter19 } from './parts/s09-type';
+import { drawPass } from './parts/s09-carry';
 import { PLATES, PW, PH, TH, ROW_DIR, ROW_STEP, plateToWorld, shardTri, shardMotion, rot, cameraAt, stampAt, CLAWD_AT, CLAWD_VOX, CLAWD_YAW } from './parts/s10-world';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
@@ -232,7 +233,8 @@ export default class S10Redwall extends Scene {
     c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
     c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
     drawNote(c, { ax: 1040, ay: 150, x: 1100, y: 112, text: '19/19 failing', sub: 'consistent, at least', t0: afterBeats(au, T.nineteen, 1), on: 'paper' }, t);
-    carry(c, v, t, T.wallStart, 96, 348, 'paper');
+    // C9 (R2): "pass" is still sung for 0.43 s after the cut; finish it where S09 left it.
+    drawPass(c, v, au, t, T, 'paper');
     this.ctx.comp.draw(r, w.layer.upload(), out, { opacity: 1 - dark });
     if (dark < 0.5) w.print.render(r, out);
     return dark > 0.5 ? { ...postFor('ink'), hud: 0, ca: 0.6 } : { ...postFor('paper'), hud: 0, bloom: 0 };

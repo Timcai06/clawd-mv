@@ -37,7 +37,6 @@ export interface OutroTimes {
   end: number;
   dawn: number;
   ohs: Word[];
-  carried: Line[];
 }
 
 export function resolveOutroTimes(audio: AudioData, lyrics: Lyrics): OutroTimes {
@@ -47,8 +46,7 @@ export function resolveOutroTimes(audio: AudioData, lyrics: Lyrics): OutroTimes 
   // them, Voice drives one star per word. Until then, the instrumental measured grid is used.
   const ohs = lyrics.lines.flatMap(l => l.words).filter(w =>
     /^oh[.!?,]*$/i.test(w.w) && w.start >= start && w.start < end);
-  const carried = lyrics.lines.filter(l => l.start < start && afterBeats(audio, l.end + 0.6, 1) > start);
-  return { shots, start, end, dawn: afterBeats(audio, shots[4]!.start, 8), ohs, carried };
+  return { shots, start, end, dawn: afterBeats(audio, shots[4]!.start, 8), ohs };
 }
 
 /** Incoming git nodes move only during the first measured beat; at the cut all six are exact. */

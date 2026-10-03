@@ -15,8 +15,9 @@ export function mono(c: CanvasRenderingContext2D, text: string, x: number, y: nu
   c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText(text, x, y); c.restore();
 }
 /** Cut animations reach their endpoint before the last output frame, and stay within one beat. */
+/** A one-beat exit that lands 0.1 s before the cut and holds (R4, docs/CUTS.md). */
 export function exitBeat(audio: AudioData, t: number, end: number) {
-  return ease.inOutCubic(span(t, afterBeats(audio, end, -1), afterBeats(audio, end, -0.1)));
+  return ease.inOutCubic(span(t, afterBeats(audio, end, -1), end - 0.1));
 }
 export function enterBeat(audio: AudioData, t: number, start: number) {
   return ease.inOutCubic(span(t, start, afterBeats(audio, start, 1)));
@@ -41,12 +42,6 @@ export function runBox(run: VarRun, x: number, y: number, sx = 1, sy = 1, roll =
   return union(pts);
 }
 /** A crossing line retains all already sung words, including before the new scene's first onset. */
-export function carry(c: CanvasRenderingContext2D, v: Voice, t: number, start: number,
-  x: number, y: number, on: 'ink' | 'paper', size = 96, glow?: CanvasRenderingContext2D) {
-  const line = v.lyrics.lines.find(l => l.start < start && l.end > start);
-  if (!line || t >= Math.min(v.lyrics.lines[line.i + 1]?.start ?? Infinity, afterBeats(v.audio, line.end, 1))) return;
-  wrap(v.forms(line, t), size, 1920 - 96 - x).forEach((set, row) => drawSet(c, set, x, y + row * 110, { on, glow }));
-}
 /** Knock static toner voids out of a printed layer; never erases the live Ground. */
 export function toner(c: CanvasRenderingContext2D, box: Rect, seed: number, count = 1400) {
   c.save(); c.globalCompositeOperation = 'destination-out';

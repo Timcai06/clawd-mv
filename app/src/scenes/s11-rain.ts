@@ -11,7 +11,8 @@ import * as Clawd from '../kit/clawd';
 import { beatHit, resolveX9Times, type X9Times } from './s09-z-shared';
 import { DeepStorm } from './parts/s11-deep';
 import { headlineState, rainView, handoffOut, ROLL } from './parts/s11-layout';
-import { carry, toner, handoffBoxes } from './parts/s09-type';
+import { toner, handoffBoxes } from './parts/s09-type';
+import { drawWhyLine } from './parts/s09-carry';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: 296.352, lyric: 65.856, label: 18 };
 class World {
@@ -63,7 +64,7 @@ export default class S11Rain extends Scene {
         });
       }); c.restore();
     }
-    carry(c, v, t, T.rainStart, 96, 780, 'ink', 96, w.glow.ctx);
+    // C10 (R2): "…like glass" is carried by the glass strip's shards in S10; not re-set here.
     if (s.first.born > 0) {
       c.save(); c.translate(s.x, s.y); c.rotate(s.roll); c.scale(s.sx, s.sy);
       c.globalAlpha = s.first.born * (1 - s.out);
@@ -84,9 +85,7 @@ export default class S11Rain extends Scene {
       for (const b of handoffBoxes(h)) c.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
       c.restore();
     }
-    const line = v.line('Undefined, undefined, and I don’t know why');
-    const rest = v.forms(line, t).slice(2), set = setLine(rest, 96);
-    drawSet(c, set, 960 - set.width / 2, 1040, { on: 'ink', glow: w.glow.ctx });
+    drawWhyLine(c, v, t, 'ink', w.glow.ctx);
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);

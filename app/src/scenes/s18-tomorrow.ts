@@ -131,16 +131,6 @@ export default class S18Tomorrow extends Scene {
     c.restore();
   }
 
-  private carriedLine(c: CanvasRenderingContext2D, t: number) {
-    const v = this.world.voice, T = this.world.times;
-    for (const line of T.carried) {
-      const alpha = v.presence(line, t);
-      if (!alpha) continue;
-      const set = setLine(v.forms(line, t), LYRIC_SIZE, { space: 0.22 });
-      drawSet(c, set, 96, 690, { on: 'ink', alpha, glow: this.world.glow.ctx });
-    }
-  }
-
   /**
    * The author card (Tim 2026-10-01: everyone must see at a glance who made this): A FILM BY, then
    * TIM · 蔡任天 dropped in glyph by glyph on eighth notes from the second beat of the last shot,
@@ -185,13 +175,12 @@ export default class S18Tomorrow extends Scene {
     glowDraw(c, w.glow.ctx, g => this.stars(g, f.t));
     c.fillStyle = css('paper', 0.8); c.fillRect(0, S18_LAYOUT.horizon, W, 1);
     c.fillRect(855, S18_LAYOUT.horizon + 12, W - 855, 1);
-    const singing = T.carried.some(line => w.voice.presence(line, f.t) > 0);
-    this.calendar(c, s.flip, singing ? 0.6 : 1);
+    this.calendar(c, s.flip, 1);
     this.sleep(c, f, s.wave, s.shot !== 6);
     if (s.shot !== 6) this.notification(c, s.notification);
     { const q = S18_LAYOUT.clawd;
       drawNote(c, { ax: q.x + 8 * q.px, ay: q.y - 6, x: q.x + 8 * q.px + 40, y: q.y - 120, text: 'fig. 18', sub: 'Clawd, resting', t0: T.shots[3]!.start + 0.5, t1: T.shots[6]!.start, on: 'ink' }, f.t); }
-    this.carriedLine(c, f.t);
+    // C17 (R2): "machine" ends 0.06 s after the cut; S17 sings it out, S18 does not re-set the line.
     if (s.shot === 1) {
       const chars = Math.floor(Math.min(1, s.b / 1.5) * 6);
       c.fillStyle = css('paper', 0.6); c.font = font(F.mono(), TYPE_LEVELS.label);

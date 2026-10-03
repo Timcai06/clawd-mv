@@ -17,6 +17,8 @@ import { heatColor, Voice, drawSet, setLine, odometer } from '../kit/lyric-moves
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { greenState, greenArcCards, greenTimes, type GreenTimes } from './parts/s16-green-state';
+import { drawFree } from './parts/s15-layout';
+import { resolveFTimes, type FTimes } from './parts/s15-f-timing';
 import { drawDomino, polygon, printRun } from './parts/s16-print';
 
 // Minimum capital heights: the fitted headline is >=510; 92 px Archivo has a 686/1000 cap.
@@ -34,7 +36,8 @@ class World {
   lens = new Lens();
   times: GreenTimes;
   voice: Voice;
-  constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
+  f15: FTimes;
+  constructor(ctx: SceneCtx) { this.times = greenTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); this.f15 = resolveFTimes(ctx); }
   dispose() { this.sky.dispose(); this.chroma.dispose(); this.sparks.dispose(); this.print.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 const worlds = new WeakMap<THREE.WebGLRenderer, World>();
@@ -131,15 +134,16 @@ export default class S16Green extends Scene {
 
     // Numeric words belong to the faces; GREEN is the headline. Connecting words
     // occupy the reference's upper-right paper margin, one at a time.
+    // Only S16's own lines (R1: the previous line's held "free" is finished by drawFree below).
     const line = this.ctx.lyrics.lineAt(t) ?? this.ctx.lyrics.lastLine(t);
-    if (line && line.start < T.end && line.end >= T.start) {
+    if (line && line.start < T.end && line.start >= T.start - 0.05) {
       const words = v.forms(line, t).filter(x => !/^(green\W*|one|two\W*|three|nineteen)$/i.test(x.text));
       const latest = words.filter(x => x.born > 0).at(-1);
       if (latest) drawSet(c, setLine([latest], 92), 1570, 205, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(line, t) });
     }
-    const previous = v.line('Snip the extra line and set October free');
-    if (v.presence(previous, t) > 0) drawSet(c, setLine(v.forms(previous, t).slice(-2), 92),
-      120, 1010, { on: NIGHT ? 'ink' : 'paper', alpha: v.presence(previous, t) });
+    // C15 (R2): "free" is still sung for 0.24 s after the cut; finish it where S15 left it.
+    const free = v.line('Snip the extra line and set October free').words.at(-1)!;
+    if (t < free.end + 0.12) drawFree(c, v.form(free, t), this.ctx.audio, t, w.f15, NIGHT ? 'ink' : 'paper');
 
     const cl = s.clawd;
     Clawd.draw(c, cl.x, cl.y, Clawd.pose('A7', { beat: f.beat, beat0: 0, p: 0 }), { px: cl.px });

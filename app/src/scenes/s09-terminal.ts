@@ -13,7 +13,7 @@ import { glowDraw, heatColor, Voice } from '../kit/lyric-moves';
 import { varRun, fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
-import { mono, carry, counter19 } from './parts/s09-type';
+import { mono, counter19 } from './parts/s09-type';
 import { scopeState, handoffIn, handoffOut, SCOPE, scopeHead } from './parts/s09-scope';
 import { Rig } from '../kit/rig';
 import { cameraAt, ridgeY, ridgeZ, RIDGES, wx, wy } from './parts/s09-world';
@@ -124,7 +124,7 @@ export default class S09Terminal extends Scene {
       }
       x += run.width + 24;
     }
-    carry(c, v, t, T.terminal, 96, 427, 'ink', 96, w.glow.ctx);
+    // C8 (R2): "machine" ends 0.09 s after the cut; S08 sings it out, S09 does not re-set the line.
     drawNote(c, { ax: headP.x, ay: headP.y - 18, x: headP.x + 46, y: headP.y - 120, text: 'expected: pass', sub: 'actual: pending', t0: T.waiting + 0.4, on: 'ink' }, t);
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));

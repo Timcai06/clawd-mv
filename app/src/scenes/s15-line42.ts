@@ -21,7 +21,7 @@ import { Rig, planeAffine, p3, type P3 } from '../kit/rig';
 import { VoxelClawd } from '../kit/clawd3d';
 import { lin } from '../theme';
 import { S15_GLSL, BAR_C, BAR_H, TIP, UPPER_END, LOWER_END, BEAM_HW, DEPTH_HZ, CUT_X, CLAWD_AT, CLAWD_VOX, barPose, cameraAt, onBar } from './parts/s15-world';
-import { TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, freeState, handoffIn, monumentState } from './parts/s15-layout';
+import { TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, drawFree, handoffIn, monumentState } from './parts/s15-layout';
 export const TYPE_LEVELS = { ...PRINT_LEVELS };
 const CODE = 'for (let d = 0; d <= days; d++) {';
 
@@ -302,12 +302,7 @@ export default class S15Line42 extends Scene {
     if (line.i === v.line('Snip the extra line and set October free').i) {
       forms.slice(0, 7).forEach((form, i) => this.word(c, form, 110, 175 + i * 112, on, 0, presence));
       const free = forms[7]!;
-      if (free.born > 0) {
-        const escape = freeState(audio, t, T);
-        c.save(); c.translate(escape.x, escape.baseline); c.rotate(escape.roll);
-        c.globalAlpha = free.born * presence; c.fillStyle = heatColor(free.stress ? 'clay' : 'ink', on, free.age);
-        fillRun(c, varRun('FREE', LYRIC_SIZE, free.axes), 0, 0); c.restore();
-      }
+      drawFree(c, free, audio, t, T, on, presence);
       return;
     }
     // Words sung on either side of an editorial cut keep their original onset and axes.

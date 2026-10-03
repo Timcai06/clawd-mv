@@ -1,6 +1,8 @@
 // S15 timing state, hand-offs and the FREE escape. The solid itself lives in s15-world.ts (v5).
 import type { AudioData } from '../../engine/audio';
-import { HANDOFF } from '../../kit/handoff';
+import { HANDOFF, type Prim } from '../../kit/handoff';
+import { heatColor, type WordForm } from '../../kit/lyric-moves';
+import { varRun, fillRun } from '../../kit/vartype';
 import { afterBeats, span } from '../../kit/time';
 import { ease, hash, lerp } from '../../engine/util';
 import { solidBounds, clawdBounds } from './s15-world';
@@ -38,7 +40,7 @@ export function handoffIn(t: number, audio: AudioData, T: FTimes) {
 /** A rigid 70×210 stone rotates from a horizontal snip into the next scene's first domino. */
 export function handoffOut(t: number, audio: AudioData, T: FTimes) {
   const start = afterBeats(audio, T.s16[0]!, -1);
-  const k = ease.outExpo(span(t, start, T.s16[0]!));
+  const k = ease.outExpo(span(t, start, T.s16[0]! - 0.1));
   const angle = lerp(-Math.PI / 2, 0, k);
   const cx = lerp(1175, HANDOFF.domino15.x + HANDOFF.domino15.w / 2, k);
   const cy = lerp(395, HANDOFF.domino15.y + HANDOFF.domino15.h / 2, k);
@@ -50,4 +52,14 @@ export function handoffOut(t: number, audio: AudioData, T: FTimes) {
 export function freeState(audio: AudioData, t: number, T: FTimes) {
   const escape = ease.outExpo(span(t, T.free, afterBeats(audio, T.free, 0.75)));
   return { x: lerp(1300, 1815, escape), baseline: lerp(445, 220, escape), roll: lerp(0, -0.25, escape) };
+}
+
+/** "FREE" escaping the grid (S15). S16 calls the same function to finish the held word in place
+ *  (C15, R2): it never re-sets "October free". */
+export function drawFree(c: CanvasRenderingContext2D, free: WordForm, audio: AudioData, t: number, T: FTimes, on: 'paper' | 'ink', alpha = 1) {
+  if (free.born <= 0) return;
+  const escape = freeState(audio, t, T);
+  c.save(); c.translate(escape.x, escape.baseline); c.rotate(escape.roll);
+  c.globalAlpha = free.born * alpha; c.fillStyle = heatColor(free.stress ? 'clay' : 'ink', on, free.age);
+  fillRun(c, varRun('FREE', LYRIC_SIZE, free.axes), 0, 0); c.restore();
 }

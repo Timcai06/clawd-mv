@@ -13,7 +13,7 @@ import { fillRun, varRun } from "../kit/vartype";
 import { drawCursor, blink } from "../kit/cursor";
 import { afterBeats, beatsSince, span } from "../kit/time";
 import { chorusScore, chorusState, commitId, type ChorusScore } from "./parts/s13-score";
-import { gitfallLayout, handoffIn } from "./parts/s13-layout";
+import { gitfallLayout, handoffIn, implode, implodeTarget } from "./parts/s13-layout";
 import {
   drawWarped,
   drawSprite,
@@ -38,7 +38,9 @@ class World {
   constructor(ctx: SceneCtx) {
     this.voice = new Voice(ctx.lyrics, ctx.audio);
     this.T = chorusScore(ctx.audio, ctx.lyrics);
+    this.target = implodeTarget(ctx.audio, ctx.lyrics, this.T);
   }
+  target: { x: number; y: number; w: number; h: number };
   dispose() {
     this.layer.texture.dispose(); this.glow.dispose(); this.printMask.texture.dispose(); this.print.dispose();
   }
@@ -88,6 +90,9 @@ export default class S13Gitfall extends Scene {
           zoom += (0.12 * push + 0.06 * st.crush) * (1 - back); fx = lerp(960, 760, push * (1 - back)); fy = lerp(560, 760, push * (1 - back));
         }
       }
+      // C13: the page implodes into S14's first cursor (outermost transform).
+      const k = Math.min(implode(t, au, T), 0.9999), q = w.target, qx = q.x + q.w / 2, qy = q.y + q.h / 2;
+      c.save(); c.translate(qx, qy); c.scale(1 - k, 1 - k); c.translate(-qx, -qy);
       c.save(); c.translate(fx + jx, fy + jy); c.rotate(rot); c.scale(zoom, zoom); c.translate(-fx, -fy);
     }
     const entering = t < afterBeats(au, T.start, 1);
@@ -179,13 +184,18 @@ export default class S13Gitfall extends Scene {
     }
     g.restore();
     for (const paint of stripGlow) paint(); stripGlow.length = 0;
-    c.restore();
+    c.restore(); c.restore();
+    const imp = implode(t, au, T);
+    if (imp > 0) { // what the page leaves: S14's cursor (glowing on the ink)
+      const q = w.target, cur = { x: q.x, y: q.y + q.h, h: q.h };
+      drawCursor(c, cur); glowDraw(c, w.glow.ctx, g => drawCursor(g, cur));
+    }
     c.drawImage(w.grain, 0, 0, 1920, 1080);
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.printMask.upload(); w.print.render(this.ctx.renderer, out, 0.04);
     w.glow.composite(this.ctx, out, 1.6);
     const fi = frameIdx(t),
-      magnitude = s.split ? 4 * s.crush : 10 * s.impact;
+      magnitude = (s.split ? 4 * s.crush : 10 * s.impact) * (1 - implode(t, au, T));
     return {
       ...postFor("ink"),
       hud: 0,

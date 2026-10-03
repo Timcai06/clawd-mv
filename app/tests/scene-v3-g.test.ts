@@ -73,11 +73,10 @@ describe('G / S18 v3 storyboard contract', () => {
     expect(rows.every(r => r.size === TYPE_LEVELS.label && r.y < 984)).toBe(true);
   });
 
-  test('the carried last line is present at the cut and every word is unborn before its onset', () => {
-    expect(T.carried.map(line => line.text)).toContain('And it works on every machine');
-    expect(voice.presence(T.carried[0]!, T.start)).toBe(1);
-    for (const word of [...T.carried.flatMap(line => line.words), ...T.ohs])
-      expect(voice.form(word, word.start - 0.01).born).toBe(0);
+  test('the last chorus line ends in S17 (R2: S18 does not re-set it); oh onsets are unborn before onset', () => {
+    const last = lyrics.get('And it works on every machine');
+    expect(last.end - T.start).toBeLessThanOrEqual(0.1);
+    for (const word of T.ohs) expect(voice.form(word, word.start - 0.01).born).toBe(0);
     // No non-existent "oh" onset is treated as aligned in the production fixture.
     expect(T.ohs).toHaveLength(0);
   });
