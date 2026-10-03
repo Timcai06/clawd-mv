@@ -19,4 +19,4 @@ reference/pdoom/audio/
 audio/candidates/
 
 # Final lossless master stays local.
-audio/song.wav
+# audio/song.wav is committed (Tim 2026-10-03: the cloud session needs the master)

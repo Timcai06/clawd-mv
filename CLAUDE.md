@@ -32,7 +32,7 @@
 - `tools/`：`storyboard_md.py`（由分镜数据生成 STORYBOARD.md 的表格）、`render_keyframes.sh` 和 `keyframe_sheet.py`（生成分镜图和总览）、`merge_group.sh`（合并 Codex 组的分支）
 - `out/`（gitignored）：`preview/` 整片预览，`storyboard/v2/` 分镜图 v2，`wip/` 各种中间产物，`codex/` Codex 的日志和交付报告
 - `analysis/`：上游的 Python 分析脚本（Demucs 分离、逐词对齐、拍点）。**里面有大量针对 pdoom 那首歌写死的参数**（`analyze.py` 的 `SECTION_BARS`、`align.py` 的手工锚点），阶段 3 要按我们的歌重写
-- `audio/song.wav`：定稿歌的母带拷贝（gitignored；原件在 `audio/candidates/c1-works-on-my-machine.wav`）。`audio/song.mp3` 是占位音轨，只在没有母带时使用
+- `audio/song.wav`：定稿歌的母带拷贝（2026-10-03 起提交进仓库，云上会话要用；原件在 `audio/candidates/c1-works-on-my-machine.wav`，仍 gitignored）。`audio/song.mp3` 是占位音轨，只在没有母带时使用
 - `data/audio.json`、`data/lyrics.json`：定稿歌的逐拍网格和逐词对齐（已提交）
 - `reference/pdoom/`：上游的场景代码、分镜文档、时间线、原曲（原曲是别人的作品，已 gitignore，只供本地参考和分析）
 
