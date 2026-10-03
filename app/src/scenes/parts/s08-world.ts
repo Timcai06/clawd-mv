@@ -1,12 +1,11 @@
 // Mathematical printing world. Canvas masks are data; CPU/GPU share page geometry,
 // depression depth, impact envelopes and the hinge transform below.
-import * as THREE from 'three';
 import { AudioData, type AudioJSON } from '../../engine/audio';
 import { Lyrics } from '../../engine/lyrics';
 import { F, ot } from '../../engine/type';
 import { ease, fbm2, frameIdx, lerp, noise1, springStep } from '../../engine/util';
 import { CUT, exitEnvelope, type Prim } from '../../kit/handoff';
-import { carryLayout, lerpAffines, type CarrySpec, type GlyphAffine } from '../../kit/carry';
+import { carryDrift, lerpAffines, type CarrySpec, type GlyphAffine } from '../../kit/carry';
 import { Voice } from '../../kit/lyric-moves';
 import { letterTimes, runInkBounds } from '../../kit/pathtext';
 import { Rig, mixCam, orbitCam, p3, planeAffine, type Cam, type P3 } from '../../kit/rig';
@@ -21,6 +20,24 @@ export const PAGE = { w: 48, h: 27 } as const;
 export const ATLAS = { w: 4096, h: 2304 } as const;
 export const DEBOSS_DEPTH = 0.06;
 export const LIGHT = [-0.8,0.27,0.55] as const;
+export const AMBIENT = 0.1;
+export const LIT_TONE = 0.88;
+const lightLength = Math.hypot(...LIGHT);
+export const KEY_INTENSITY = (LIT_TONE-AMBIENT)/(LIGHT[1]/lightLength);
+export function lightIrradiance(normal: readonly number[], visibility = 1) {
+  return AMBIENT+KEY_INTENSITY*Math.max(0,normal.reduce((sum,n,i) => sum+n*LIGHT[i]!,0)/lightLength)*visibility;
+}
+export function lightTone(normal: readonly number[], visibility = 1) {
+  return Math.min(1,lightIrradiance(normal,visibility));
+}
+export function paperExposure(t: number, m: PrintWorld) {
+  const tilt=screenTilt(t,m.T), n=[0,Math.cos(tilt),Math.sin(tilt)];
+  return (LIT_TONE-AMBIENT)/(lightIrradiance(n)-AMBIENT);
+}
+export function clawdFrontTone() {
+  const dif=LIGHT[2]/lightLength, ambient=(LIT_TONE-dif)/(1-dif);
+  return { ambient,tone:ambient+(1-ambient)*dif };
+}
 export const SCREEN_TILT = 75*Math.PI/180; // 105 degrees to the keyboard's forward vector.
 export const KEY_TOP = 0.445;
 export interface PrintWorld { audio: AudioData; lyrics: Lyrics; voice: Voice; T: CommitScore; events: PressEvent[] }
@@ -29,11 +46,11 @@ export function printingWorld(audio: AudioData, lyrics: Lyrics): PrintWorld {
   const m={ audio, lyrics, voice, T, events:pressEvents(audio,lyrics,T,voice) };
   // C's lyric caps stay 80px even while the editorial camera pulls out. Slots
   // are reserved at the final axes and the largest physical cap, so no collision.
-  for (const e of m.events.filter(e => e.kind === 'letter' || e.kind === 'tap')) {
-    const cam=cameraAt(e.tp,m);
-    for (let i=0;i<3;i++) {
-      const cap=projectedBox(pressCorners(e,e.tp,m,false),cam).h,ratio=80/cap;
-      e.capH*=ratio; e.width*=ratio;
+  for (const e of m.events.filter(e => e.kind === 'letter' || e.kind === 'tap' || e.kind === 'word')) {
+    for (let i=0;i<24;i++) {
+      const cap=projectedBox(pressCorners(e,e.tp,m,false),cameraAt(e.tp,m)).h,ratio=80/cap;
+      e.capH*=ratio; e.width*=ratio; e.baselineX*=ratio; e.baselineZ*=ratio;
+      if(Math.abs(ratio-1)<1e-8) break;
     }
   }
   return m;
@@ -129,14 +146,75 @@ export function projectedBox(points: P3[], cam: Cam) {
   const x = Math.min(...xs), y = Math.min(...ys);
   return { x,y,w:Math.max(...xs)-x,h:Math.max(...ys)-y };
 }
+/** Ink bounds use the same outline, baseline and immutable stamp transform as PRINT. */
+export function impressionCorners(e: PressEvent, t: number, m: PrintWorld): P3[] {
+  const run=varRun(e.text,100,e.axes), ink=runInkBounds(run), s=e.capH/run.capH;
+  const cs=Math.cos(e.rot),sn=Math.sin(e.rot), pts:P3[]=[];
+  for(const x of [ink.x0*s+e.baselineX,ink.x1*s+e.baselineX])
+    for(const z of [ink.y0*s+e.baselineZ,ink.y1*s+e.baselineZ])
+      pts.push(onPaper(p3(e.x+cs*x+sn*z,0,e.z-sn*x+cs*z),t,m));
+  return pts;
+}
+export function printedWordPolygons(t: number, m: PrintWorld) {
+  const flood=t >= m.T.mit2 ? m.T.mit2 : t >= m.T.mit1 ? m.T.mit1 : Infinity;
+  const groups=new Map<PressEvent['word'],P3[]>();
+  for(const e of m.events) {
+    if(!printGlyphCount(e,t) || e.kind === 'bracket') continue;
+    if(e.kind !== 'commit' && Number.isFinite(flood) && e.tp <= flood) continue;
+    const points=groups.get(e.word) ?? []; points.push(...impressionCorners(e,t,m)); groups.set(e.word,points);
+  }
+  return [...groups].map(([word,points]) => ({ word,polygon:projectedHull(points,cameraAt(t,m)) }));
+}
+export function projectedHull(points: P3[], cam: Cam): [number,number][] {
+  const rig=new Rig(); rig.set(cam);
+  const pts=points.flatMap(p => { const q=rig.proj(p.x,p.y,p.z); return q ? [[q.x,q.y] as [number,number]] : []; })
+    .sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+  const cross=(a:number[],b:number[],c:number[]) => (b[0]!-a[0]!)*(c[1]!-a[1]!)-(b[1]!-a[1]!)*(c[0]!-a[0]!);
+  const half=(list:[number,number][]) => {
+    const h:[number,number][]=[];
+    for(const p of list) { while(h.length>1 && cross(h.at(-2)!,h.at(-1)!,p)<=0) h.pop(); h.push(p); }
+    return h.slice(0,-1);
+  };
+  return pts.length < 3 ? pts : [...half(pts),...half([...pts].reverse())];
+}
+/** Separating axes on the projected ink polygons, not inflated screen AABBs. */
+export function polygonsIntersect(a: readonly number[][], b: readonly number[][]) {
+  if(a.length < 3 || b.length < 3) return false;
+  for(const poly of [a,b]) for(let i=0;i<poly.length;i++) {
+    const p=poly[i]!,q=poly[(i+1)%poly.length]!, nx=-(q[1]!-p[1]!),ny=q[0]!-p[0]!;
+    const project=(r:readonly number[][]) => r.map(v => v[0]!*nx+v[1]!*ny);
+    const aa=project(a),bb=project(b);
+    if(Math.min(...aa)>=Math.max(...bb)-1e-6 || Math.min(...bb)>=Math.max(...aa)-1e-6) return false;
+  }
+  return true;
+}
+export function printedWordBoxes(t: number, m: PrintWorld) {
+  return printedWordPolygons(t,m).map(({ word,polygon }) => {
+    const xs=polygon.map(p => p[0]),ys=polygon.map(p => p[1]),x=Math.min(...xs),y=Math.min(...ys);
+    return { word,box:{ x,y,w:Math.max(...xs)-x,h:Math.max(...ys)-y } };
+  });
+}
+export function clawdCorners(t: number, m: PrintWorld, frontOnly = false) {
+  const c=clawdAt(t,m),pts:P3[]=[];
+  for(const cell of c.pose.cells) {
+    if(frontOnly && cell.k === 'D') continue;
+    const limb=cell.y === 4 || cell.x < 2 || cell.x > 13;
+    const depth=(limb ? 2 : 4)*0.5;
+    for(const dx of [-0.25,0.25]) for(const dy of [-0.25,0.25])
+      for(const dz of frontOnly ? [depth/2] : [-depth/2,depth/2])
+        pts.push(p3(c.point.x+(cell.x+c.pose.dx-7.5)*0.5+dx,
+          c.point.y+(4.5-cell.y-c.pose.dy)*0.5+dy,c.point.z+dz));
+  }
+  return pts;
+}
 
-function frameWidth(points: P3[], target: P3, yaw: number, pitch: number, fraction: number): Cam {
+function frameWidth(points: P3[], target: P3, yaw: number, pitch: number, fraction: number, maxHeight = Infinity): Cam {
   let lo = 0.5, hi = 250;
   for (let n = 0; n < 30; n++) {
     const d = (lo+hi)/2, box = projectedBox(points,orbitCam(target,yaw,pitch,d));
-    if (box.w > 1920*fraction || !Number.isFinite(box.w)) lo=d; else hi=d;
+    if (box.w > 1920*fraction || box.h > maxHeight || !Number.isFinite(box.w)) lo=d; else hi=d;
   }
-  return orbitCam(target,yaw,pitch,(lo+hi)/2);
+  return orbitCam(target,yaw,pitch,hi);
 }
 const cameraMemo = new WeakMap<PrintWorld, Map<string,Cam>>();
 function framedEvent(e: PressEvent, m: PrintWorld, width: number, pitch: number, yaw = 0) {
@@ -145,7 +223,7 @@ function framedEvent(e: PressEvent, m: PrintWorld, width: number, pitch: number,
   let cam = cache.get(key);
   if (!cam) {
     const target = onPaper(p3(e.x,e.capH*0.25,e.z),e.tp,m);
-    cam = frameWidth(pressCorners(e,e.tp,m),target,yaw,pitch,width); cache.set(key,cam);
+    cam = frameWidth(pressCorners(e,e.tp,m),target,yaw,pitch,width,e.kind === 'giant' ? 1080*0.85/1.04 : Infinity); cache.set(key,cam);
   }
   return cam;
 }
@@ -161,11 +239,20 @@ export function cameraAt(t: number, m: PrintWorld): Cam {
     const e = events.find(e => e.kind === 'giant' && e.word === word)!;
     const cam = framedEvent(e,m,0.8,1.15), held = Math.max(0,t-word.start);
     const push = 1/(1+0.035*held);
-    const live = { ...cam, pos:p3(lerp(cam.tgt.x,cam.pos.x,push),lerp(cam.tgt.y,cam.pos.y,push),lerp(cam.tgt.z,cam.pos.z,push)) };
+    const height=pressAt(e,t,m).y;
+    const live = { ...cam,tgt:p3(cam.tgt.x,cam.tgt.y+height,cam.tgt.z),
+      pos:p3(lerp(cam.tgt.x,cam.pos.x,push),lerp(cam.tgt.y,cam.pos.y,push)+height,lerp(cam.tgt.z,cam.pos.z,push)) };
     if (!second && t < T.start+0.15) {
       // Start within the upper clay face of I, whose lower face is the printing face.
       const surface = onPaper(p3(e.x,e.capH*0.5,e.z),e.tp,m);
-      return mixCam(orbitCam(surface,0,1.55,0.3),live,ease.outExpo(span(t,T.start,T.start+0.15)));
+      return mixCam(orbitCam(surface,0,1.55,0.3),live,ease.outExpo(span(t,T.start+1/60,T.start+0.15)));
+    }
+    const points=pressCorners(e,t,m);
+    if(pressAt(e,t,m).visible && projectedBox(points,live).h > 1080*0.85) {
+      // Lifted metal stays within the revised cap; touch-time width is unchanged.
+      const dx=live.pos.x-live.tgt.x,dy=live.pos.y-live.tgt.y,dz=live.pos.z-live.tgt.z;
+      const distance=Math.hypot(dx,dy,dz),pitch=Math.asin(dy/distance),yaw=Math.atan2(dx,dz);
+      return frameWidth(points,live.tgt,yaw,pitch,0.8,1080*0.85);
     }
     return live;
   }
@@ -179,7 +266,7 @@ export function cameraAt(t: number, m: PrintWorld): Cam {
     const yaw = 0.12*span(t,hit,second ? T.works : T.brk);
     return orbitCam(base.tgt,yaw,1.3,Math.hypot(base.pos.x-base.tgt.x,base.pos.y-base.tgt.y,base.pos.z-base.tgt.z));
   }
-  if (t < T.tap1) {
+  if (t < Math.min(T.tap1,T.tapLine.words[0]!.start)) {
     const brackets = events.filter(e => e.kind === 'bracket');
     const fit = T.bracketLine.words.at(-1)!.start;
     const points = [...pressCorners(events.find(e => e.kind === 'commit')!,fit,m,false),
@@ -212,7 +299,14 @@ export function clawdAt(t: number, m: PrintWorld) {
   pose.cells = pose.cells.map(c => c.y === 4 && c.x === legX ? { ...c,y:c.y-lift } : c);
   const jumpStart = afterBeats(audio,T.tapLine.words[0]!.start,-0.5), jumpEnd=T.tapLine.words[0]!.start;
   const jump = span(t,jumpStart,jumpEnd), y = t < jumpEnd ? 5*4*jump*(1-jump) : 0;
-  let point = p3(active.x-(legX-7.5)*0.5,y,active.z);
+  // The near ink edge is 0.6 in front of the front edge of the feet (limb depth=1).
+  const near=(e:PressEvent) => {
+    const run=varRun(e.text,100,e.axes),ink=runInkBounds(run);
+    return e.z+ink.y0*e.capH/run.capH+e.baselineZ;
+  };
+  const lastPrinted=[...tap].reverse().find(e => e.tp <= t);
+  const nearEdge=Math.min(near(active),lastPrinted ? near(lastPrinted) : Infinity);
+  let point = p3(active.x-(legX-7.5)*0.5,y,nearEdge-1.1);
   if (t < jumpEnd) point.x += 26*(1-jump);
   if (t >= T.quit) {
     const k=span(t,T.quit,T.i2), bounce=4*k*(1-k)*3;
@@ -229,7 +323,12 @@ export function clawdAt(t: number, m: PrintWorld) {
 
 export function machineSpec(m = defaultWorld()): CarrySpec {
   const word=m.T.machineLine.words.at(-1)!;
-  return { ...CUT.machine08, axes:m.voice.form(word,m.T.end).axes };
+  return { ...CUT.machine08, axes:m.voice.form(word,word.end).axes };
+}
+/** S09's first frame uses the shared 0.2 drift. Freeze that exact cut-time pose
+ * at the outgoing end, including its affine arithmetic, instead of restarting it. */
+export function machineTargetAffines(m = defaultWorld()): GlyphAffine[] {
+  return carryDrift(machineSpec(m),m.T.end,0.2).map(g => ({ ...g,b:g.b,d:g.d,f:540+(g.f-540) }));
 }
 export function machineAffines(t: number, m = defaultWorld()): GlyphAffine[] {
   const spec=machineSpec(m), word=m.T.machineLine.words.at(-1)!, run=varRun(spec.text,100,spec.axes);
@@ -240,7 +339,7 @@ export function machineAffines(t: number, m = defaultWorld()): GlyphAffine[] {
   const ratio=m.voice.form(word,t).axes.wdth/spec.axes.wdth; aff.a*=ratio; aff.b*=ratio;
   const world=run.glyphs.map(g => ({ ...aff,e:aff.e+aff.a*(g.x-ink.x0),f:aff.f+aff.b*(g.x-ink.x0),ch:g.ch,i:g.i }));
   const start=afterBeats(m.audio,m.T.end,-0.5), finish=m.T.end-1/60;
-  return lerpAffines(world,carryLayout(spec),ease.inOutCubic(span(t,start,finish)));
+  return lerpAffines(world,machineTargetAffines(m),ease.inOutCubic(span(t,start,finish)));
 }
 export function machineVisible(t: number, m: PrintWorld) {
   return letterTimes(m.T.machineLine.words.at(-1)!).map(g => t >= g.t0);
@@ -276,10 +375,10 @@ export function impactPost(t: number, m: PrintWorld) {
   const hit=[...hits].reverse().find(h => t >= h.t);
   const age=hit ? t-hit.t : Infinity;
   const mag=hit ? hit.px*Math.exp(-age/0.09) : 0;
-  // C7's literal clay face occupies the first frame before the I pulse inverts it.
+  // Preserve the literal C7 clay face for one frame before swapping its palette.
   const fi=frameIdx(t),pulseFrame=hit ? frameIdx(hit.t)+(hit.t === m.T.start ? 1 : 0) : Infinity;
-  const invert=hit && fi>=pulseFrame && fi<pulseFrame+2 ? 1 : 0;
+  const paletteSwap=hit && fi>=pulseFrame && fi<pulseFrame+2 ? 1 : 0;
   const still=exitEnvelope(t,m.T.end).still;
-  return { invert:still ? 0 : invert,shake:[still ? 0 : noise1(fi*17.13,803)*mag,still ? 0 : noise1(fi*29.37,804)*mag] as [number,number],
+  return { paletteSwap:still ? 0 : paletteSwap,shake:[still ? 0 : noise1(fi*17.13,803)*mag,still ? 0 : noise1(fi*29.37,804)*mag] as [number,number],
     zoom:still ? 1 : 1+(hit?.px === 10 ? 0.04*Math.exp(-age/0.09) : 0) };
 }

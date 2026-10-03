@@ -31,7 +31,7 @@ export interface PressEvent {
   kind: PressKind; times: number[]; width: number; baselineX: number; baselineZ: number;
   leg?: number; pair?: number; side?: -1 | 1;
 }
-export const COMMIT_CAP = 4.5;
+export const COMMIT_CAP = 3;
 export const LYRIC_CAP = 1.6;
 export const TAP_TEXT = 'TAP-TAP-TAPPING';
 
@@ -73,13 +73,14 @@ export function pressEvents(audio: AudioData, lyrics: Lyrics, T = commitScore(au
   for (const [repeat, line] of [T.first,T.second].entries()) {
     line.words.slice(0,4).forEach((word,i) => {
       const [x,z] = (repeat ? positions2 : positions)[i]!;
-      add(word,word.w.toUpperCase(),word.start,x!,z!,i === 0 ? 6 : 3.1,'giant',
+      const capH=repeat ? [0.5,0.4,3.1,0.3][i]! : i === 0 ? 6 : 3.1;
+      add(word,word.w.toUpperCase(),word.start,x!,z!,capH,'giant',
         { rot: (repeat ? -1 : 1)*[0,-0.05,0.04,-0.02][i]!, ink: i === 0 ? 'clay' : 'ink',
           times:Array.from(word.w,() => word.start) });
     });
     const word = line.words.at(-1)!;
-    add(word,'COMMIT',repeat ? T.mit2 : T.mit1,repeat ? 0.35*COMMIT_CAP : 0,repeat ? 0.2*COMMIT_CAP : 0,COMMIT_CAP,'commit',
-      { approach: (repeat ? T.mit2 : T.mit1)-word.start, rot: repeat ? -0.015 : 0, ink: 'paper',
+    add(word,'COMMIT',repeat ? T.mit2 : T.mit1,repeat ? 0.06*COMMIT_CAP : 0,repeat ? 0.04*COMMIT_CAP : 0,COMMIT_CAP,'commit',
+      { approach: (repeat ? T.mit2 : T.mit1)-word.start, rot: repeat ? -0.006 : 0, ink: 'paper',
         times:Array.from('COMMIT',() => repeat ? T.mit2 : T.mit1) });
   }
   const commit = events.find(e => e.kind === 'commit')!;
@@ -93,11 +94,11 @@ export function pressEvents(audio: AudioData, lyrics: Lyrics, T = commitScore(au
   const row = (words: Word[], z: number, kind: PressKind) => {
     // Reserve the largest lyric cap in the row; individual physical caps are
     // solved against the actual press-time camera by printingWorld.
-    const cap=2.2,layout = layoutPath(words,{ capH:cap, axes: w => voice.form(w,w.end).axes, upper: true });
+    const cap=1.5,layout = layoutPath(words,{ capH:cap, axes: w => voice.form(w,w.end).axes, upper: true });
     for (const g of layout.glyphs) add(g.word,g.ch,g.t0,-layout.s1/2+g.s+g.w/2,z,cap,kind,
       { approach: 0.08, ink: 'ink', times: [g.t0],baselineX:-g.w/2,baselineZ:cap/2 });
   };
-  row(T.bracketLine.words,6.8,'letter');
+  row(T.bracketLine.words,3.6,'letter');
   const tap = T.tapLine.words[0]!, tapRun = varRun(TAP_TEXT,100,voice.form(tap,tap.end).axes);
   const tapSlot=2.2,s = tapSlot/tapRun.capH, tapWidth = tapRun.width*s;
   tapLetterTimes(tap).forEach((tp,i) => {
@@ -105,7 +106,7 @@ export function pressEvents(audio: AudioData, lyrics: Lyrics, T = commitScore(au
     add(tap,g.ch,tp,-tapWidth/2+(g.x+g.adv/2)*s,10,tapSlot,'tap',
       { approach: 0.05, times: [tp], leg: [0,2,1,3][i%4]!,baselineX:-g.adv*s/2,baselineZ:tapSlot/2 });
   });
-  for (const [i,word] of T.tapLine.words.slice(1).entries()) add(word,word.w.toUpperCase(),word.start,i ? 7 : -7,8,LYRIC_CAP,'word');
+  for (const [i,word] of T.tapLine.words.slice(1).entries()) add(word,word.w.toUpperCase(),word.start,i ? 7 : -7,12.2,LYRIC_CAP,'word');
   for (const [i,word] of T.machineLine.words.slice(0,3).entries()) add(word,word.w.toUpperCase(),i === 2 ? word.end : word.start,[-13,-5,5][i]!,8,LYRIC_CAP,'word',
     { ink: 'ink', approach: i === 2 ? word.end-word.start : 0.14 });
   return events.sort((a,b) => a.tp-b.tp || a.id.localeCompare(b.id));

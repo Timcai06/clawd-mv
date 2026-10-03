@@ -5,7 +5,7 @@ import { FSPass, Layer2D, clearRT, makeRT } from '../engine/gl';
 import { css, lin } from '../theme';
 import { heatColor } from '../kit/lyric-moves';
 import { VoxelClawd } from '../kit/clawd3d';
-import { engraveMaterial, setEngrave } from '../kit/engrave-mat';
+import { engraveMaterial, setEngrave, type EngraveOpts } from '../kit/engrave-mat';
 import { SolidText } from '../kit/solidtype';
 import { drawCarry } from '../kit/carry';
 import { drawPathText, layoutPath, path3, runInkBounds } from '../kit/pathtext';
@@ -15,15 +15,31 @@ import { varRun } from '../kit/vartype';
 import { F, font } from '../engine/type';
 import { PressAtlas } from './parts/s08-print';
 import {
-  ATLAS, KEY_TOP, LIGHT, PAGE, S08_GLSL, cameraAt, clawdAt, cursorAt, exitState, hashAffine, impactHits, impactPost,
-  machineAffines, machineSpec, machineVisible, onPaper, pressAt, printingWorld, screenTilt, type PrintWorld,
+  AMBIENT, ATLAS, KEY_INTENSITY, KEY_TOP, LIGHT, PAGE, S08_GLSL, cameraAt, clawdAt, clawdFrontTone, cursorAt, exitState, hashAffine, impactHits, impactPost,
+  machineAffines, machineSpec, machineVisible, onPaper, paperExposure, pressAt, printingWorld, screenTilt, type PrintWorld,
 } from './parts/s08-world';
 import { paperTravel, type PressEvent } from './parts/s08-layout';
 export { cursorAt } from './parts/s08-world';
 export const TYPE_LEVELS = { giant:550,lyric:80,label:18 };
 
-function paperMaterial(atlas: PressAtlas, hits: THREE.IUniform<THREE.Vector4[]>) {
-  const mat=engraveMaterial({ ink:lin('ink'),paper:lin('paper'),paperMap:true,angle:0.6,pitch:5,faceAngles:false });
+/** r186 Lambert returns irradiance / PI. Normalize the lighting before engraving,
+ * then swap local palette colours during impacts; RGB inversion is never used. */
+function pressMaterial(opts: EngraveOpts, swap: THREE.IUniform<number>, exposure = { value:1 }) {
+  const mat=engraveMaterial(opts), compile=mat.onBeforeCompile;
+  mat.onBeforeCompile=(shader,renderer) => {
+    compile.call(mat,shader,renderer);
+    Object.assign(shader.uniforms,{ pressSwap:swap,pressExposure:exposure });
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
+      '#include <common>\nuniform float pressSwap,pressExposure;')
+      .replace('float engraveFace =',`engraveL = ${AMBIENT}+(engraveL*3.14159265359-${AMBIENT})*pressExposure;\nfloat engraveFace =`)
+      .replace('outgoingLight = mix(engraveP,engraveI,engraveCov)',
+        'if(pressSwap > 0.5) { vec3 original=engraveP; engraveP=engraveI; engraveI=original; }\noutgoingLight = mix(engraveP,engraveI,engraveCov)');
+  };
+  mat.customProgramCacheKey=() => 's08-normalized-palette-v6-r2';
+  return mat;
+}
+function paperMaterial(atlas: PressAtlas, hits: THREE.IUniform<THREE.Vector4[]>, swap:THREE.IUniform<number>, exposure:THREE.IUniform<number>) {
+  const mat=pressMaterial({ ink:lin('ink'),paper:lin('paper'),paperMap:true,angle:0.6,pitch:5,faceAngles:false },swap,exposure);
   mat.map=atlas.printTexture;
   const baseCompile=mat.onBeforeCompile;
   mat.onBeforeCompile=(shader,renderer) => {
@@ -41,10 +57,11 @@ function paperMaterial(atlas: PressAtlas, hits: THREE.IUniform<THREE.Vector4[]>)
         float hy=(pageHeight(uv+dv)-pageHeight(uv-dv))/(2.0*PAGE_H/${ATLAS.h}.0);
         objectNormal=normalize(vec3(-hx,-hy,1.0));`)
       .replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.z+=pageHeight(uv);');
-    // Local map-dependent line colour. The public material has one ink colour per material.
+    // Clay is the substrate with sparse ink lines; ink impressions are dark solids.
     shader.fragmentShader=shader.fragmentShader
-      .replace('bool engraveLL =','bool clayArea = distance(engraveBase,vec3('+lin('clay').join(',')+')) < 0.025;\nbool engraveLL = clayArea ||')
-      .replace('engraveI = engraveInk;','engraveI = clayArea ? engravePaper : engraveInk;');
+      .replace('bool engraveLL =','bool clayArea = distance(engraveBase,vec3('+lin('clay').join(',')+')) < 0.025;\nbool inkArea = distance(engraveBase,engraveInk) < 0.025;\nbool engraveLL = inkArea ||')
+      .replace('vec3 engraveP =', 'if(clayArea && engraveT >= 0.8) engraveCov=min(engraveCov,0.08);\nif(inkArea) engraveCov=min(engraveCov,0.3);\nvec3 engraveP =')
+      .replace('engraveI = engraveInk;', 'engraveI = inkArea ? engravePaper : engraveInk;');
   };
   mat.customProgramCacheKey=() => 's08-letterpress-paper-v6';
   return mat;
@@ -68,46 +85,69 @@ class PrintingPress {
   boxes: THREE.Mesh[]=[];
   screenFrame=new THREE.Group();
   materials: THREE.Material[]=[];
-  key=new THREE.DirectionalLight(0xffffff,1.8);
+  key=new THREE.DirectionalLight(0xffffff,KEY_INTENSITY);
+  swap={ value:0 };
+  paperExposure={ value:1 };
   hashes: { layout:ReturnType<typeof layoutPath>; at:number }[]=[];
   tableWords: ReturnType<typeof layoutPath>;
   crt=new FSPass(`
-    uniform sampler2D image; uniform float flatK,extension,gain;
+    uniform sampler2D image; uniform float flatK,extension,gain; uniform vec3 pressInk,pressPaper;
     void main() {
       vec2 p=vUv-0.5;
       if(flatK <= 0.0001) {
         float line=1.0-smoothstep(0.5,1.5,abs(FRAG_PX.y-540.0));
         float width=mix(0.36,1.0,extension);
         line*=step(abs(p.x),width*0.5);
-        fragColor=vec4(mix(C_INK,C_BONE*gain,line),1.0); return;
+        fragColor=vec4(mix(pressInk,pressPaper*gain,line),1.0); return;
       }
       vec2 q=vec2(p.x,p.y/max(flatK,0.0001))+0.5;
-      fragColor=vec4(0.0);
+      fragColor=vec4(pressInk,1.0);
       if(q.y>=0.0 && q.y<=1.0) fragColor=texture(image,q);
-    }`,{ image:{ value:this.rt.texture },flatK:{ value:1 },extension:{ value:0 },gain:{ value:1 } });
+    }`,{ image:{ value:this.rt.texture },flatK:{ value:1 },extension:{ value:0 },gain:{ value:1 },
+      pressInk:{ value:new THREE.Vector3(...lin('ink')) },pressPaper:{ value:new THREE.Vector3(...lin('paper')) } });
 
   constructor(ctx: SceneCtx) {
     this.model=printingWorld(ctx.audio,ctx.lyrics); const m=this.model;
     this.crt.mat.transparent=true; this.crt.mat.blending=THREE.NormalBlending;
     this.atlas=new PressAtlas(m);
-    const mat=paperMaterial(this.atlas,this.hits); this.materials.push(mat);
+    const mat=paperMaterial(this.atlas,this.hits,this.swap,this.paperExposure); this.materials.push(mat);
     this.paper=new THREE.Mesh(new THREE.PlaneGeometry(PAGE.w,PAGE.h,768,432),mat);
     this.paper.rotation.x=-Math.PI/2; this.paper.receiveShadow=true;
     this.sheet.add(this.paper); this.scene.add(this.sheet);
-    this.scene.add(new THREE.AmbientLight(0xffffff,0.1));
+    this.scene.add(new THREE.AmbientLight(0xffffff,AMBIENT));
     this.key.position.set(LIGHT[0]*80,LIGHT[1]*80,LIGHT[2]*80);
     this.key.castShadow=true; this.key.shadow.mapSize.set(2048,2048);
     Object.assign(this.key.shadow.camera,{ left:-70,right:70,top:70,bottom:-70,near:0.1,far:200 });
     this.key.shadow.bias=-0.00015; this.key.shadow.normalBias=0.015;
     this.key.shadow.camera.updateProjectionMatrix(); this.scene.add(this.key,this.key.target);
     for (const event of m.events) if (event.kind !== 'tap') {
-      const mat=engraveMaterial({ ink:lin('paper'),paper:lin(event.kind === 'commit' ? 'clay' : event.ink),lightLines:true,angle:0.6,pitch:5,faceAngles:false });
+      const color=event.kind === 'commit' ? 'clay' : event.ink;
+      const mat=pressMaterial({ ink:lin(color === 'ink' ? 'paper' : 'ink'),paper:lin(color),lightLines:color === 'ink',maxCov:color === 'ink' ? 0.3 : 1,angle:0.6,pitch:5,faceAngles:false },this.swap);
+      if(event.word === m.T.first.words[0]) {
+        const compile=mat.onBeforeCompile;
+        mat.onBeforeCompile=(shader,renderer) => {
+          compile.call(mat,shader,renderer);
+          shader.fragmentShader=shader.fragmentShader.replace('vec3 engraveP =',
+            'if(engraveT >= 0.8) engraveCov=engraveHatch(engraveU,1.2/5.0)*(0.08/(1.2/5.0));\nvec3 engraveP =');
+        };
+        mat.customProgramCacheKey=() => 's08-entry-1.2px-v6-r2';
+      }
       const text=new SolidText(event.text,{ capH:event.capH,axes:event.axes,depth:0.5*event.capH,bevel:0,material:mat,curveSegments:4 });
       text.group.rotation.set(-Math.PI/2,0,0);
       this.scene.add(text.group); this.solids.push({ event,text,mat }); this.materials.push(mat);
     }
     const box=(w:number,h:number,d:number,x:number,y:number,z:number,color:'paper'|'ink',parent=this.scene as THREE.Object3D) => {
-      const mat=engraveMaterial({ ink:lin(color === 'ink' ? 'paper' : 'ink'),paper:lin(color),lightLines:color === 'ink',pitch:5,angle:0.6 });
+      const mat=pressMaterial({ ink:lin(color === 'ink' ? 'paper' : 'ink'),paper:lin(color),lightLines:color === 'ink',maxCov:color === 'ink' ? 0.3 : 1,pitch:5,angle:0.6 },this.swap,
+        { value:w === 220 ? 0.07 : 1 });
+      if(w === 220) {
+        const compile=mat.onBeforeCompile;
+        mat.onBeforeCompile=(shader,renderer) => {
+          compile.call(mat,shader,renderer);
+          shader.fragmentShader=shader.fragmentShader.replace('float engraveFace =','engraveL *= 0.1;\nfloat engraveFace =')
+            .replace('vec3 engraveP =','engraveCov *= engraveT;\nvec3 engraveP =');
+        };
+        mat.customProgramCacheKey=() => 's08-low-environment-table-v6-r2';
+      }
       const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
       mesh.position.set(x,y,z); mesh.castShadow=mesh.receiveShadow=true; parent.add(mesh); this.boxes.push(mesh); this.materials.push(mat); return mesh;
     };
@@ -121,9 +161,9 @@ class PrintingPress {
     // Keycaps are geometric, including shadows; no text labels add a fourth size tier.
     for (let row=0;row<4;row++) for (let col=0;col<13;col++) box(2.5,0.45,2.1,-18+col*3,KEY_TOP-0.225,18+row*3,'ink');
     box(12,0.2,6,0,0.08,37,'ink'); box(220,1,180,0,-2.1,15,'ink');
-    this.clawd.mesh.scale.setScalar(0.5); this.clawd.light([...LIGHT],0.1,0);
+    this.clawd.mesh.scale.setScalar(0.5); this.clawd.light([...LIGHT],clawdFrontTone().ambient,0);
     this.clawd.mesh.castShadow=true; this.scene.add(this.clawd.mesh);
-    const machineMaterial=engraveMaterial({ ink:lin('ink'),paper:lin('paper'),pitch:5,angle:0.6 });
+    const machineMaterial=pressMaterial({ ink:lin('ink'),paper:lin('paper'),pitch:5,angle:0.6 },this.swap);
     this.materials.push(machineMaterial);
     this.machineBody=new SolidText('machine',{ capH:2.8,axes:machineSpec(m).axes,depth:1.4,bevel:0,material:machineMaterial });
     this.scene.add(this.machineBody.group);
@@ -137,6 +177,8 @@ class PrintingPress {
   }
   update(t: number) {
     const m=this.model, tilt=screenTilt(t,m.T), travel=paperTravel(m.audio,t,m.T);
+    this.swap.value=impactPost(t,m).paletteSwap;
+    this.paperExposure.value=paperExposure(t,m);
     this.atlas.update(t); this.rig.set(cameraAt(t,m));
     this.sheet.rotation.x=tilt;
     // Around hinge z=13.5: translation and rotation are CPU paperPoint's exact transform.
@@ -252,6 +294,7 @@ export default class S08Commit extends Scene {
       }
       this.ctx.comp.draw(r,w.layer.upload(),out);
     } finally { r.shadowMap.enabled=oldShadow; r.shadowMap.type=oldType; }
-    return { bloom:0,halation:0,ca:0,grain:0,vignette:0,hud:0,frame:0,exposure:1,...impactPost(t,m) };
+    const { paletteSwap:_,...post }=impactPost(t,m);
+    return { bloom:0,halation:0,ca:0,grain:0,vignette:0,hud:0,frame:0,exposure:1,...post };
   }
 }

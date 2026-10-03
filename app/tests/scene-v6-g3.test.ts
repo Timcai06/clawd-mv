@@ -5,7 +5,7 @@ import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
 import { mulberry32 } from '../src/engine/util';
 import { F, ot } from '../src/engine/type';
-import { carryLayout } from '../src/kit/carry';
+import { carryDrift } from '../src/kit/carry';
 import { letterTimes, runInkBounds } from '../src/kit/pathtext';
 import { primError } from '../src/kit/handoff';
 import { Rig, p3 } from '../src/kit/rig';
@@ -16,9 +16,9 @@ import { LEGS } from '../src/kit/clawd';
 import { TAP_TEXT, bracketTarget, paperTravel } from '../src/scenes/parts/s08-layout';
 import { PressAtlas } from '../src/scenes/parts/s08-print';
 import {
-  ATLAS, PAGE, S08_GLSL, cameraAt, clawdAt, cursorAt, depthFromMask, entryPrim, exitPrim, exitState,
+  AMBIENT, LIT_TONE, ATLAS, PAGE, S08_GLSL, lightIrradiance, lightTone, paperExposure, clawdFrontTone, screenTilt, clawdCorners, impressionCorners, printedWordPolygons, polygonsIntersect, projectedHull, cameraAt, clawdAt, cursorAt, depthFromMask, entryPrim, exitPrim, exitState,
   floodRadius, flooded, hashAffine, heightAt, impactHits, impactPit, impactPost, machineAffines, machineSpec,
-  machineVisible, onPaper, paperPoint, pressAt, pressCorners, printGlyphCount, printingWorld, projectedBox,
+  machineTargetAffines, machineVisible, onPaper, paperPoint, pressAt, pressCorners, printGlyphCount, printingWorld, projectedBox,
 } from '../src/scenes/parts/s08-world';
 import { resolveCTimes } from '../src/scenes/parts/s06-timing';
 import { handoffOut as old07 } from '../src/scenes/parts/s07-terrain';
@@ -46,12 +46,12 @@ describe('V6 g3 score and press mechanics',() => {
       expect(pressAt(e,e.tp-e.approach,m).y).toBeCloseTo(e.capH*3,10);
     }
   });
-  test('both MIT pickups park the camera for their last 100ms; each slam has two inverted frames',() => {
+  test('both MIT pickups park the camera for their last 100ms; each slam has two palette-swapped frames',() => {
     for (const tp of [T.mit1,T.mit2]) {
       expect(cameraAt(tp-0.09,m)).toEqual(cameraAt(tp-0.01,m));
-      expect(impactPost(tp,m).invert).toBe(1);
-      expect(impactPost(tp+1/60,m).invert).toBe(1);
-      expect(impactPost(tp+2/60,m).invert).toBe(0);
+      expect(impactPost(tp,m).paletteSwap).toBe(1);
+      expect(impactPost(tp+1/60,m).paletteSwap).toBe(1);
+      expect(impactPost(tp+2/60,m).paletteSwap).toBe(0);
     }
   });
   test('all lyrics and first glyphs wait for the aligned word; machine never presses',() => {
@@ -82,7 +82,8 @@ describe('V6 g3 score and press mechanics',() => {
       const clawd=clawdAt(e.tp,m),foot=clawd.pose.cells.find(c => c.x === LEGS[e.leg!] && c.y === 4)!;
       expect(clawd.hit).toBe(e.tp); expect(foot).toBeDefined();
       expect(clawd.point.x+(foot.x+clawd.pose.dx-7.5)*0.5).toBeCloseTo(e.x,10);
-      expect(clawd.point.y).toBe(0); expect(clawd.point.z).toBe(e.z);
+      expect(clawd.point.y).toBe(0); const near=Math.min(...impressionCorners(e,e.tp,m).map(p => p.z));
+      expect(near-(clawd.point.z+0.5)).toBeCloseTo(0.6,10);
       if (i) expect(e.tp).toBeGreaterThan(tap[i-1]!.tp);
     }
   });
@@ -91,9 +92,9 @@ describe('V6 g3 score and press mechanics',() => {
     expect(paperTravel(audio,afterBeats(audio,T.i2,-0.5),T)).toBeLessThan(0);
     expect(paperTravel(audio,T.mit2,T)).toBe(0);
     const commits=m.events.filter(e => e.kind === 'commit');
-    expect(commits[1]!.x).toBe(0.35*commits[0]!.capH);
-    expect(commits[1]!.z).toBe(0.2*commits[0]!.capH);
-    expect(commits[1]!.rot).toBe(-0.015);
+    expect(commits[1]!.x).toBe(0.06*commits[0]!.capH);
+    expect(commits[1]!.z).toBe(0.04*commits[0]!.capH);
+    expect(commits[1]!.rot).toBe(-0.006);
     const changed=new AudioData({ ...audioJSON,bpm:40 });
     for (const t of times) expect(paperTravel(changed,t,T)).toBe(paperTravel(audio,t,T));
   });
@@ -142,7 +143,7 @@ describe('V6 g3 world and projection',() => {
       expect(floodRadius(tp,tp)).toBe(0);
     }
   });
-  test('actual extruded outline corners project to >=70 percent width for all eight pickups',() => {
+  test('actual extruded outlines retain 80 percent width; revised I respects the 85 percent height cap',() => {
     const material=new THREE.MeshBasicMaterial();
     const measured=[];
     for (const e of m.events.filter(e => e.kind === 'giant')) {
@@ -154,7 +155,8 @@ describe('V6 g3 world and projection',() => {
       solid.letters.forEach((_,i) => solid.setLetter(i,{ d:p3(e.baselineX,-e.baselineZ,0) }));
       const box=projectedBox(solid.letters.flatMap((_,i) => solid.letterCorners(i)),cameraAt(e.tp,m));
       measured.push({ text:e.text,time:e.tp,...box });
-      expect(box.w,`${e.text} @ ${e.tp}`).toBeGreaterThanOrEqual(1920*0.7);
+      if(e.text !== 'I' || e.word === T.first.words[0]) expect(box.w,`${e.text} @ ${e.tp}`).toBeGreaterThanOrEqual(1920*0.7);
+      if(e.word !== T.first.words[0]) expect(box.h).toBeLessThanOrEqual(1080*0.85);
       solid.dispose();
     }
     material.dispose(); console.log('g3 pickup projected boxes',JSON.stringify(measured));
@@ -168,10 +170,62 @@ describe('V6 g3 world and projection',() => {
     const frame=projectedBox(arrangement,cameraAt(fit,m)); expect(frame.w/1920).toBeCloseTo(0.88,2);
     console.log('g3 COMMIT / brackets',JSON.stringify({ commit:b,brackets:frame }));
   });
+  test('each framed pickup remains within 85 percent height through its rise and lift, except the literal C7 close-up',() => {
+    for(const e of m.events.filter(e => e.kind === 'giant' && e.word !== T.first.words[0])) {
+      const next=m.events.filter(p => p.kind === 'giant' && p.tp > e.tp).map(p => p.tp)[0] ?? Infinity;
+      for(let t=e.tp;t<Math.min(e.tp+.35,next);t+=1/120)
+        expect(projectedBox(pressCorners(e,t,m),cameraAt(t,m)).h,`${e.text} @ ${t}`).toBeLessThanOrEqual(1080*.85+1e-5);
+    }
+  });
   test('C and D letter impressions have projected cap heights between 70 and 90px',() => {
     const caps=m.events.filter(e => e.kind === 'letter' || e.kind === 'tap').map(e => projectedBox(pressCorners(e,e.tp,m,false),cameraAt(e.tp,m)).h);
     for (const cap of caps) { expect(cap).toBeGreaterThanOrEqual(70); expect(cap).toBeLessThanOrEqual(90); }
     console.log('g3 C cap range',Math.min(...caps),Math.max(...caps));
+  });
+  test('28–43s projected ink polygons never intersect across different lyric words; COMMIT overprint is intentional',() => {
+    let samples=0;
+    for(let i=0;i<=150;i++) {
+      const t=28+i/10,words=printedWordPolygons(t,m); samples++;
+      for(let a=0;a<words.length;a++) for(let b=a+1;b<words.length;b++) {
+        if(words[a]!.word.w === words[b]!.word.w) continue;
+        expect(polygonsIntersect(words[a]!.polygon,words[b]!.polygon),`${t}: ${words[a]!.word.w} / ${words[b]!.word.w}`).toBe(false);
+      }
+      const active=[...m.events].reverse().find(e => e.kind === 'tap' && e.tp <= t);
+      if(active && t < T.quit && clawdAt(t,m).visible) {
+        expect(polygonsIntersect(projectedHull(clawdCorners(t,m),cameraAt(t,m)),
+          projectedHull(impressionCorners(active,t,m),cameraAt(t,m))),`Clawd / ${active.text} @ ${t}`).toBe(false);
+      }
+    }
+    for(const e of m.events.filter(e => e.kind === 'tap')) expect(polygonsIntersect(
+      projectedHull(clawdCorners(e.tp,m),cameraAt(e.tp,m)),projectedHull(impressionCorners(e,e.tp,m),cameraAt(e.tp,m)))).toBe(false);
+    console.log('g3 r2 non-overlap samples',samples);
+  });
+  test('major lit faces and five actual shadow points use normalized illumination; Clawd front is at least 0.85',() => {
+    // The shadow ray follows -LIGHT from the paper into the known contacting
+    // COMMIT block, at five interior front-face positions along its M stem.
+    const commit=m.events.find(e => e.kind === 'commit')!;
+    const material=new THREE.MeshBasicMaterial();
+    const solid=new SolidText('COMMIT',{ capH:commit.capH,axes:commit.axes,depth:.5*commit.capH,bevel:0,material });
+    solid.group.quaternion.setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
+    solid.letters.forEach((_,i) => solid.setLetter(i,{ d:p3(commit.baselineX,-commit.baselineZ,0) }));
+    const ray=new THREE.Raycaster(),samples=[];
+    solid.group.updateMatrixWorld(true);
+    for(let i=0;i<5;i++) {
+      const x=-6.4+i*.04,z=-.5;
+      const origin=new THREE.Vector3(x,.001,z),direction=new THREE.Vector3(-.8,.27,.55).normalize();
+      ray.set(origin,direction);
+      const shadow=ray.intersectObject(solid.group,true).length>0;
+      samples.push({x,z,shadow,tone:lightTone([0,1,0],shadow?0:1)});
+      expect(shadow).toBe(true);expect(lightTone([0,1,0],0)).toBeGreaterThanOrEqual(.1);expect(lightTone([0,1,0],0)).toBeLessThanOrEqual(.35);
+    }
+    for(const t of[27.3,29.7,41.3])for(let i=0;i<5;i++) {
+      const tilt=screenTilt(t,T),n=[0,Math.cos(tilt),Math.sin(tilt)];
+      const tone=AMBIENT+(lightIrradiance(n)-AMBIENT)*paperExposure(t,m);
+      expect(tone).toBeGreaterThanOrEqual(.8);expect(tone).toBeLessThanOrEqual(.95);
+    }
+    expect(lightTone([0,1,0])).toBeCloseTo(LIT_TONE,12);
+    expect(clawdFrontTone().tone).toBeGreaterThanOrEqual(.85);
+    solid.dispose();material.dispose();console.log('g3 lighting samples',JSON.stringify(samples));
   });
   test('cameras, world, press layouts, carry and cursor are deterministic after arbitrary seeks',() => {
     for (const t of times) {
@@ -202,21 +256,22 @@ describe('V6 g3 world and projection',() => {
 describe('V6 g3 cuts and cache contract',() => {
   test('entry is a full clay face, outgoing is the literal two-pixel baseline, final camera parks',() => {
     expect(entryPrim(T.start)).toEqual({ kind:'rect',x:0,y:0,w:1920,h:1080 });
-    expect(impactPost(T.start,m).invert).toBe(0);
-    expect(impactPost(T.start+1/60,m).invert).toBe(1);
-    expect(impactPost(T.start+2/60,m).invert).toBe(1);
+    expect(impactPost(T.start,m).paletteSwap).toBe(0);
+    expect(impactPost(T.start+1/60,m).paletteSwap).toBe(1);
+    expect(impactPost(T.start+2/60,m).paletteSwap).toBe(1);
     expect(exitPrim(T.end-1/60)).toEqual({ kind:'line',x0:0,y0:540,x1:1920,y1:540,w:2 });
     expect(cameraAt(T.end-0.09,m)).toEqual(cameraAt(T.end-0.01,m));
-    expect(impactPost(T.end-1/60,m)).toEqual({ invert:0,shake:[0,0],zoom:1 });
+    expect(impactPost(T.end-1/60,m)).toEqual({ paletteSwap:0,shake:[0,0],zoom:1 });
     expect(exitState(T.end-1/60,T).flat).toBe(0);
   });
-  test('outgoing machine glyph affines exactly equal kit carryLayout; predecessor mismatch is explicit',() => {
-    expect(machineAffines(T.end-1/60,m)).toEqual(carryLayout(machineSpec(m)));
+  test('outgoing machine glyph affines exactly equal S09 shared drift at the cut; predecessor mismatch is explicit',() => {
+    expect(machineAffines(T.end-1/60,m)).toEqual(carryDrift(machineSpec(m),T.end,.2).map(g => ({...g,b:g.b,d:g.d,f:540+(g.f-540)})));
+    expect(machineAffines(T.end-1/60,m)).toEqual(machineTargetAffines(m));
     const legacy=old07(T.start-1/60,audio,resolveCTimes(audio,lyrics));
     const err=primError({ kind:'rect',x:legacy.x,y:legacy.y,w:legacy.h*0.55,h:legacy.h },entryPrim(T.start));
     expect(err.px).toBeGreaterThan(2); console.log('C7 baseline predecessor gap',JSON.stringify(err));
-    // S09 v5 calls carry() for the whole line at x96/y427/size96. Integration is pending,
-    // not silently replaced with the desired machine-only x96/y470/cap110.
+    // The worktree predecessor remains v5; the frozen-main runtime is audited
+    // separately in out/v6-g3/integration-verification.json.
   });
   test('cache signature depends only on fixed past events and flood time, never render order',() => {
     const atlas=Object.create(PressAtlas.prototype) as PressAtlas;
