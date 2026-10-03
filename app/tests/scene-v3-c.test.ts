@@ -9,10 +9,6 @@ import { TYPE_LEVELS as S08 } from "../src/scenes/s08-commit";
 import { TYPE_LEVELS as S13 } from "../src/scenes/s13-gitfall";
 import {
   commitScore,
-  commitLayout,
-  commitBounds,
-  handoffIn as in08,
-  handoffOut as out08,
 } from "../src/scenes/parts/s08-layout";
 import { chorusScore } from "../src/scenes/parts/s13-score";
 import {
@@ -75,7 +71,7 @@ function framing(actual: Box, target: Box) {
 }
 // Original PNGs are 1672x941. Measured outermost coloured edges on the supplied storyboard,
 // excluding jump/speed trails and background grain; multiply x by 1920/1672 and y by 1080/941.
-// S08: COMMIT cropped envelope [0,264]-[1672,743], Clawd [873,127]-[1050,217].
+// S08 V6 replaces its v3 crop/cursor assertions in scene-v6-g3.test.ts.
 // S13: COMMIT [16,28]-[851,819], Clawd [960,208]-[1167,306], panels [508,480]-[1287,785].
 const measured = (x: number, y: number, w: number, h: number): Box => ({
   x: (x * 1920) / 1672,
@@ -84,10 +80,6 @@ const measured = (x: number, y: number, w: number, h: number): Box => ({
   h: (h * 1080) / 941,
 });
 const TARGETS = {
-  S08: {
-    giant: measured(0, 264, 1672, 479),
-    clawd: measured(873, 127, 177, 90),
-  },
   S13: {
     giant: measured(16, 28, 835, 791),
     clawd: measured(960, 208, 207, 98),
@@ -100,19 +92,6 @@ const frameAt = (shots: typeof A.shots, id: string) => {
 };
 
 describe("group C v3 framing", () => {
-  test("S08-2 ink and sprite envelopes reproduce measured reference bounds", () => {
-    const t = frameAt(A.shots, "S08-2"),
-      b = commitBounds(audio, lyrics, t, A);
-    const errors = {
-      giant: framing(b.giant, TARGETS.S08.giant),
-      clawd: framing(b.clawd, TARGETS.S08.clawd),
-    };
-    console.log(
-      "S08 bounds",
-      JSON.stringify({ t, actual: b, target: TARGETS.S08, errors }),
-    );
-    expect((b.giant.w * b.giant.h) / (1920 * 1080)).toBeGreaterThanOrEqual(0.3);
-  });
   test("S13-7 perspective ink, sprite and collision envelopes reproduce measured reference bounds", () => {
     const t = frameAt(B.shots, "S13-7"),
       b = gitfallBounds(audio, lyrics, t, B);
@@ -140,20 +119,6 @@ describe("group C v3 framing", () => {
   });
 });
 describe("group C handoffs", () => {
-  test("S08 receives the existing centred 72px cursor at its first frame", () => {
-    expect(in08(A.start, audio, A)).toEqual({ x: 940.2, y: 576, h: 72 });
-  });
-  test("S08 last exported frame is the S09 baseline and transition is restricted to the last beat", () => {
-    expect(out08(A.end - 1 / 60, audio, A)).toEqual(HANDOFF.base08);
-    expect(out08(afterBeats(audio, A.end, -1), audio, A)).toEqual({
-      x0: 1138,
-      x1: 1650,
-      y: 940,
-    });
-    expect(out08(A.start, audio, A)).toEqual(
-      out08(afterBeats(audio, A.end, -1), audio, A),
-    );
-  });
   test("S13 starts at clay 11 and reaches its half field in the first beat", () => {
     expect(in13(B.start, audio, B)).toEqual(HANDOFF.eleven12);
     expect(in13(afterBeats(audio, B.start, 1), audio, B)).toEqual({
@@ -195,29 +160,6 @@ describe("group C voice and seeking", () => {
       ).toBe(true);
   });
   test("layout, bounds and handoffs are seek-independent and use the variable beat grid", () => {
-    for (const t of [
-      frameAt(A.shots, "S08-2"),
-      A.start,
-      A.hit2,
-      A.end - 1 / 60,
-    ]) {
-      const s = commitLayout(audio, lyrics, t, A, voice),
-        b = commitBounds(audio, lyrics, t, A);
-      commitLayout(audio, lyrics, A.end, A, voice);
-      commitLayout(audio, lyrics, A.start, A, voice);
-      expect(commitLayout(audio, lyrics, t, A, voice)).toEqual(s);
-      expect(commitBounds(audio, lyrics, t, A)).toEqual(b);
-      expect(
-        commitLayout(
-          new AudioData({ ...audioJSON, bpm: 40 }),
-          lyrics,
-          t,
-          A,
-          voice,
-        ),
-      ).toEqual(s);
-      expect(out08(t, audio, A)).toEqual(out08(t, audio, A));
-    }
     for (const t of [
       frameAt(B.shots, "S13-7"),
       B.start,

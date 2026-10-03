@@ -3,6 +3,11 @@ import { hash, lerp } from "../../engine/util";
 import { css, type ThemeKey } from "../../theme";
 import { varRun, type VarRun, type Axes } from "../../kit/vartype";
 import * as Clawd from "../../kit/clawd";
+import * as THREE from 'three';
+import { F, font } from '../../engine/type';
+import { fillRun } from '../../kit/vartype';
+import { ATLAS, PAGE, floodEdge, floodRadius, printGlyphCount, type PrintWorld } from './s08-world';
+import type { PressEvent } from './s08-layout';
 
 export type Point = [number, number];
 export type Quad = [Point, Point, Point, Point]; // TL, TR, BR, BL
@@ -202,4 +207,86 @@ export function drawSprite(
   c.rotate(s.angle);
   Clawd.draw(c, 0, 0, s.pose, { px: s.px, body: css(body), eye: css(eye) });
   c.restore();
+}
+
+/** Data canvases deliberately ignore output SCALE. No history is painted incrementally:
+ * an event-set cache skips identical uploads; any changed set rebuilds both maps from scratch. */
+export class PressAtlas {
+  readonly PRINT = document.createElement('canvas');
+  readonly DEBOSS = document.createElement('canvas');
+  readonly printTexture: THREE.CanvasTexture;
+  readonly depthTexture: THREE.CanvasTexture;
+  private signature = '';
+  private runs = new Map<string,ReturnType<typeof varRun>>();
+  constructor(private readonly model: PrintWorld) {
+    for (const canvas of [this.PRINT,this.DEBOSS]) {
+      canvas.width=ATLAS.w; canvas.height=ATLAS.h;
+      // Fix Canvas rasterization to the CPU path: otherwise Chrome changes its
+      // antialiasing backend after readback, making identical event sets differ.
+      canvas.getContext('2d',{ willReadFrequently:true });
+    }
+    this.printTexture = new THREE.CanvasTexture(this.PRINT);
+    this.printTexture.colorSpace=THREE.SRGBColorSpace;
+    this.depthTexture = new THREE.CanvasTexture(this.DEBOSS);
+    this.depthTexture.colorSpace=THREE.NoColorSpace;
+    for (const tex of [this.printTexture,this.depthTexture]) {
+      tex.generateMipmaps=false; tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter; tex.anisotropy=8;
+    }
+    for (const e of model.events) this.runs.set(e.id,varRun(e.text,100,e.axes));
+  }
+  key(t: number): string {
+    const T=this.model.T, flood=t >= T.mit2 ? T.mit2 : t >= T.mit1 ? T.mit1 : Infinity;
+    const radius=Number.isFinite(flood) ? floodRadius(t,flood) : 0;
+    const on=T.machineLine.words[3]!.start;
+    return `${this.model.events.map(e => printGlyphCount(e,t)).join(',')}:${radius}:${t >= on}`;
+  }
+  update(t: number): boolean {
+    const key=this.key(t);
+    if (key === this.signature) return false;
+    this.signature=key;
+    const c=this.PRINT.getContext('2d')!, d=this.DEBOSS.getContext('2d')!;
+    for (const ctx of [c,d]) {
+      ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle=ctx === c ? css('paper') : 'rgb(0,0,0)'; ctx.fillRect(0,0,ATLAS.w,ATLAS.h);
+      ctx.setTransform(ATLAS.w/PAGE.w,0,0,ATLAS.h/PAGE.h,ATLAS.w/2,ATLAS.h/2);
+    }
+    const T=this.model.T, flood=t >= T.mit2 ? T.mit2 : t >= T.mit1 ? T.mit1 : Infinity;
+    if (Number.isFinite(flood)) {
+      const R=floodRadius(t,flood); c.beginPath();
+      for (let i=0;i<=256;i++) {
+        const a=i/256*Math.PI*2,r=R*floodEdge(a),x=r*Math.cos(a),z=r*Math.sin(a);
+        if (i) c.lineTo(x,z); else c.moveTo(x,z);
+      }
+      c.closePath(); c.fillStyle=css('clay'); c.fill();
+    }
+    for (const e of this.model.events) {
+      const count=printGlyphCount(e,t); if (!count) continue;
+      // The clay flood covers earlier ink; the recess data and both COMMIT impressions persist.
+      if (e.kind === 'commit' || !Number.isFinite(flood) || e.tp > flood) this.stamp(c,e,count,css(e.ink));
+      d.globalCompositeOperation='lighter'; this.stamp(d,e,count,'rgb(32,32,32)');
+    }
+    if (t >= T.machineLine.words[3]!.start) { this.calendar(c,false); this.calendar(d,true); }
+    this.printTexture.needsUpdate=true; this.depthTexture.needsUpdate=true;
+    return true;
+  }
+  private stamp(c: CanvasRenderingContext2D, e: PressEvent, count: number, color: string) {
+    const run=this.runs.get(e.id)!, s=e.capH/run.capH;
+    c.save(); c.translate(e.x,e.z); c.rotate(-e.rot); c.scale(s,s); c.fillStyle=color;
+    fillRun(c,{ ...run,glyphs:run.glyphs.slice(0,count) },e.baselineX/s,e.baselineZ/s);
+    c.restore();
+  }
+  private calendar(c: CanvasRenderingContext2D, data: boolean) {
+    c.save(); c.translate(-20,0); c.fillStyle=data ? 'rgb(32,32,32)' : css('ink');
+    c.strokeStyle=c.fillStyle; c.lineWidth=0.06; c.font=font(F.mono(500),0.55);
+    for (let day=1;day<=35;day++) {
+      const x=((day-1)%7)*1.5,z=Math.floor((day-1)/7)*1.15;
+      c.strokeRect(x,z,1.35,1); if (day <= 32) c.fillText(String(day),x+0.12,z+0.75);
+      if (day === 32) {
+        c.beginPath(); c.moveTo(x+0.08,z+0.1); c.lineTo(x+1.27,z+0.9);
+        c.moveTo(x+1.27,z+0.1); c.lineTo(x+0.08,z+0.9); c.stroke();
+      }
+    }
+    c.restore();
+  }
+  dispose() { this.printTexture.dispose(); this.depthTexture.dispose(); }
 }

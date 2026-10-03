@@ -8,6 +8,23 @@ export type RegisteredCut = Cut & { cut: number; exitPrim: (t: number) => Prim; 
   /** A moving hand-off (the motion continues through the cut): both sides are compared at the same instants. */
   motion?: boolean };
 export const CUTS: RegisteredCut[] = [];
+// g3 owns C7's incoming face and C8's outgoing line. S07 is still v5 on this
+// worktree's main baseline, so C7's outgoing side is explicitly the V6 contract,
+// not a claim that the unmodified predecessor already supplies it.
+import { commitScore } from '../src/scenes/parts/s08-layout';
+import { entryPrim as entry08, exitPrim as exit08 } from '../src/scenes/parts/s08-world';
+import { handoffIn as entry09 } from '../src/scenes/parts/s09-scope';
+import { resolveX9Times } from '../src/scenes/s09-z-shared';
+import { Lyrics } from '../src/engine/lyrics';
+import audioJSON from '../../data/audio.json';
+import lyricsJSON from '../../data/lyrics.json';
+const g3Audio = new AudioData(audioJSON), g3Lyrics = new Lyrics(lyricsJSON);
+const g3Score = commitScore(g3Audio,g3Lyrics), g3Next = resolveX9Times({ audio:g3Audio,lyrics:g3Lyrics });
+CUTS.push({ id:'C7 / V6 contract; S07 implementation pending',out:'S07 contract',in:'S08',cut:g3Score.start,
+  exitPrim:() => ({ kind:'rect',x:0,y:0,w:1920,h:1080 }),entryPrim:entry08 });
+CUTS.push({ id:'C8',out:'S08',in:'S09',cut:g3Score.end,exitPrim:exit08,entryPrim:t => {
+  const p=entry09(t,g3Audio,g3Next); return { kind:'line',x0:p.x0,y0:p.y,x1:p.x1,y1:p.y,w:2 };
+} });
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
     const ta = cut.motion ? cut.cut : cut.cut-(1-i/4)/60, tb = cut.motion ? cut.cut : cut.cut+i/4/60;
