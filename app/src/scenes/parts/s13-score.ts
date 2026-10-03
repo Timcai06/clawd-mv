@@ -13,7 +13,7 @@ export interface SlabEvent {
   at: number; kind: 'commit' | 'fix'; duration: number; height: number;
   hash: string; message: string; clay: boolean; words: Word[];
 }
-export interface Impact { at: number; amplitude: number; invertFrames: number; zoom: number }
+export interface Impact { at: number; amplitude: number; swapFrames: number; zoom: number }
 export interface ChorusScore {
   shots: ResolvedShot[]; lines: Line[];
   start: number; hit1: number; fixes: number; tests: number;
@@ -42,9 +42,9 @@ export function chorusScore(audio: AudioData, lyrics: Lyrics): ChorusScore {
       height: 2.82, hash: commitId(i + 40), message: 'COMMIT', clay: false, words: [commit2] })),
   ].sort((a, b) => a.at - b.at);
   const impacts: Impact[] = [
-    ...[lines[0]!, lines[3]!].flatMap(l => l.words.slice(0, 4).map(w => ({ at: w.start, amplitude: 13, invertFrames: 2, zoom: 0 }))),
+    ...[lines[0]!, lines[3]!].flatMap(l => l.words.slice(0, 4).map(w => ({ at: w.start, amplitude: 13, swapFrames: 2, zoom: 0 }))),
     ...slabs.map(s => ({ at: s.at, amplitude: s.at === hit2 ? 18 : 13,
-      invertFrames: s.at === hit2 ? 3 : 2, zoom: s.at === hit1 || s.at === hit2 ? 0.05 : 0 })),
+      swapFrames: s.at === hit2 ? 3 : 2, zoom: s.at === hit1 || s.at === hit2 ? 0.05 : 0 })),
   ].sort((a, b) => a.at - b.at);
   return { shots, lines, start: at(0), hit1, fixes: at(2), tests: at(3), pickup2: at(4), hit2,
     split: at(6), collision: at(7), end: shots.at(-1)!.end, commit1, commit2,
@@ -52,15 +52,15 @@ export function chorusScore(audio: AudioData, lyrics: Lyrics): ChorusScore {
     slabs, impacts, echoes: [0.5, 1, 1.5].map(b => afterBeats(audio, hit1, b)) };
 }
 export function impactAt(t: number, T: ChorusScore) {
-  let amplitude = 0, zoom = 0, invert = 0;
+  let amplitude = 0, zoom = 0, swap = false;
   for (const hit of T.impacts) if (t >= hit.at) {
     const decay = Math.exp(-(t - hit.at) / 0.1);
     amplitude = Math.max(amplitude, hit.amplitude * decay); zoom = Math.max(zoom, hit.zoom * decay);
-    if (frameIdx(t) - frameIdx(hit.at) < hit.invertFrames) invert = 1;
+    if (frameIdx(t) - frameIdx(hit.at) < hit.swapFrames) swap = true;
   }
-  if (t >= T.end - 0.1) return { amplitude: 0, zoom: 0, invert: 0, shake: [0, 0] as [number, number] };
+  if (t >= T.end - 0.1) return { amplitude: 0, zoom: 0, swap: false, shake: [0, 0] as [number, number] };
   const angle = hash(frameIdx(t), 131) * Math.PI * 2;
-  return { amplitude, zoom, invert, shake: [Math.cos(angle) * amplitude, Math.sin(angle) * amplitude] as [number, number] };
+  return { amplitude, zoom, swap, shake: [Math.cos(angle) * amplitude, Math.sin(angle) * amplitude] as [number, number] };
 }
 export function collisionAt(t: number, T: ChorusScore) {
   return ease.inCubic(span(t, T.machine.start, T.machine.start + 0.2));

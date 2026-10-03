@@ -13,19 +13,33 @@ import * as Clawd from '../kit/clawd';
 import { Voice, heatColor } from '../kit/lyric-moves';
 import { drawPathText, letterTimes, layoutPath } from '../kit/pathtext';
 import { Rig, planeAffine, p3 } from '../kit/rig';
-import { varRun } from '../kit/vartype';
 import { exitEnvelope } from '../kit/handoff';
 import { COMMITS } from '../kit/content';
 import { cursorScreenAt } from './s14-shaft';
 import { stackScore } from './parts/s14-stack';
 import { chorusScore, impactAt, implosionAt, type ChorusScore } from './parts/s13-score';
-import { lyricPlans, prefixPose, planePose, pathFor, cursorAt as cursorPosition, type PrefixPlan, type PlanePlan } from './parts/s13-layout';
+import { lyricPlans, prefixPose, planePose, pathFor, pathCovered, cursorAt as cursorPosition, type PrefixPlan, type PlanePlan } from './parts/s13-layout';
 import { SLAB, BASE_SLABS, TOWER_Z, CLAWD_VOX, LIGHT, WALL_SIZE, WALLS, S13_GLSL,
-  WORD_SLOTS, cameraAt, wallEdge, wallRecoil, slabPose, onSlab, sideWallAt, clawdAt, fitsJump, implosionPoint, collapsePoint, frontLight } from './parts/s13-world';
+  WORD_SLOTS, cameraAt, wallEdge, wallRecoil, slabPose, onSlab, sideWallAt, clawdAt, fitsJump, implosionPoint, collapsePoint, frontLight,
+  KEY_INTENSITY, BOUNCE_DIRECTION, BOUNCE_INTENSITY, CLAWD_FILL, clawdYaw, commitScale, COMMIT_INSET } from './parts/s13-world';
 
 export const TYPE_LEVELS = { giant: 240, lyric: 72, label: 20 };
 type PrintedSolid = { text: SolidText; mats: THREE.MeshLambertMaterial[]; capH: number; depth: number; word: ChorusScore['commit1']; heavy: boolean };
-const inkMaterial = () => engraveMaterial({ ink: lin('paper'), paper: lin('ink'), lightLines: true, pitch: 5 });
+export const INK_ENGRAVE = { ink: lin('paper'), paper: lin('ink'), lightLines: true, maxCov: 0.3, pitch: 5, gamma: 18 };
+const inkMaterial = () => {
+  const material = engraveMaterial(INK_ENGRAVE), compile = material.onBeforeCompile;
+  material.onBeforeCompile = (shader,r) => {
+    compile.call(material,shader,r);
+    shader.fragmentShader = shader.fragmentShader.replace('float engraveT = engraveSat(engraveL);', 'float engraveT = min(0.92, engraveSat(engraveL));');
+    // A single thin family, with AA coverage scaled by its 0.3 ceiling. The
+    // shared two-family shadow hatch would otherwise fill the ink solid's gaps.
+    shader.fragmentShader = shader.fragmentShader.replace(
+      'float engraveCov = min(engraveMaxCov, engraveTone(engraveU,engraveLL ? 1.0-engraveT : engraveT));',
+      'float engraveCov = engraveMaxCov * engraveHatch(engraveU,max(engraveMinCov,pow(engraveT,engraveGamma)*0.95));');
+  };
+  material.customProgramCacheKey = () => 's13-ink-r2';
+  return material;
+};
 function makeSolid(word: ChorusScore['commit1'], capH: number, depth: number, voice: Voice): PrintedSolid {
   const end = voice.form(word, word.end).axes, heavy = word.w.toUpperCase() === 'COMMIT';
   const material = inkMaterial(), text = new SolidText(word.w.toUpperCase(), { capH, depth, axes: heavy ? { ...end, wght: 900 } : end,
@@ -33,26 +47,26 @@ function makeSolid(word: ChorusScore['commit1'], capH: number, depth: number, vo
   const mats = text.letters.map(l => { const m = inkMaterial(); l.mesh.material = m; return m; }); material.dispose();
   return { text, mats, capH, depth, word, heavy };
 }
-function updateSolid(s: PrintedSolid, t: number, voice: Voice) {
+function updateSolid(s: PrintedSolid, t: number, voice: Voice, swap: boolean) {
   const form = voice.form(s.word, t).axes, axes = s.heavy ? { ...form, wght: 900 } : form;
   const times = letterTimes({ ...s.word, w: s.word.w.toUpperCase() });
   for (const l of s.text.letters) {
     l.mesh.geometry = solidLetterGeometry(l.ch, axes, s.capH, s.depth, 0.035, 3);
     s.text.setLetter(l.i, { visible: t >= times[l.i]!.t0 });
-    const color = new THREE.Color(heatColor('ink', 'clay', t - times[l.i]!.t0));
-    setEngrave(s.mats[l.i]!, { paper: [color.r, color.g, color.b] });
+    const hotLine=new THREE.Color(heatColor('paper','ink',t-times[l.i]!.t0));
+    setEngrave(s.mats[l.i]!, { paper: lin(swap ? 'paper' : 'ink'), ink: swap ? lin('ink') : [hotLine.r,hotLine.g,hotLine.b] });
   }
 }
 
 class World {
+  lastTime = 0;
   users = 0; T: ChorusScore; voice: Voice;
   rig = new Rig(); scene = new THREE.Scene(); root = new THREE.Group(); layer = new Layer2D();
   ink = inkMaterial(); clay = engraveMaterial({ ink: lin('ink'), paper: lin('clay'), minCov: 0.02 });
   localMat = engraveMaterial({ ink: lin('ink'), paper: lin('paper') });
-  pass = engraveMaterial({ ink: lin('ink'), paper: lin('pass') });
-  fail = engraveMaterial({ ink: lin('paper'), paper: lin('fail'), lightLines: true });
-  clawdMat = engraveMaterial({ ink: lin('ink'), paper: lin('clay'), paperMap: true });
-  wallMat = engraveMaterial({ ink: lin('clay').map((v, i) => v * 0.72 + lin('ink')[i]! * 0.28) as [number, number, number],
+  pass = new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(...lin('pass')) });
+  fail = new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(...lin('fail')) });
+  wallMat = engraveMaterial({ ink: lin('ink'),
     paper: lin('clay'), gamma: 1.25, minCov: 0.02, faceAngles: false });
   wall = new THREE.Mesh(new THREE.PlaneGeometry(WALL_SIZE.w, WALL_SIZE.h, 192, 128), this.wallMat);
   wallU = { edgeA: { value: 40 }, edgeB: { value: 0 }, recoil: { value: 0 },
@@ -65,8 +79,8 @@ class World {
   plans: ReturnType<typeof lyricPlans>;
   clawd = new VoxelClawd(); local: THREE.Mesh; ci: THREE.Mesh;
   marks: { mesh: THREE.Mesh; local: boolean }[] = [];
-  key = new THREE.DirectionalLight(0xffffff, 1.25);
-  bounce = new THREE.DirectionalLight(new THREE.Color().setRGB(...lin('clay'), THREE.LinearSRGBColorSpace), 0.25);
+  key = new THREE.DirectionalLight(0xffffff, KEY_INTENSITY);
+  bounce = new THREE.DirectionalLight(new THREE.Color().setRGB(...lin('clay'), THREE.LinearSRGBColorSpace), BOUNCE_INTENSITY);
   P14: ReturnType<typeof cursorScreenAt>;
   constructor(ctx: SceneCtx) {
     this.T = chorusScore(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio);
@@ -78,11 +92,12 @@ class World {
     this.key.shadow.mapSize.set(2048, 2048);
     Object.assign(this.key.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 0.1, far: 100 });
     this.key.shadow.bias = -0.0002; this.key.shadow.normalBias = 0.008;
-    this.bounce.position.set(-40, 6, 0); this.bounce.target.position.set(4, 2, 3);
+    this.bounce.position.set(BOUNCE_DIRECTION.x*40, BOUNCE_DIRECTION.y*40, BOUNCE_DIRECTION.z*40);
     this.wall.receiveShadow = true; this.wall.frustumCulled = false;
     const original = this.wallMat.onBeforeCompile;
     this.wallMat.onBeforeCompile = (shader, r) => {
       original.call(this.wallMat, shader, r); Object.assign(shader.uniforms, this.wallU);
+      shader.fragmentShader = shader.fragmentShader.replace('float engraveT = engraveSat(engraveL);', 'float engraveT = max(0.18, engraveSat(engraveL));');
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\n' + S13_GLSL + `
 uniform float edgeA, edgeB, recoil; uniform vec3 rippleHits[4];
 vec3 wallPoint(vec3 p) {
@@ -105,7 +120,7 @@ vec2 wg = wallGradient(wp.xy);
 vec3 objectNormal = normalize(vec3(-wg,1.0));`)
         .replace('#include <begin_vertex>', 'vec3 transformed=wallPoint(position); transformed.z=wallDepth(transformed.xy);');
     };
-    this.wallMat.customProgramCacheKey = () => 's13-wall-v6-1'; this.root.add(this.wall);
+    this.wallMat.customProgramCacheKey = () => 's13-wall-v6-r2'; this.root.add(this.wall);
     const slabGeo = new THREE.BoxGeometry(SLAB.w, SLAB.h, SLAB.d);
     for (let i = 0; i < BASE_SLABS + this.T.slabs.length; i++) {
       const s = this.T.slabs[i - BASE_SLABS], m = new THREE.Mesh(slabGeo, s?.clay ? this.clay : this.ink);
@@ -126,10 +141,20 @@ vec3 objectNormal = normalize(vec3(-wg,1.0));`)
       this.echoes.push({ at, solid }); this.root.add(solid.text.group);
     }
     for (const plan of this.plans.planes) {
-      const plane = new WordPlane(plan.word.w.toUpperCase(), { capH: plan.capH, axes: plan.axes, engrave: true, outline: 0, ay: 0.5 });
+      const plane = new WordPlane(plan.word.w.toUpperCase(), { capH: plan.capH, axes: plan.axes, engrave: plan.carrier === 'fix', outline: 0, ay: 0.5 });
       this.planes.push({ plan, plane }); this.root.add(plane.mesh);
     }
-    this.clawd.mesh.scale.setScalar(CLAWD_VOX); this.clawd.mesh.material = this.clawdMat;
+    this.clawd.mesh.scale.setScalar(CLAWD_VOX);
+    this.clawd.mat.vertexShader = this.clawd.mat.vertexShader.replace('varying vec3 vN;', 'varying float vFront; varying vec3 vN;')
+      .replace('vN = normalize', 'vFront = normal.z; vN = normalize');
+    this.clawd.mat.fragmentShader = this.clawd.mat.fragmentShader.replace('varying vec3 vN;', 'varying float vFront; varying vec3 vN;');
+    // Retain clawd3d's clay instance colours and eye pits. Main, clay bounce and a
+    // front-only fill all measure irradiance; no engraving or emissive lift.
+    this.clawd.mat.fragmentShader = this.clawd.mat.fragmentShader.replace(
+      'vec3 c = vC * (uAmb + (1.0 - uAmb) * dif) * face;', `
+      vec3 reflected = vec3(${KEY_INTENSITY.toFixed(12)}) * max(dot(n, normalize(vec3(${LIGHT.x},${LIGHT.y},${LIGHT.z}))),0.0)
+        + vec3(${lin('clay').join(',')}) * ${BOUNCE_INTENSITY} * max(dot(n, normalize(vec3(${BOUNCE_DIRECTION.x},${BOUNCE_DIRECTION.y},${BOUNCE_DIRECTION.z}))),0.0);
+      vec3 c = vC * clamp(reflected / 3.141592653589793 + vec3(${CLAWD_FILL}) * max(n.z,0.0),0.0,1.0);`);
     this.clawd.mesh.castShadow = this.clawd.mesh.receiveShadow = true; this.root.add(this.clawd.mesh);
     const sideGeo = new THREE.BoxGeometry(WALLS.w, WALLS.h, WALLS.d);
     this.local = new THREE.Mesh(sideGeo, this.localMat); this.ci = new THREE.Mesh(sideGeo, this.ink);
@@ -143,8 +168,8 @@ vec3 objectNormal = normalize(vec3(-wg,1.0));`)
         (local ? this.local : this.ci).add(mesh); this.marks.push({ mesh, local });
       }
     };
-    addStroke(true, [[9, 5.5], [10.5, 4.5], [13.3, 7.3]], 0.6);
-    addStroke(false, [[-13.5, 4.5], [-10.5, 7.3]], 0.6); addStroke(false, [[-13.5, 7.3], [-10.5, 4.5]], 0.6);
+    addStroke(true, [[9.4, 4.5], [10.9, 3.5], [13.7, 6.3]], 0.6);
+    addStroke(false, [[-13.5, 3.5], [-10.5, 6.3]], 0.6); addStroke(false, [[-13.5, 6.3], [-10.5, 3.5]], 0.6);
   }
   dispose() {
     this.layer.texture.dispose(); this.wall.geometry.dispose(); this.slabs[0]!.geometry.dispose(); this.local.geometry.dispose();
@@ -153,7 +178,7 @@ vec3 objectNormal = normalize(vec3(-wg,1.0));`)
       s.text.dispose(); s.mats.forEach(m => m.dispose());
     }
     this.planes.forEach(p => p.plane.dispose()); this.clawd.dispose(); this.key.dispose(); this.bounce.dispose();
-    [this.ink, this.clay, this.localMat, this.pass, this.fail, this.clawdMat, this.wallMat].forEach(m => m.dispose());
+    [this.ink, this.clay, this.localMat, this.pass, this.fail, this.wallMat].forEach(m => m.dispose());
   }
 }
 let world: World | undefined;
@@ -163,6 +188,10 @@ export default class S13Gitfall extends Scene {
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, T = w.T, t = f.t, audio = this.ctx.audio, r = this.ctx.renderer;
+    w.lastTime = t;
+    const hit = impactAt(t, T);
+    setEngrave(w.ink, { paper: lin(hit.swap ? 'paper' : 'ink'), ink: lin(hit.swap ? 'ink' : 'paper') });
+    for (const m of [w.wallMat, w.clay]) setEngrave(m, { paper: lin(hit.swap ? 'ink' : 'clay'), ink: lin(hit.swap ? 'clay' : 'ink') });
     w.rig.set(cameraAt(audio, t, T));
     const k = 1 - implosionAt(t, T), anchor = implosionPoint(w.rig, w.P14);
     w.root.scale.setScalar(k); w.root.position.set(anchor.x * (1 - k), anchor.y * (1 - k), anchor.z * (1 - k));
@@ -179,15 +208,15 @@ export default class S13Gitfall extends Scene {
       const pose = prefixPose(audio, t, plan, T, w.rig), g = solid.text.group;
       g.visible = pose.visible; g.position.set(pose.at.x, pose.at.y, pose.at.z); g.rotation.set(0, pose.yaw, pose.spin);
       g.scale.x = pose.scaleX;
-      if (pose.visible) updateSolid(solid, t, w.voice);
+      if (pose.visible) updateSolid(solid, t, w.voice, hit.swap);
     }
     for (const { event, solid } of w.commits) {
       const s = T.slabs[event]!, pose = slabPose(audio, t, BASE_SLABS + event, T, w.rig), g = solid.text.group;
-      g.visible = pose.visible; g.position.set(pose.center.x, pose.center.y, pose.center.z); g.rotation.y = pose.yaw; g.scale.x = pose.scaleX;
+      g.visible = pose.visible; g.position.set(pose.center.x, pose.center.y, pose.center.z); g.rotation.y = pose.yaw; g.scale.x = pose.scaleX * commitScale(t,event,solid.text.width,T);
       // Letters occupy the thicker lamination above its 0.42-unit supporting plank.
-      updateSolid(solid, t, w.voice);
+      updateSolid(solid, t, w.voice, hit.swap);
       for (const l of solid.text.letters) {
-        solid.text.setLetter(l.i, { d: p3(-solid.text.width / 2, -s.height / 2 + SLAB.h, 0.3), visible: t >= letterTimes({ ...solid.word, w: 'COMMIT' })[l.i]!.t0 });
+        solid.text.setLetter(l.i, { d: p3(-solid.text.width / 2, -s.height / 2 + SLAB.h - COMMIT_INSET, 0.2), visible: t >= letterTimes({ ...solid.word, w: 'COMMIT' })[l.i]!.t0 });
       }
     }
     for (const { at, solid } of w.echoes) {
@@ -195,8 +224,9 @@ export default class S13Gitfall extends Scene {
       g.visible = active;
       if (active) {
         const base = slabPose(audio, t, BASE_SLABS, T, w.rig);
-        g.position.set(base.center.x - solid.text.width / 2, base.center.y - base.height / 2 + SLAB.h + 6 * (1 - ease.inQuad(Math.min(1, Math.max(0, (t - at + 0.1) / 0.1)))), 3.3);
-        updateSolid(solid, t, w.voice);
+        g.scale.x = commitScale(t,0,solid.text.width,T);
+        g.position.set(base.center.x - solid.text.width * g.scale.x / 2, base.center.y - base.height / 2 + SLAB.h + 6 * (1 - ease.inQuad(Math.min(1, Math.max(0, (t - at + 0.1) / 0.1)))), 3.2);
+        updateSolid(solid, t, w.voice, hit.swap);
       }
     }
     for (const { plan, plane } of w.planes) {
@@ -207,12 +237,13 @@ export default class S13Gitfall extends Scene {
       const cold = plan.carrier === 'local' || T.slabs[plan.event]?.clay ? lin('ink') : lin('paper');
       plane.set({ prog: plane.karaoke({ ...plan.word, w: plan.word.w.toUpperCase() }, t), aDim: 0,
         cDim: cold, cSung: cold, cDone: cold, done: Math.min(1, Math.max(0, (t - plan.word.end) / 0.15)),
-        heat: Math.max(0, 1 - (t - plan.word.start) / 0.18), tone: frontLight(pose.yaw), opacity: 1 });
+        heat: 0, tone: frontLight(pose.yaw), opacity: 1 });
     }
     const cp = clawdAt(audio, t, T, w.rig);
     w.clawd.update(Clawd.pose(t >= T.machine.start ? 'A6' : t >= T.tests && t < T.pickup2 ? 'A8' : 'A4',
       { beat: f.beat, beat0: audio.beatAt(T.start), p: 0 }));
     w.clawd.mesh.position.set(cp.x, cp.y, cp.z);
+    w.clawd.mesh.rotation.y = clawdYaw(audio,t,T);
     [w.local, w.ci].forEach((mesh, i) => {
       const p = sideWallAt(t, i === 0, T); mesh.position.set(p.x, p.y, p.z);
     });
@@ -238,16 +269,16 @@ export default class S13Gitfall extends Scene {
         c.fillText(record.hash + (e?.kind === 'fix' ? '' : '  ' + record.message), 0, 0); c.restore();
       });
       for (const path of w.plans.paths) {
-        if (t < path.words[0]!.start) continue;
+        if (t < path.words[0]!.start || pathCovered(t,path,T)) continue;
         const p = pathFor(audio, t, path, T, w.rig, anchor);
         const layout = k === 1 ? path.layout : layoutPath(path.words, { capH: path.layout.capH * k,
           axes: word => w.voice.form(word, word.end).axes, upper: true, space: path.kind === 'tests' ? 0.24 : undefined });
         drawPathText(c, w.rig, p, layout, t, { mode: 'stand', base: path.kind === 'tests' ? 'ink' : 'paper', on: path.kind === 'tests' ? 'clay' : 'ink',
-          axes: (g, tb) => w.voice.form(g.word, tb).axes, pop: 0.1, minPx: 0, maxPx: 10000,
+          axes: (g, tb) => w.voice.form(g.word, tb).axes, pop: 0.1, minPx: 0, maxPx: 110,
           offset: (g, tb) => ({ d: p3(0, g.word.gi === T.fits.gi ? fitsJump(audio, tb, g.i, T) * k : 0, 0) }) });
       }
       // Exactly two machine annotations, attached to their physical walls.
-      if (t >= T.split) [w.local, w.ci].forEach((wall, i) => {
+      if (t >= T.lines[4]!.words[0]!.start - 0.3) [w.local, w.ci].forEach((wall, i) => {
         const p = collapsePoint(p3(wall.position.x + (i ? -14.2 : 9), wall.position.y + 4.2, 5.3), t, T, anchor);
         const m = planeAffine(w.rig, p, p3(1, 0, 0), p3(0, -1, 0), 0.14 / 70 * k);
         if (m) { c.save(); c.setTransform(m.a, m.b, m.c, m.d, m.e, m.f); c.font = font(F.mono(600), 100);
@@ -257,10 +288,110 @@ export default class S13Gitfall extends Scene {
     const cursor = cursorPosition(audio, t, T, w.voice, w.plans, w.P14);
     c.fillStyle = css(t >= T.end - 0.09 ? 'hot' : 'clay'); c.beginPath(); c.arc(cursor.x, cursor.y, cursor.r, 0, Math.PI * 2); c.fill();
     this.ctx.comp.draw(r, w.layer.upload(), out);
-    const hit = impactAt(t, T), envelope = exitEnvelope(t, T.end, 2);
+    const envelope = exitEnvelope(t, T.end, 2);
     return { ...POSTER_POST, hud: 0, frame: 0, grain: 0.02, bloom: 0, shake: hit.shake, zoom: 1 + hit.zoom,
-      invert: hit.invert, exposure: t >= T.collision + 0.2 ? envelope.gain : 1 };
+      invert: 0, exposure: t >= T.collision + 0.2 ? envelope.gain : 1 };
   }
 }
 export { entryPrim, exitPrim } from './parts/s13-world';
 export { cursorAt } from './parts/s13-layout';
+
+/** Technical ID pass of the last evaluated frame, for RGBA statistics, not a screenshot.
+ * All other geometry writes black and retains depth, so masks exclude occluded surfaces.
+ * The caller applies the same post shake/zoom to this raw camera-space mask. */
+export function pixelMask(renderer: THREE.WebGLRenderer, kind: 'commit' | 'clawd' | 'wall-text' | 'words') {
+  if (!world) throw new Error('Render S13 before requesting a pixel mask');
+  const w = world, target = new THREE.WebGLRenderTarget(1920,1080), saved: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
+  const black = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide });
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const special: THREE.Material[] = [], commitMeshes = new Set(w.commits.flatMap(s => s.solid.text.letters.map(l => l.mesh)));
+  const textMeshes = new Set(w.planes.filter(p => p.plan.carrier !== 'fix').map(p => p.plane.mesh));
+  const wordMeshes = new Map<THREE.Mesh,number>();
+  w.prefixes.forEach(p=>p.solid.text.letters.forEach(l=>wordMeshes.set(l.mesh,p.plan.word.gi+1)));
+  w.commits.forEach(p=>p.solid.text.letters.forEach(l=>wordMeshes.set(l.mesh,p.solid.word.gi+1)));
+  w.echoes.forEach(p=>p.solid.text.letters.forEach(l=>wordMeshes.set(l.mesh,p.solid.word.gi+1)));
+  w.planes.forEach(p=>wordMeshes.set(p.plane.mesh,p.plan.word.gi+1));
+  const ids=new Map<number,THREE.MeshBasicMaterial>();
+  const background = w.scene.background, currentTarget = renderer.getRenderTarget();
+  try {
+    w.scene.background = new THREE.Color(0);
+    w.scene.traverse(o => {
+      if (!(o instanceof THREE.Mesh)) return;
+      saved.push([o,o.material]);
+      const id=wordMeshes.get(o);
+      if(kind==='words' && id!==undefined){
+        if(o.material instanceof THREE.RawShaderMaterial){
+          const m=o.material.clone();
+          m.uniforms.map!.value=o.material.uniforms.map!.value;
+          m.uniforms.s13WordID={value:new THREE.Vector3(id/255,.8,.4)};
+          m.fragmentShader=m.fragmentShader.replace('precision highp float;','precision highp float; uniform vec3 s13WordID;')
+            .replace('fragColor = vec4(rgb,a);','if(a<0.5)discard; fragColor=vec4(s13WordID,1.0);');
+          special.push(m);o.material=m;
+        }else{
+          let m=ids.get(id);
+          if(!m){m=new THREE.MeshBasicMaterial({color:new THREE.Color().setRGB(id/255,.8,.4),side:THREE.DoubleSide});ids.set(id,m);special.push(m);}
+          o.material=m;
+        }
+      } else if (kind === 'commit' && commitMeshes.has(o)) o.material = white;
+      else if (kind === 'clawd' && o === w.clawd.mesh) {
+        const m = w.clawd.mat.clone();
+        m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4(c, 1.0);',
+          'gl_FragColor = vec4(vec3(vFront > 0.99 && vC.r > 0.1 ? 1.0 : 0.0),1.0);');
+        special.push(m); o.material = m;
+      } else if (kind === 'wall-text' && textMeshes.has(o)) {
+        const m = (o.material as THREE.RawShaderMaterial).clone();
+        m.uniforms.map!.value=(o.material as THREE.RawShaderMaterial).uniforms.map!.value;
+        m.fragmentShader = m.fragmentShader.replace('fragColor = vec4(rgb,a);', 'fragColor = vec4(vec3(a),a);');
+        special.push(m); o.material = m;
+      } else if (o.material instanceof THREE.RawShaderMaterial) {
+        const m = o.material.clone();
+        m.uniforms.map!.value=o.material.uniforms.map!.value;
+        m.fragmentShader = m.fragmentShader.replace('fragColor = vec4(rgb,a);', 'fragColor = vec4(vec3(0.0),a);');
+        special.push(m); o.material = m;
+      } else o.material = black;
+    });
+    renderer.setRenderTarget(target); renderer.clear(true,true,true); renderer.render(w.scene,w.rig.cam);
+    const pixels = new Uint8Array(1920*1080*4); renderer.readRenderTargetPixels(target,0,0,1920,1080,pixels);
+    return { pixels, transform: impactAt(w.lastTime,w.T) };
+  } finally {
+    for (const [mesh, material] of saved) mesh.material = material;
+    w.scene.background = background; renderer.setRenderTarget(currentTarget);
+    black.dispose(); white.dispose(); special.forEach(m => m.dispose()); target.dispose();
+  }
+}
+
+/** Visible ink bounds: an ID render retains real depth occlusion and letter-time coverage.
+ * This supplements the conservative unoccluded font/mesh corner bounds in s13-layout. */
+export function pixelWordBounds(renderer:THREE.WebGLRenderer){
+  if(!world)throw new Error('Render S13 first');
+  const w=world,{pixels,transform}=pixelMask(renderer,'words'),bounds=new Map<number,{x:number;y:number;x1:number;y1:number;pixels:number}>();
+  const collect=(px:Uint8Array|Uint8ClampedArray,flip:boolean)=>{
+    for(let y=0;y<1080;y++)for(let x=0;x<1920;x++){
+      const i=((flip?1079-y:y)*1920+x)*4;
+      // Exact interior ID pixels avoid inventing neighbouring word IDs from
+      // Canvas antialiasing / unpremultiplication of an edge pixel.
+      if(px[i+1]!==204||px[i+2]!==102||px[i+3]!==255)continue;
+      const id=px[i]!;if(!id)continue;
+      const b=bounds.get(id)??{x:1920,y:1080,x1:-1,y1:-1,pixels:0};
+      b.x=Math.min(b.x,x);b.y=Math.min(b.y,y);b.x1=Math.max(b.x1,x);b.y1=Math.max(b.y1,y);b.pixels++;bounds.set(id,b);
+    }
+  };
+  collect(pixels,true);
+  const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1080;
+  const c=canvas.getContext('2d')!, t=w.lastTime, audio=w.voice.audio;
+  for(const p of w.plans.paths){
+    if(pathCovered(t,p,w.T))continue;
+    const path=pathFor(audio,t,p,w.T,w.rig);
+    for(const word of p.words){
+      const proxy=new Proxy(c,{set(target,key,value){if(key==='fillStyle')target.fillStyle=`rgb(${word.gi+1},204,102)`;else Reflect.set(target,key,value,target);return true;},
+        get(target,key){const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+      drawPathText(proxy,w.rig,path,p.layout,t,{mode:'stand',base:'ink',on:'clay',axes:(g,tb)=>w.voice.form(g.word,tb).axes,
+        pop:.1,minPx:0,maxPx:110,offset:(g,tb)=>g.word.gi===word.gi?{d:p3(0,g.word.gi===w.T.fits.gi?fitsJump(audio,tb,g.i,w.T):0,0)}:null});
+    }
+  }
+  collect(c.getImageData(0,0,1920,1080).data,false);
+  const zoom=1+transform.zoom;
+  return [...bounds].map(([id,b])=>({gi:id-1,pixels:b.pixels,box:{
+    x:(b.x-960+transform.shake[0])*zoom+960,y:(b.y-540-transform.shake[1])*zoom+540,
+    w:(b.x1-b.x+1)*zoom,h:(b.y1-b.y+1)*zoom}}));
+}

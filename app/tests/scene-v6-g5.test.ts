@@ -2,20 +2,26 @@ import { describe, expect, test } from 'bun:test';
 import * as THREE from 'three';
 import { AudioData } from '../src/engine/audio';
 import { Lyrics } from '../src/engine/lyrics';
-import { hash } from '../src/engine/util';
+import { hash, frameIdx } from '../src/engine/util';
 import { Voice } from '../src/kit/lyric-moves';
 import { SolidText, solidLetterGeometry } from '../src/kit/solidtype';
 import { Rig, p3 } from '../src/kit/rig';
-import { letterTimes, drawPathText, writeHead, pathAt } from '../src/kit/pathtext';
+import { letterTimes, drawPathText, writeHead, pathAt, runInkBounds } from '../src/kit/pathtext';
 import { exitEnvelope, CUT, primError } from '../src/kit/handoff';
 import { afterBeats } from '../src/kit/time';
 import { chorusScore, impactAt, implosionAt, collisionAt } from '../src/scenes/parts/s13-score';
 import { BASE_SLABS, SLAB, S13_GLSL, TOP, sinkAt, slabDistance, wallRipple, wallRippleGradient, onSlab,
-  cameraAt, slabPose, slabJitter, fitsJump, entryPrim, exitPrim, topIndex, sideWallAt, clawdAt, implosionPoint, collapsePoint, wallDepth, WORD_SLOTS } from '../src/scenes/parts/s13-world';
-import { lyricPlans, prefixPose, projectedBox, planePose, pathFor, cursorAt, gitfallLayout } from '../src/scenes/parts/s13-layout';
+  cameraAt, slabPose, slabJitter, fitsJump, entryPrim, exitPrim, topIndex, sideWallAt, clawdAt, implosionPoint, collapsePoint, wallDepth, WORD_SLOTS, CLAWD_VOX, LIGHT, KEY_INTENSITY, BOUNCE_DIRECTION, BOUNCE_INTENSITY, CLAWD_FILL, lightTone, wallTone, clawdYaw, commitScale, COMMIT_INSET } from '../src/scenes/parts/s13-world';
+import { lyricPlans, prefixPose, projectedBox, planePose, pathFor, cursorAt, gitfallLayout, lyricInkBoxes, pathCovered } from '../src/scenes/parts/s13-layout';
 import { cursorScreenAt } from '../src/scenes/s14-shaft';
 import { stackScore } from '../src/scenes/parts/s14-stack';
 import { FakeCanvas, withCanvas } from './kit-pathtext.test';
+import { VoxelClawd } from '../src/kit/clawd3d';
+import * as Clawd from '../src/kit/clawd';
+import { varRun } from '../src/kit/vartype';
+import { INK_ENGRAVE } from '../src/scenes/s13-gitfall';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 
@@ -83,8 +89,8 @@ describe('S13 word/beat choreography', () => {
       if (!p.second) {
         const hit = WORD_SLOTS[p.slot]!; expect(at.z).toBe(wallDepth(hit.x, hit.y, p.word.start, T));
       } else {
-        const slab = slabPose(audio, p.word.start, topIndex(T.pickup2 - 1e-6, T) - p.slot, T, rig);
-        expect(at).toEqual(onSlab(slab, p3(-p.width / 2, -p.capH / 2, SLAB.d / 2 - 0.08)));
+        const slab = slabPose(audio, p.word.start, BASE_SLABS - 1 - p.slot, T, rig);
+        expect(at).toEqual(onSlab(slab, p3(p.slot % 2 ? 0.15 : -3.35, -p.capH / 2, SLAB.d / 2 - 0.08)));
       }
     }
     expect(cursorAt(audio, T.start, T, voice, plans, P14)).toEqual({ x: 885, y: 540, r: 8 });
@@ -102,15 +108,15 @@ describe('S13 word/beat choreography', () => {
     expect(T.echoes).toHaveLength(3);
     T.echoes.forEach((t, i) => expect(audio.beatAt(t) - audio.beatAt(T.hit1)).toBeCloseTo((i + 1) / 2, 9));
   });
-  test('level-two exact peak displacement 13/18 upgrades S08 7/10; inversion lasts 2/3 frame indices', () => {
+  test('level-two exact peak displacement 13/18 upgrades S08 7/10; palette swap lasts 2/3 frame indices', () => {
     expect(13).toBeGreaterThan(7); expect(18).toBeGreaterThan(10);
     for (const p of plans.prefixes) {
       expect(impactAt(p.word.start, T).amplitude).toBe(13);
       expect(Math.hypot(...impactAt(p.word.start, T).shake)).toBeCloseTo(13, 8);
     }
     expect(impactAt(T.hit2, T).amplitude).toBe(18);
-    expect(T.impacts.find(i => i.at === T.hit2)!.invertFrames).toBe(3);
-    expect(T.impacts.filter(i => i.at !== T.hit2).every(i => i.invertFrames === 2)).toBe(true);
+    expect(T.impacts.find(i => i.at === T.hit2)!.swapFrames).toBe(3);
+    expect(T.impacts.filter(i => i.at !== T.hit2).every(i => i.swapFrames === 2)).toBe(true);
   });
   test('every displayed first glyph waits for its word; reserved paths use the end axes', () => {
     for (const line of T.lines) for (const word of line.words) {
@@ -161,7 +167,7 @@ describe('S13 actual projected composition', () => {
       solid.group.position.set(pose.center.x, pose.center.y, pose.center.z); solid.group.rotation.y = pose.yaw; solid.group.scale.x = pose.scaleX;
       for (const letter of solid.letters) {
         letter.mesh.geometry = solidLetterGeometry(letter.ch, { ...voice.form(T.commit2, s.at).axes, wght: 900 }, 2.4, 0.9, 0.035, 3);
-        solid.setLetter(letter.i, { d: p3(-solid.width / 2, -pose.height / 2 + SLAB.h, 0.3) });
+        solid.setLetter(letter.i, { d: p3(-solid.width / 2, -pose.height / 2 + SLAB.h - COMMIT_INSET, 0.2) });
       }
       const b = projectedBox(rig, solid.letters.flatMap(l => solid.letterCorners(l.i)));
       console.log('S13 E COMMIT bounds', s.at, b); expect(b.w).toBeGreaterThanOrEqual(1920 * 0.55); solid.dispose();
@@ -271,3 +277,166 @@ describe('S13 cut contracts and carry', () => {
     expect(pathFor(audio, T.split + 0.5, plan, T, rig).length).toBeGreaterThan(0);
   });
 });
+
+const evidenceDir = new URL('../../out/v6-g5/',import.meta.url);
+mkdirSync(evidenceDir,{recursive:true});
+const assertFresh=(data:any)=>{
+  expect(Object.keys(data.sourceHashes)).toHaveLength(4);
+  for(const [file,digest] of Object.entries(data.sourceHashes))expect(createHash('sha256').update(readFileSync(new URL('../../'+file,import.meta.url))).digest('hex')).toBe(digest as string);
+};
+const evidence = (name:string,data:unknown)=>writeFileSync(new URL(name,evidenceDir),JSON.stringify(data,null,2));
+describe('S13 round 2 strict measurements',()=>{
+  test('impacts exchange the palette for exactly 2/3 frame indices',()=>{
+    expect(INK_ENGRAVE.lightLines).toBe(true);expect(INK_ENGRAVE.maxCov).toBe(0.3);
+    for(const hit of T.impacts){
+      const first=(frameIdx(hit.at)+1)/60+1e-8;
+      expect(impactAt(first,T).swap).toBe(true);
+      const last=(frameIdx(hit.at)+hit.swapFrames)/60+1e-8;
+      if(!T.impacts.some(other=>other!==hit&&other.at<=last&&frameIdx(last)-frameIdx(other.at)<other.swapFrames))expect(impactAt(last,T).swap).toBe(false);
+    }
+  });
+  test('clay exposure: five lit points and five ray-projected slab shadows at each measured time',()=>{
+    const records=[];
+    for(const t of [69.5,71.6,80.9]){
+      const slab=slabPose(audio,t,BASE_SLABS-1,T), z=slab.center.z+SLAB.d/2;
+      const lit=[[-12,8],[-10,9],[-8,10],[-6,11],[-4,12]].map(([x,y])=>({x:x!,y:y!,tone:wallTone(x!,y!,t,T)}));
+      const shadow=[-.8,-.4,0,.4,.8].map(dx=>{
+        const x=slab.center.x+dx-z*LIGHT.x/LIGHT.z,y=slab.center.y-z*LIGHT.y/LIGHT.z;
+        // The key ray intersects this slab's +z face inside its specified box.
+        expect(Math.abs(x+z*LIGHT.x/LIGHT.z-slab.center.x)).toBeLessThan(SLAB.w/2);
+        expect(y+z*LIGHT.y/LIGHT.z).toBeCloseTo(slab.center.y,10);
+        return {x,y,tone:wallTone(x,y,t,T,true)};
+      });
+      for(const p of lit){expect(p.tone).toBeGreaterThanOrEqual(.8);expect(p.tone).toBeLessThanOrEqual(.92);}
+      for(const p of shadow){expect(p.tone).toBeGreaterThanOrEqual(.1);expect(p.tone).toBeLessThanOrEqual(.35);}
+      records.push({t,lit,shadow});
+    }
+    const yaw=clawdYaw(audio,71.6,T),clawdTone=lightTone(p3(Math.sin(yaw),0,Math.cos(yaw)))+CLAWD_FILL*Math.cos(yaw);
+    expect(clawdTone).toBeGreaterThanOrEqual(.85);
+    evidence('exposure.json',{KEY_INTENSITY,BOUNCE_INTENSITY,BOUNCE_DIRECTION,clawdTone,records});
+  });
+  test('LOCAL/CI start at But minus 0.3s, with outCubic over 0.5s; marks fit at 82.20/83.50',()=>{
+    const onset=T.lines[4]!.words[0]!.start-.3;
+    expect(sideWallAt(onset,true,T).x).toBeCloseTo(4.2-61,10);
+    expect(sideWallAt(onset+.5,true,T).x).toBeCloseTo(4.2-19,10);
+    expect(sideWallAt(onset+.25,true,T).x).toBeCloseTo(4.2-19-42*.125,10);
+    expect(T.split).toBe(T.shots[6]!.start);
+    const records=[];
+    for(const t of [82.2,83.5])for(const local of [true,false]){
+      const p=sideWallAt(t,local,T),rig=rigAt(t);
+      const b=projectedBox(rig,(local?[9.1,14.0]:[-13.8,-10.2]).flatMap(x=>[3.2,6.6].flatMap(y=>[.75,1.0].map(z=>p3(p.x+x,p.y+y,p.z+z)))));
+      records.push({t,local,box:b});
+      expect(b.x).toBeGreaterThanOrEqual(0);expect(b.x+b.w).toBeLessThanOrEqual(1920);
+      expect(b.y).toBeGreaterThanOrEqual(0);expect(b.y+b.h).toBeLessThanOrEqual(1080);
+    }
+    evidence('marks.json',records);
+  });
+  test('fix words: full ink bounds, front angles and 60-90px cap height over every sung interval',()=>{
+    const records=[];
+    for(const p of plans.planes.filter(p=>p.carrier==='fix')){
+      for(let i=0;i<=40;i++){
+        const t=p.word.start+(p.word.end-p.word.start)*i/40,rig=rigAt(t),pose=planePose(audio,t,p,T,rig);
+        const form=voice.form(p.word,t),run=varRun(p.word.w.toUpperCase(),100,p.axes),ink=runInkBounds(run),s=p.capH/run.capH;
+        const pts=[0,(ink.x1-ink.x0)*s*pose.scaleX*form.axes.wdth/p.axes.wdth].flatMap(x=>[(-ink.y0-run.capH/2)*s,(-ink.y1-run.capH/2)*s].map(y=>p3(pose.at.x+x,pose.at.y+y,pose.at.z)));
+        const box=projectedBox(rig,pts),lo=rig.proj(pose.at.x,pose.at.y-p.capH/2,pose.at.z)!,hi=rig.proj(pose.at.x,pose.at.y+p.capH/2,pose.at.z)!;
+        const view=new THREE.Vector3().subVectors(rig.cam.position,new THREE.Vector3(pose.at.x,pose.at.y,pose.at.z)).normalize();
+        const angle=Math.acos(view.dot(new THREE.Vector3(Math.sin(pose.yaw),0,Math.cos(pose.yaw))))*180/Math.PI;
+        records.push({word:p.word.w,t,box,angle,cap:Math.hypot(hi.x-lo.x,hi.y-lo.y)});
+      }
+    }
+    evidence('fix-projections.json',records);
+    for(const r of records){
+      expect(r.box.x,`${r.t} ${r.word}`).toBeGreaterThanOrEqual(0);expect(r.box.x+r.box.w).toBeLessThanOrEqual(1920);
+      expect(r.box.y).toBeGreaterThanOrEqual(0);expect(r.box.y+r.box.h).toBeLessThanOrEqual(1080);
+      expect(r.angle).toBeLessThanOrEqual(50);expect(r.cap).toBeGreaterThanOrEqual(60);expect(r.cap).toBeLessThanOrEqual(90);
+    }
+  });
+  test('C Clawd actual voxel projection is no wider than 22 percent',()=>{
+    const vox=new VoxelClawd(),records=[];
+    for(let i=0;i<=40;i++){
+      const t=T.fixes+(T.tests-T.fixes)*i/40,rig=rigAt(t),at=clawdAt(audio,t,T,rig);
+      vox.update(Clawd.pose('A4',{beat:audio.beatAt(t),beat0:audio.beatAt(T.start),p:0}));
+      vox.mesh.rotation.y=clawdYaw(audio,t,T);vox.mesh.scale.setScalar(CLAWD_VOX);vox.mesh.position.set(at.x,at.y,at.z);vox.mesh.updateMatrixWorld(true);
+      const pts=[];
+      for(let j=0;j<vox.mesh.count;j++){
+        const m=new THREE.Matrix4();vox.mesh.getMatrixAt(j,m);m.premultiply(vox.mesh.matrixWorld);
+        for(const x of [-.5,.5])for(const y of [-.5,.5])for(const z of [-.5,.5])pts.push(new THREE.Vector3(x,y,z).applyMatrix4(m));
+      }
+      records.push({t,box:projectedBox(rig,pts)});
+    }
+    vox.dispose();evidence('clawd-projections.json',records);
+    const widest=records.reduce((a,b)=>a.box.w>b.box.w?a:b);
+    console.log('S13 C Clawd max width',widest);
+    expect(widest.box.w).toBeLessThanOrEqual(1920*.22);
+  });
+  test('uncropped font and extrusion corner measurements remain deterministic over 156 sample times',()=>withCanvas(()=>{
+    const intersections=[],samples=[];
+    for(let i=0;i<=155;i++){
+      const t=70.5+i/10,boxes=lyricInkBoxes(audio,t,T,voice,plans,new FakeCanvas().ctx,P14);
+      samples.push({t,boxes});
+      for(let a=0;a<boxes.length;a++)for(let b=a+1;b<boxes.length;b++){
+        const A=boxes[a]!,B=boxes[b]!,p=A.box,q=B.box;
+        if(A.word.gi!==B.word.gi&&p.x<q.x+q.w&&q.x<p.x+p.w&&p.y<q.y+q.h&&q.y<p.y+p.h)
+          intersections.push({t,a:A.word.w,giA:A.word.gi,b:B.word.w,giB:B.word.gi,carrierA:A.carrier,carrierB:B.carrier,boxA:p,boxB:q});
+      }
+    }
+    evidence('lyric-projections.json',{samples,intersections});
+    for(const t of [70.6,76.9,79.7]){
+      const a=lyricInkBoxes(audio,t,T,voice,plans,new FakeCanvas().ctx,P14);
+      lyricInkBoxes(audio,85.6,T,voice,plans,new FakeCanvas().ctx,P14);
+      expect(lyricInkBoxes(audio,t,T,voice,plans,new FakeCanvas().ctx,P14)).toEqual(a);
+    }
+    for(const sample of samples)for(const b of sample.boxes)for(const n of Object.values(b.box))expect(Number.isFinite(n)).toBe(true);
+  }));
+  test('D row baseline separation is at least 1.25 projected cap heights while both rows sing',()=>{
+    const paths=plans.paths.filter(p=>p.kind==='tests'),records=[];
+    for(let i=0;i<=40;i++){
+      const t=T.throwing.start+(T.fits.end-T.throwing.start)*i/40,rig=rigAt(t);
+      const a=pathAt(pathFor(audio,t,paths[0]!,T,rig),paths[0]!.layout.s1/2);
+      const b=pathAt(pathFor(audio,t,paths[1]!,T,rig),paths[1]!.layout.s1/2);
+      const A=rig.proj(a.x,a.y,a.z)!,B=rig.proj(b.x,b.y,b.z)!,cap=Math.max(A.s,B.s)*.7;
+      records.push({t,pitch:Math.abs(A.y-B.y),cap,ratio:Math.abs(A.y-B.y)/cap});
+    }
+    evidence('row-pitch.json',records);
+    for(const r of records)expect(r.ratio).toBeGreaterThanOrEqual(1.25);
+  });
+  test('standing lyrics are covered by the next slab without opacity fades',()=>{
+    for(const p of plans.paths.filter(p=>p.kind==='and')){
+      expect(pathCovered(p.words[0]!.start,p,T)).toBe(false);
+      expect(pathCovered(p.words[0]!.end+1e-4,p,T)).toBe(true);
+    }
+    for(const p of plans.paths.filter(p=>p.kind==='tests')){
+      expect(pathCovered(T.fits.end,p,T)).toBe(false);expect(pathCovered(T.commit2.start,p,T)).toBe(true);
+    }
+  });
+});
+if(process.env.S13_PIXEL_STATS){
+  const stats=JSON.parse(readFileSync(process.env.S13_PIXEL_STATS,'utf8'));
+  test('round 2 actual rendered RGBA: no cyan, dark COMMIT, clay Clawd and solid wall contrast',()=>{
+    assertFresh(stats);
+    for(const t of ['67.24','69.89','80.34'])expect(stats[t].cyan_fraction).toBeLessThan(.005);
+    for(const t of ['69.5','80.9']){expect(stats[t].interior_pixels).toBeGreaterThan(1000);expect(stats[t].projection_mean_srgb_luminance).toBeLessThanOrEqual(.35);}
+    expect(stats['71.6'].interior_pixels).toBeGreaterThan(1000);expect(stats['71.6'].projection_clay_match_fraction).toBeGreaterThanOrEqual(.8);
+    for(const t of ['84.5','85.3'])expect(stats[t].walls.ci.contrast).toBeGreaterThanOrEqual(.45);
+    for(const t of ['82.2','83.5']){expect(stats[t].walls.local.pixels).toBeGreaterThan(1000);expect(stats[t].walls.local.contrast).toBeGreaterThanOrEqual(.45);}
+  });
+}
+
+if(process.env.S13_WORD_STATS){
+  const data=JSON.parse(readFileSync(process.env.S13_WORD_STATS,'utf8'));
+  test('actual visible ink boxes do not intersect: 70.5-86.0 every 0.1s including both ands, both rows and six wall words',()=>{
+    assertFresh(data);
+    expect(data.samples).toHaveLength(156);
+    const seen=new Set<number>();
+    data.samples.forEach((sample:any,i:number)=>{
+      expect(sample.t).toBeCloseTo(70.5+i/10,12);
+      for(const b of sample.boxes){expect(b.pixels).toBeGreaterThan(0);seen.add(b.gi);}
+      for(let a=0;a<sample.boxes.length;a++)for(let b=a+1;b<sample.boxes.length;b++){
+        const A=sample.boxes[a],B=sample.boxes[b],p=A.box,q=B.box;
+        expect(A.gi===B.gi||p.x>=q.x+q.w||q.x>=p.x+p.w||p.y>=q.y+q.h||q.y>=p.y+p.h,`${sample.t} gi ${A.gi}/${B.gi}`).toBe(true);
+      }
+    });
+    expect(data.intersections).toHaveLength(0);
+    for(const word of [T.lines[1]!.words[1]!,T.lines[1]!.words[3]!,...T.lines[2]!.words,...T.lines[4]!.words])expect(seen.has(word.gi)).toBe(true);
+  });
+}
