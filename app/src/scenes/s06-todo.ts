@@ -12,7 +12,7 @@ import { postFor } from '../kit/ground';
 import { afterBeats, span } from '../kit/time';
 import { ease, lerp } from '../engine/util';
 import { heatColor, Voice } from '../kit/lyric-moves';
-import { drawPlot, plotRest, plotRows, type PlotWord } from './parts/s06-plot';
+import { drawPlot, plotRest, plotRows, plotWriting, type PlotRow } from './parts/s06-plot';
 import { varRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { cam06, checkFinish, checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
@@ -36,7 +36,7 @@ class TodoWorld {
   bg=new FSPass(PAPER,{paper:{value:new THREE.Vector3(...lin('paper'))},ink:{value:new THREE.Vector3(...lin('ink'))}});
   times: CTimes;
   voice: Voice;
-  private plotted?: PlotWord[];
+  private plotted?: PlotRow[];
   constructor(ctx: SceneCtx) { this.times=resolveCTimes(ctx.audio,ctx.lyrics); this.voice=new Voice(ctx.lyrics,ctx.audio); }
   plot() { return this.plotted ??= plotRows(this.voice, this.times.plan); }
   dispose() { this.sparks.dispose(); this.print.dispose(); this.bg.mat.dispose(); this.layer.texture.dispose(); }
@@ -75,7 +75,7 @@ export default class S06Todo extends Scene {
     for(const y of [612,750]) {c.moveTo(424,y);c.lineTo(1920,y);}c.stroke();
     // Stage 9 ②: the sung rows are plotted by the pen that ticks the boxes; the pen head is the cursor.
     const plot=w.plot(), penHead=drawPlot(c,w.voice,T.plan,plot,f.t);
-    const penWriting=plot.some(p=>f.t>=p.times[0]![0] && f.t<p.times.at(-1)![1]);
+    const penWriting=plotWriting(plot,f.t);
     const rest=penHead??plotRest();
     for(let i=0;i<3;i++) {
       const row=s.rows[i]!,b=row.box;
