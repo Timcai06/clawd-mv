@@ -60,9 +60,10 @@ export default class S02Notify extends Scene {
       }
       grain(c, box, 22, 500);
     }
-    const pos = WAKE_CLAWD;
-    Clawd.draw(c, pos.x, pos.y, Clawd.pose('A2', { beat: f.beat, beat0: au.beatAt(w.T.ping) - 1, p: span(t, w.T.ping, w.T.screen) }), { px: pos.px, alpha: 1 - s.exit });
-    const card = s.card;
+    const pos = WAKE_CLAWD, card = s.card;
+    // A14: the ping startles Clawd (a one-pixel hop) and its eyes go to the notification card.
+    const ping0 = au.beatAt(w.T.ping), look = Clawd.gaze(pos.x, pos.y, pos.px, { x: card.x + card.w / 2, y: card.y + card.h / 2 });
+    Clawd.draw(c, pos.x, pos.y, Clawd.pose('A14', { beat: f.beat, beat0: ping0, p: span(t, w.T.ping, w.T.screen), look, startle: ping0 }), { px: pos.px, alpha: 1 - s.exit });
     c.fillStyle = css('paper'); c.fillRect(card.x, card.y, card.w, card.h);
     c.strokeStyle = css('ink', 0.6); c.lineWidth = 1.5; c.strokeRect(card.x, card.y, card.w, card.h);
     mono(c, 'Issue #1031 · calendar', card.x + 24, card.y + card.h * 0.65, 20, 'ink', 0.6);

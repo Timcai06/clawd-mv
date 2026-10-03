@@ -29,7 +29,7 @@ storyboard/shots.json ──► app/src/storyboard.ts（锚点 → 时间）─�
 
 ## 色板：只用 token
 
-- `theme.ts` 导出视觉规范里的 token：`paper`、`ink`、`inkSoft`（ink 的 60% / 30% / 12%）、`clay`、`fail`、`pass`，每个都提供 `hex`、线性 RGB（给 GL）、`rgba(a)`（给 Canvas2D）三种形式。
+- `theme.ts` 导出视觉规范里的 token：`paper`、`ink`、`inkSoft`（ink 的 60% / 30% / 12%）、`clay`、`fail`、`pass`、`pit`（Clawd 的眼坑，比 ink 更暗），每个都提供 `hex`、线性 RGB（给 GL）、`rgba(a)`（给 Canvas2D）三种形式。
 - 场景和组件**只许用 token**，不许写死颜色值。这样调色时改一处就行。
 - `fail` / `pass` 只能出现在测试状态上（见视觉规范）。
 

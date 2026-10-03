@@ -48,9 +48,16 @@ export default class S01Boot extends Scene {
     c.strokeStyle = css('paper', 0.13); c.lineWidth = 1; c.beginPath();
     for (let x = -1920; x <= 3840; x += 340) { c.moveTo(960 + (x - 960) * 0.03, 775); c.lineTo(x, 1080); }
     for (let i = 0; i < 12; i++) { const y = 775 + 305 * (i / 11) ** 2.5; c.moveTo(0, y); c.lineTo(1920, y); } c.stroke();
+    // The clay writing head: it traces the frame's top edge, then rests below Clawd as its cursor.
+    const frameEnd = afterBeats(au, w.T.welcome, 1.4);
+    const cursorAt = (tb: number) => {
+      const base = cursorFromTop(handoffOut(tb, au, w.T));
+      if (tb >= w.T.welcome && tb < frameEnd) return { x: WELCOME_BOX.x + WELCOME_BOX.w * 0.88 * bootState(au, tb, w.T).frame,
+        y: WELCOME_BOX.y, h: base.h, on: 1 };
+      return { ...base, on: blink(au.beatAt(tb), tb >= afterBeats(au, w.T.ping, -1)) };
+    };
     if (f.t >= w.T.welcome) {
       const b = WELCOME_BOX;
-      const frameEnd = afterBeats(au, w.T.welcome, 1.4);
       const progress = (tb: number) => bootState(au, tb, w.T).frame;
       const paths = [
         (tb: number) => ({ x: b.x, y: b.y + b.h * progress(tb) }),
@@ -66,7 +73,14 @@ export default class S01Boot extends Scene {
       c.font = font(F.mono(), 20); c.fillText('cwd: ~/calendar', 582, 342);
       const title = 'Works on My Machine', text = title.slice(0, Math.floor(title.length * s.rows[1]!));
       c.fillText(text, 582, 376);
-      const p = Clawd.pose('A1', { beat: f.beat, beat0: au.beatAt(w.T.welcome), p: s.pixels });
+      // A14: awake from the first frame (the note says idle). The two eye pits arrive first, the body
+      // assembles around them, and the eyes follow whatever is being written: the head along the top
+      // edge, then the title as it types. Then they face us (the canonical face) for the hold, and
+      // drop to the cursor when it starts blinking fast, one beat before the ping.
+      const head = cursorAt(f.t), typing = s.rows[1]! > 0 && s.rows[1]! < 1;
+      const look = f.t < frameEnd ? Clawd.gaze(BOOT_CLAWD.x, BOOT_CLAWD.y, BOOT_CLAWD.px, { x: head.x, y: head.y - head.h / 2 })
+        : typing ? -1 : f.t >= afterBeats(au, w.T.ping, -1) ? 'down' : 0;
+      const p = Clawd.pose('A14', { beat: f.beat, beat0: au.beatAt(w.T.welcome), p: s.pixels, look });
       for (const cell of p.cells) if (cell.k === 'O') {
         c.strokeStyle = css('clay', 0.42); c.lineWidth = 0.8;
         c.strokeRect(BOOT_CLAWD.x + cell.x * BOOT_CLAWD.px, BOOT_CLAWD.y + (cell.y + p.dy) * BOOT_CLAWD.px, BOOT_CLAWD.px, BOOT_CLAWD.px);
@@ -77,13 +91,6 @@ export default class S01Boot extends Scene {
       Clawd.draw(c, BOOT_CLAWD.x, BOOT_CLAWD.y, reveal, { px: BOOT_CLAWD.px });
       Clawd.draw(g, BOOT_CLAWD.x, BOOT_CLAWD.y, { ...reveal, cells: reveal.cells.filter(cell => cell.k === 'O') }, { px: BOOT_CLAWD.px, alpha: 0.25 });
     }
-    const frameEnd = afterBeats(au, w.T.welcome, 1.4);
-    const cursorAt = (tb: number) => {
-      const base = cursorFromTop(handoffOut(tb, au, w.T));
-      if (tb >= w.T.welcome && tb < frameEnd) return { x: WELCOME_BOX.x + WELCOME_BOX.w * 0.88 * bootState(au, tb, w.T).frame,
-        y: WELCOME_BOX.y, h: base.h, on: 1 };
-      return { ...base, on: blink(au.beatAt(tb), tb >= afterBeats(au, w.T.ping, -1)) };
-    };
     cursorSpark(c, g, w.sparks, f.t, cursorAt, { on: 'ink', from: w.T.welcome, to: frameEnd, end: w.T.ping, seed: 1 });
     const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
     drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink', glow: g });

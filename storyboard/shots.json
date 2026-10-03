@@ -24,10 +24,10 @@
  ],
  "shots": [
   {"id": "S01-1", "scene": "S01", "t": 0.0, "anchor": {"word": null, "snap": "downbeat"}, "clawd": null, "camera": "固定，正中", "visual": "纯底色上只有一个光标，每拍闪一次。"},
-  {"id": "S01-2", "scene": "S01", "t": 1.8, "anchor": {"word": null, "snap": "downbeat"}, "clawd": "A1", "camera": "慢推", "visual": "Claude Code 欢迎框逐行打印出来；框里的 Clawd 按像素一格格拼出来（▐▛███▜▌ 三行），闭着眼。"},
+  {"id": "S01-2", "scene": "S01", "t": 1.8, "anchor": {"word": null, "snap": "downbeat"}, "clawd": "A14", "camera": "慢推", "visual": "Claude Code 欢迎框逐行打印出来；框里先出现两个暗的眼坑，Clawd 再按像素围着眼睛一格格拼出来（▐▛███▜▌ 三行）。它醒着待机，眼睛跟着 clay 书写头转，最后低头看自己的光标。"},
 
-  {"id": "S02-1", "scene": "S02", "t": 4.6, "anchor": {"line": "Nine o'clock, a ping on my screen", "occ": 1, "word": "ping", "snap": "beat"}, "clawd": "A2", "camera": "推到右下角", "visual": "通知从右下弹出：`Issue #1031 · calendar`，唱到 ping 的那一下弹跳。Clawd 睁开一只眼。"},
-  {"id": "S02-2", "scene": "S02", "t": 5.8, "anchor": {"line": "Nine o'clock, a ping on my screen", "occ": 1, "word": "screen", "snap": "beat"}, "clawd": "A2", "camera": "穿过通知往里推（匹配剪辑）", "visual": "镜头穿过通知气泡，进入 issue 页面。"},
+  {"id": "S02-1", "scene": "S02", "t": 4.6, "anchor": {"line": "Nine o'clock, a ping on my screen", "occ": 1, "word": "ping", "snap": "beat"}, "clawd": "A14", "camera": "推到右下角", "visual": "通知从右下弹出：`Issue #1031 · calendar`，唱到 ping 的那一下弹跳。Clawd 一惊（整体跳起 1 像素），眼睛转向通知。"},
+  {"id": "S02-2", "scene": "S02", "t": 5.8, "anchor": {"line": "Nine o'clock, a ping on my screen", "occ": 1, "word": "screen", "snap": "beat"}, "clawd": "A14", "camera": "穿过通知往里推（匹配剪辑）", "visual": "镜头穿过通知气泡，进入 issue 页面。"},
 
   {"id": "S03-1", "scene": "S03", "t": 7.3, "anchor": {"line": "Got a bug report, the weirdest I've seen", "occ": 1, "word": "bug", "snap": "downbeat"}, "clawd": "A3", "camera": "正面，中景", "visual": "issue 卡片：标题 `Calendar shows October 32` 逐字出现；标签 `bug` 像盖章一样卡拍落下。Clawd 站在标题上。"},
   {"id": "S03-2", "scene": "S03", "t": 8.6, "anchor": {"line": "Got a bug report, the weirdest I've seen", "occ": 1, "word": "weirdest", "snap": "beat"}, "clawd": "A3", "camera": "推近附图，一直推进去", "visual": "issue 附图：日历缩略图，一个圆圈跟着拍子画出来，圈住「32」。"},

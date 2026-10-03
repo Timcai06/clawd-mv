@@ -43,8 +43,7 @@ export function handoffOut(t: number, audio: AudioData, T: OpeningTimes) {
 }
 export function bootBounds(audio: AudioData, t: number, T: OpeningTimes) {
   const s = bootState(audio, t, T);
-  // A1's whole-body breathing offset is used in both the draw and the measured box.
-  const dy = Math.floor(audio.beatAt(t) / 2) % 2;
-  return { dominant: { ...WELCOME_BOX }, clawd: { x: BOOT_CLAWD.x, y: BOOT_CLAWD.y + dy * BOOT_CLAWD.px,
+  // A14 holds the body still (only the eyes move), so the measured box is the base sprite.
+  return { dominant: { ...WELCOME_BOX }, clawd: { x: BOOT_CLAWD.x, y: BOOT_CLAWD.y,
     w: 16 * BOOT_CLAWD.px, h: 5 * BOOT_CLAWD.px }, revealed: s.pixels };
 }

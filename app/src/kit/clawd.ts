@@ -15,7 +15,10 @@ const BASE: readonly string[] = clawd.terminal_welcome.pixels;
 export type Kind = 'O' | 'D';
 export interface Cell { x: number; y: number; k: Kind }
 
-export type Action = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6' | 'A7' | 'A8' | 'A9' | 'A10' | 'A11' | 'A12' | 'A13';
+export type Action = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6' | 'A7' | 'A8' | 'A9' | 'A10' | 'A11' | 'A12' | 'A13' | 'A14';
+
+/** Gaze: -1 left, 0 centre, 1 right, 'down'. */
+export type Look = -1 | 0 | 1 | 'down';
 
 /** Anatomy of the base grid (see clawd.json): eyes on row 1, arms on row 2, legs on row 4. */
 export const EYES = [{ x: 4, y: 1 }, { x: 11, y: 1 }] as const;
@@ -37,7 +40,9 @@ export interface PoseInput {
   /** A10: how far the right arm extends, in sprite pixels (default 4). */
   reach?: number;
   /** Eye direction: -1 left, 0 centre, 1 right; 'down' for A11 by default. */
-  look?: -1 | 0 | 1 | 'down';
+  look?: Look;
+  /** A14: continuous beat index of a startle (whole-body one-pixel hop for a quarter beat). */
+  startle?: number;
 }
 
 export interface Pose {
@@ -155,6 +160,11 @@ export function pose(action: Action | null, i: PoseInput): Pose {
       cells = raiseArm(cells, 'R', Math.floor(i.beat * 4) % 2 ? 2 : 1);
       break;
     }
+    case 'A14': { // watch: the body holds still, the eyes follow `look`; one-pixel hop on a startle
+      const s = i.startle === undefined ? -1 : i.beat - i.startle;
+      if (s >= 0 && s < 0.25) dy = -1;
+      break;
+    }
   }
   if (i.look !== undefined && i.look !== 0 && action !== 'A1' && action !== 'A8') cells = eyes(cells, i.look);
   return { cells, dx, dy };
@@ -165,7 +175,7 @@ export interface DrawOpts {
   px: number;
   /** Snap the whole-body offset to whole sprite pixels (retro stepping). Default false. */
   quantize?: boolean;
-  /** Override colours (defaults: body = clay, eyes = ink). */
+  /** Override colours (defaults: body = clay, eyes = pit, the recessed dark that beats every ground). */
   body?: string;
   eye?: string;
   alpha?: number;
@@ -178,7 +188,7 @@ export interface DrawOpts {
 export function draw(c: CanvasRenderingContext2D, x: number, y: number, p: Pose, o: DrawOpts) {
   const q = o.quantize ? Math.round : (v: number) => v;
   const ox = x + q(p.dx) * o.px, oy = y + q(p.dy) * o.px;
-  const body = o.body ?? css('clay', o.alpha ?? 1), eye = o.eye ?? css('ink', o.alpha ?? 1);
+  const body = o.body ?? css('clay', o.alpha ?? 1), eye = o.eye ?? css('pit', o.alpha ?? 1);
   const e = 0.35; // seam overlap
   c.save();
   c.imageSmoothingEnabled = false;
@@ -191,3 +201,14 @@ export function draw(c: CanvasRenderingContext2D, x: number, y: number, p: Pose,
 
 /** Bounding size of the sprite in logical px at a given pixel size. */
 export const size = (px: number) => ({ w: W * px, h: H * px });
+
+/**
+ * Where the eyes point to look at a screen point, for a sprite drawn with its top-left base corner
+ * at (x, y): sideways once the target leaves the middle fifth of the body, down when it is centred
+ * below the feet, otherwise straight ahead. Whole pixels only, so the eyes snap like the sprite.
+ */
+export function gaze(x: number, y: number, px: number, target: { x: number; y: number }): Look {
+  const dx = target.x - (x + (W / 2) * px);
+  if (Math.abs(dx) > W * px * 0.2) return dx < 0 ? -1 : 1;
+  return target.y > y + H * px ? 'down' : 0;
+}

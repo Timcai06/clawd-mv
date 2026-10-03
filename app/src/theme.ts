@@ -9,6 +9,9 @@ export const THEME = {
   ink: '#1B2A4A', // main colour: display type, grid rules, UI text
   hot: '#FFF3E0', // white-hot lyric onset: rgb(255,243,224)
   clay: '#D77757', // the only accent: Clawd (same as the official clawd_body), hook word, current line, the big circle
+  // Clawd's eye: a recessed pit, darker than every ground (ink included) so the eyes never vanish
+  // into the background (CONTEXT, Clawd 的眼睛).
+  pit: '#070A12',
   // Night-version trial (CONTEXT 夜景试验, 2026-10-02): the near-black the light comes out of.
   night: '#05070C',
   // Semantic colours: test state (fail / pass marks and counters) and PR diff lines.
