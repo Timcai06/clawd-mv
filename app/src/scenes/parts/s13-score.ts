@@ -1,94 +1,77 @@
-// E-group score: resolve the editorial source once, never duplicate song seconds.
+// The editorial clock and immutable impacts of the level-two chorus.
 import type { AudioData } from '../../engine/audio';
-import { Lyrics, type Line } from '../../engine/lyrics';
-import { F, font, glyphX, plain } from '../../engine/type';
-import { ease, lerp } from '../../engine/util';
-import { css, type ThemeKey } from '../../theme';
-import { afterBeats, beatsSince, span } from '../../kit/time';
+import type { Lyrics, Line, Word } from '../../engine/lyrics';
+import { clamp, ease, frameIdx, hash } from '../../engine/util';
+import { afterBeats, span } from '../../kit/time';
 import { resolveStoryboard, type Storyboard, type ResolvedShot } from '../../storyboard';
 import board from '../../../../storyboard/shots.json';
 
 export function sceneScore(audio: AudioData, lyrics: Lyrics, scene: string): ResolvedShot[] {
-  return resolveStoryboard(board as Storyboard, lyrics, audio).shots.filter((s) => s.scene === scene);
+  return resolveStoryboard(board as Storyboard, lyrics, audio).shots.filter(s => s.scene === scene);
 }
-
+export interface SlabEvent {
+  at: number; kind: 'commit' | 'fix'; duration: number; height: number;
+  hash: string; message: string; clay: boolean; words: Word[];
+}
+export interface Impact { at: number; amplitude: number; swapFrames: number; zoom: number }
 export interface ChorusScore {
-  shots: ResolvedShot[];
+  shots: ResolvedShot[]; lines: Line[];
   start: number; hit1: number; fixes: number; tests: number;
   pickup2: number; hit2: number; split: number; collision: number; end: number;
-  clayEnd1: number; clayEnd2: number;
+  commit1: Word; commit2: Word; machine: Word; throwing: Word; fits: Word;
+  slabs: SlabEvent[]; echoes: number[]; impacts: Impact[];
 }
-
-export function chorusScore(audio: AudioData, lyrics: Lyrics): ChorusScore {
-  const shots = sceneScore(audio, lyrics, 'S13');
-  const at = (i: number) => shots[i]!.start;
-  // Return to INK on a measured downbeat, including the very short second impact shot.
-  const clayEnd = (hit: number) => audio.downbeats.find((t) => t > hit + 0.08) ?? afterBeats(audio, hit, 1);
-  return { shots, start: at(0), hit1: at(1), fixes: at(2), tests: at(3), pickup2: at(4),
-    hit2: at(5), split: at(6), collision: at(7), end: shots.at(-1)!.end,
-    clayEnd1: clayEnd(at(1)), clayEnd2: clayEnd(at(5)) };
-}
-
-export interface ChorusState {
-  kind: 'ink' | 'clay'; frozen: boolean; clock: number; impact: number;
-  second: boolean; rowCount: number; scroll: number; testMode: boolean;
-  split: boolean; crush: number; eject: number;
-}
-
-/** The waterfall clock stops during pickups; background fibres and the cursor stay alive. */
-export function chorusState(audio: AudioData, t: number, T: ChorusScore): ChorusState {
-  const frozen = t < T.hit1 || (t >= T.pickup2 && t < T.hit2);
-  const clock = t < T.hit1 ? T.start : frozen ? T.pickup2 : t;
-  const b = Math.max(0, beatsSince(audio, clock, T.hit1));
-  const last = t >= T.hit2 ? T.hit2 : T.hit1;
-  const impact = t < last ? 0 : Math.pow(0.5, beatsSince(audio, t, last) / 0.22);
-  const clay = (t >= T.hit1 && t < T.clayEnd1) || (t >= T.hit2 && t < T.clayEnd2);
-  // A commit arrives per grid beat; the second accent forces an overflow of the whole log.
-  const rowCount = t < T.hit1 ? 0 : 1 + Math.floor(b + 1e-6) + (t >= T.hit2 ? 24 : 0);
-  const whole = Math.floor(b + 1e-6), phase = b - whole;
-  const scroll = whole + ease.outExpo(span(phase, 0, 0.42));
-  const crush = ease.inExpo(span(t, T.collision, afterBeats(audio, T.collision, 0.42)));
-  return { kind: clay ? 'clay' : 'ink', frozen, clock, impact, second: t >= T.hit2,
-    rowCount, scroll, testMode: t >= T.tests && t < T.pickup2,
-    split: t >= T.split, crush, eject: ease.outCubic(span(t, afterBeats(audio, T.collision, 0.35), T.end)) };
-}
-
-/** Unique, seek-independent commit identifiers; no frame counters or random mutable state. */
 export function commitId(i: number): string {
   return ((Math.imul(i + 1, 0x45d9f3b) ^ 0x8c4e1f0) >>> 0).toString(16).padStart(8, '0').slice(0, 7);
 }
-
-export function machineLine(lyrics: Lyrics, t: number, from: number, to: number): Line | null {
-  const line = lyrics.lastLine(t);
-  return line && line.start >= from && line.start < to && t < line.end + 0.2 ? line : null;
+export function chorusScore(audio: AudioData, lyrics: Lyrics): ChorusScore {
+  const shots = sceneScore(audio, lyrics, 'S13'), at = (i: number) => shots[i]!.start;
+  const hooks = lyrics.find('I need one more commit');
+  const lines = [hooks[2]!, lyrics.get('fix a bit'), lyrics.get('Every test'), hooks[3]!, lyrics.get('But it works')];
+  const commit1 = lines[0]!.words.at(-1)!, commit2 = lines[3]!.words.at(-1)!;
+  const hit1 = at(1), hit2 = at(5);
+  // Onset + actual grid beats. MIT's grid beat is 6.24 ms early: the authored syllable wins.
+  const repeat = [commit2.start, ...audio.beats.filter(t => t > commit2.start && t < commit2.end)]
+    .map(t => Math.abs(t - hit2) < 1 / 60 ? hit2 : t);
+  const fixGroups = [[lines[1]!.words[0]!], [lines[1]!.words[2]!], lines[1]!.words.slice(4)];
+  const slabs: SlabEvent[] = [
+    { at: hit1, kind: 'commit' as const, duration: 0.18, height: 2.82, hash: '9e1c4ab', message: 'COMMIT', clay: false, words: [commit1] },
+    ...fixGroups.map((words, i): SlabEvent => ({ at: words[0]!.start, kind: 'fix', duration: 0.18,
+      height: 0.42, hash: commitId(i + 30), message: i === 2 ? 'fix a bit' : 'fix', clay: i === 2, words })),
+    ...repeat.map((t, i): SlabEvent => ({ at: t, kind: 'commit', duration: [0.18, 0.12, 0.08][Math.min(2, i)]!,
+      height: 2.82, hash: commitId(i + 40), message: 'COMMIT', clay: false, words: [commit2] })),
+  ].sort((a, b) => a.at - b.at);
+  const impacts: Impact[] = [
+    ...[lines[0]!, lines[3]!].flatMap(l => l.words.slice(0, 4).map(w => ({ at: w.start, amplitude: 13, swapFrames: 2, zoom: 0 }))),
+    ...slabs.map(s => ({ at: s.at, amplitude: s.at === hit2 ? 18 : 13,
+      swapFrames: s.at === hit2 ? 3 : 2, zoom: s.at === hit1 || s.at === hit2 ? 0.05 : 0 })),
+  ].sort((a, b) => a.at - b.at);
+  return { shots, lines, start: at(0), hit1, fixes: at(2), tests: at(3), pickup2: at(4), hit2,
+    split: at(6), collision: at(7), end: shots.at(-1)!.end, commit1, commit2,
+    machine: lines[4]!.words.at(-1)!, throwing: lines[2]!.words[3]!, fits: lines[2]!.words[4]!,
+    slabs, impacts, echoes: [0.5, 1, 1.5].map(b => afterBeats(audio, hit1, b)) };
 }
-
-/** A single kerned run with word wipes. The caller supplies its in-world placement. */
-export function inscribe(c: CanvasRenderingContext2D, line: Line, t: number, x: number, y: number,
-  size: number, width: number, dim: ThemeKey = 'paper', sung: ThemeKey = 'clay', mono = false) {
-  const text = mono ? plain(line.text) : line.text;
-  const family = mono ? F.mono(500) : F.archivo(width, 700);
-  c.save(); c.font = font(family, size); c.textBaseline = 'alphabetic'; c.textAlign = 'left';
-  c.fillStyle = css(dim, 0.28); c.fillText(text, x, y);
-  let cursor = 0;
-  for (const word of line.words) {
-    const token = mono ? plain(word.w) : word.w;
-    const from = text.indexOf(token, cursor);
-    if (from < 0) continue;
-    cursor = from + token.length;
-    const p = Lyrics.wordProgress(word, t);
-    if (p <= 0) continue;
-    const a = glyphX(text, from, family, size), b = glyphX(text, cursor, family, size);
-    c.save(); c.beginPath(); c.rect(x + a, y - size, (b - a) * p, size * 1.3); c.clip();
-    c.fillStyle = css(sung); c.fillText(text, x, y); c.restore();
+export function impactAt(t: number, T: ChorusScore) {
+  let amplitude = 0, zoom = 0, swap = false;
+  for (const hit of T.impacts) if (t >= hit.at) {
+    const decay = Math.exp(-(t - hit.at) / 0.1);
+    amplitude = Math.max(amplitude, hit.amplitude * decay); zoom = Math.max(zoom, hit.zoom * decay);
+    if (frameIdx(t) - frameIdx(hit.at) < hit.swapFrames) swap = true;
   }
-  c.restore();
+  if (t >= T.end - 0.1) return { amplitude: 0, zoom: 0, swap: false, shake: [0, 0] as [number, number] };
+  const angle = hash(frameIdx(t), 131) * Math.PI * 2;
+  return { amplitude, zoom, swap, shake: [Math.cos(angle) * amplitude, Math.sin(angle) * amplitude] as [number, number] };
 }
-
-export function label(c: CanvasRenderingContext2D, text: string, x: number, y: number,
-  size = 18, alpha = 1, color: ThemeKey = 'paper') {
-  c.font = font(F.mono(500), size); c.textAlign = 'left'; c.textBaseline = 'alphabetic';
-  c.fillStyle = css(color, alpha); c.fillText(text, x, y);
+export function collisionAt(t: number, T: ChorusScore) {
+  return ease.inCubic(span(t, T.machine.start, T.machine.start + 0.2));
 }
-
-export const mix = (a: number, b: number, p: number) => lerp(a, b, ease.inOutCubic(p));
+export function implosionAt(t: number, T: ChorusScore) {
+  const done = T.end - 1 / 60;
+  return ease.inCubic(span(t, Math.max(T.collision + 0.2, done - 0.066), done));
+}
+export function chorusState(_audio: AudioData, t: number, T: ChorusScore) {
+  return { kind: 'clay' as const, clock: t, second: t >= T.pickup2,
+    rowCount: T.slabs.filter(s => s.at <= t).length, testMode: t >= T.tests && t < T.pickup2,
+    split: t >= T.split, crush: collisionAt(t, T), eject: clamp((t - T.machine.start - 0.12) / 0.08),
+    implosion: implosionAt(t, T), impact: impactAt(t, T).amplitude };
+}

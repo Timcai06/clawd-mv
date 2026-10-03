@@ -15,9 +15,8 @@ import {
   gitfallLayout,
   gitfallBounds,
   handoffIn as in13,
-  handoffOut as out13,
-  logTravel,
 } from "../src/scenes/parts/s13-layout";
+import { TOP, SLAB, BASE_SLABS, tailTravel } from '../src/scenes/parts/s13-world';
 import { bounds, type Box } from "../src/scenes/parts/s08-print";
 import audioJSON from "../../data/audio.json";
 import lyricsJSON from "../../data/lyrics.json";
@@ -92,19 +91,11 @@ const frameAt = (shots: typeof A.shots, id: string) => {
 };
 
 describe("group C v3 framing", () => {
-  test("S13-7 perspective ink, sprite and collision envelopes reproduce measured reference bounds", () => {
-    const t = frameAt(B.shots, "S13-7"),
-      b = gitfallBounds(audio, lyrics, t, B);
-    const errors = {
-      giant: framing(b.giant, TARGETS.S13.giant),
-      clawd: framing(b.clawd, TARGETS.S13.clawd),
-      panels: framing(b.panels, TARGETS.S13.panels),
-    };
-    console.log(
-      "S13 bounds",
-      JSON.stringify({ t, actual: b, target: TARGETS.S13, errors }),
-    );
-    expect((b.giant.w * b.giant.h) / (1920 * 1080)).toBeGreaterThanOrEqual(0.3);
+  test("S13 uses physical laminations rather than the old warped reference quad", () => {
+    expect(SLAB).toEqual({ w: 7.2, h: 0.42, d: 2.4 });
+    const s = gitfallLayout(audio, lyrics, B.hit1 + 0.2, B);
+    expect(s.slabs).toHaveLength(BASE_SLABS + B.slabs.length);
+    expect(TOP(B.hit1 + 0.2, B)).toBeCloseTo(2.4, 8);
   });
   test("only three declared type levels, measured as cap heights except Mono label font size", () => {
     for (const s of [S08, S13]) {
@@ -119,35 +110,24 @@ describe("group C v3 framing", () => {
   });
 });
 describe("group C handoffs", () => {
-  test("S13 starts at clay 11 and reaches its half field in the first beat", () => {
-    expect(in13(B.start, audio, B)).toEqual(HANDOFF.eleven12);
-    expect(in13(afterBeats(audio, B.start, 1), audio, B)).toEqual({
-      x: 0,
-      y: 0,
-      w: 1096,
-      h: 1080,
-    });
+  test("S13 receives the full-height diagonal clay edge", () => {
+    const p = in13(B.start, audio, B);
+    expect(p.kind).toBe('line');
+    if (p.kind === 'line') {
+      expect(p.x0).toBeCloseTo(1010, 7); expect(p.x1).toBeCloseTo(760, 7);
+      expect(p.y0).toBeCloseTo(0, 7); expect(p.y1).toBeCloseTo(1080, 7);
+    }
   });
-  test("S13 exports the constant row pitch and speed on its last frame", () => {
-    expect(out13(B.end - 1 / 60, audio, B)).toEqual(HANDOFF.fall13);
-    const last = B.end - 1 / 60,
-      next = afterBeats(audio, last, 0.001);
-    expect(
-      (logTravel(next, audio, B) - logTravel(last, audio, B)) / 0.001,
-    ).toBeCloseTo(HANDOFF.fall13.pxPerBeat, 5);
+  test("S13 tail keeps the specified screen travel before the point implosion", () => {
+    const t = afterBeats(audio, B.end, -0.8), next = afterBeats(audio, t, 0.001);
+    expect((tailTravel(audio, next, B) - tailTravel(audio, t, B)) / 0.001).toBeCloseTo(140, 7);
   });
 });
 describe("group C voice and seeking", () => {
-  test("S13 freezes the rendered log travel and sprite pose during both pickups", () => {
-    for (const [start, hit] of [
-      [B.start, B.hit1],
-      [B.pickup2, B.hit2],
-    ]) {
-      const a = gitfallLayout(audio, lyrics, start! + 0.01, B, voice);
-      const b = gitfallLayout(audio, lyrics, hit! - 0.01, B, voice);
-      expect(a.travel).toBe(b.travel);
-      expect(a.clawd.pose).toEqual(b.clawd.pose);
-    }
+  test("S13 second pickup does not freeze its world clock", () => {
+    const a = gitfallLayout(audio, lyrics, B.pickup2 + 0.01, B, voice);
+    const b = gitfallLayout(audio, lyrics, B.hit2 - 0.01, B, voice);
+    expect(a.camera).not.toEqual(b.camera);
   });
   test("every overlapping word, including a phrase crossing either cut, is unborn before onset", () => {
     for (const T of [A, B])
@@ -182,7 +162,6 @@ describe("group C voice and seeking", () => {
         ),
       ).toEqual(s);
       expect(in13(t, audio, B)).toEqual(in13(t, audio, B));
-      expect(out13(t, audio, B)).toEqual(out13(t, audio, B));
     }
   });
   test("no legacy lyric renderer remains in the group C main files", async () => {

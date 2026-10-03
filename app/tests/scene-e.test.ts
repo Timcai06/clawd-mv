@@ -16,12 +16,8 @@ describe('E group score', () => {
     const hooks = lyrics.find('I need one more commit');
     expect(C.hit1).toBe(hooks[2].words.at(-1)!.syl![1][0]);
     expect(C.hit2).toBe(hooks[3].words.at(-1)!.syl![1][0]);
-    for (const [at, end] of [[C.hit1, C.clayEnd1], [C.hit2, C.clayEnd2]]) {
-      expect(chorusState(audio, at - epsilon, C).kind).toBe('ink');
-      expect(chorusState(audio, at, C).kind).toBe('clay');
-      expect(audio.downbeats).toContain(end);
-      expect(chorusState(audio, end, C).kind).toBe('ink');
-    }
+    expect(chorusState(audio, C.hit1, C).kind).toBe('clay');
+    expect(chorusState(audio, C.hit2, C).kind).toBe('clay');
   });
 
   test('the resolved cut list supplies every scene boundary', () => {
@@ -46,30 +42,19 @@ describe('E group score', () => {
 });
 
 describe('S13 choreography', () => {
-  test('the log freezes during both pickups, then overflows on the second impact', () => {
-    expect(chorusState(audio, C.start, C).rowCount).toBe(0);
-    const a = chorusState(audio, C.pickup2 + 0.03, C);
-    const b = chorusState(audio, C.hit2 - epsilon, C);
-    expect(a.frozen && b.frozen).toBe(true);
-    expect(a.scroll).toBe(b.scroll);
-    expect(a.rowCount).toBe(b.rowCount);
-    expect(chorusState(audio, C.hit2, C).rowCount - b.rowCount).toBeGreaterThanOrEqual(24);
-  });
-
-  test('commit entries follow the measured variable-tempo beat index', () => {
-    for (let i = 1; i <= 6; i++) {
-      const t = afterBeats(audio, C.hit1, i);
-      expect(chorusState(audio, t, C).rowCount).toBe(i + 1);
+  test('each physical insertion increments the tower exactly once', () => {
+    for (const [i, slab] of C.slabs.entries()) {
+      expect(chorusState(audio, slab.at - epsilon, C).rowCount).toBe(i);
+      expect(chorusState(audio, slab.at, C).rowCount).toBe(i + 1);
     }
     expect(new Set(Array.from({ length: 100 }, (_, i) => commitId(i))).size).toBe(100);
   });
-
-  test('the collision has a separate contact and ejection interval inside the short final shot', () => {
-    expect(chorusState(audio, C.collision - epsilon, C).crush).toBe(0);
-    const contact = chorusState(audio, afterBeats(audio, C.collision, 0.42), C);
-    expect(contact.crush).toBe(1);
-    expect(contact.eject).toBeGreaterThan(0);
+  test('second pickup keeps the world clock live; contact follows the sung machine onset', () => {
+    expect(chorusState(audio, C.pickup2 + 0.03, C).clock).toBe(C.pickup2 + 0.03);
+    expect(chorusState(audio, C.machine.start - epsilon, C).crush).toBe(0);
+    expect(chorusState(audio, C.machine.start + 0.2, C).crush).toBe(1);
     expect(chorusState(audio, C.end, C).eject).toBe(1);
+    expect(chorusState(audio, C.end - 1 / 60, C).implosion).toBe(1);
   });
 });
 

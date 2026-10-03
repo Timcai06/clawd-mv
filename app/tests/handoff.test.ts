@@ -39,6 +39,17 @@ CUTS.push(
   // C18 closes the loop: S18's last frame vs S01's real cursor at t = 0.
   {id:'C18',out:'S18',in:'S01',cut:oG7.end,exitPrim:()=>exit18(auG7,oG7.end-1/60,oG7),entryPrim:()=>s01CursorPrim(0)},
 );
+// g5: C12 joined end to end (S12 v6 exit vs S13 v6 entry) and C13 (S13 implosion point vs S14's first cursor).
+import { chorusScore } from '../src/scenes/parts/s13-score';
+import { entryPrim as towerIn, exitPrim as towerOut } from '../src/scenes/parts/s13-world';
+import { cursorScreenAt } from '../src/scenes/s14-shaft';
+import { stackScore } from '../src/scenes/parts/s14-stack';
+const g5Score = chorusScore(g3Audio, g3Lyrics), shaftScore = stackScore(g3Audio, g3Lyrics);
+const p14 = cursorScreenAt(g5Score.end, shaftScore);
+CUTS.push({ id: 'C13', out: 'S13', in: 'S14', cut: g5Score.end,
+  exitPrim: t => towerOut(t, p14), entryPrim: t => {
+    const p = cursorScreenAt(t, shaftScore); return { kind: 'point', x: p.x, y: p.y, r: 8 };
+  } });
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
     const ta = cut.motion ? cut.cut : cut.cut-(1-i/4)/60, tb = cut.motion ? cut.cut : cut.cut+i/4/60;
@@ -114,8 +125,8 @@ CUTS.push(
  {id:'C9',out:'S09',in:'S10',cut:g4T.wallStart,exitPrim:g4Scope.exitPrim,entryPrim:g4Glass.entryPrim},
  {id:'C10-motion',out:'S10',in:'S11',cut:g4T.rainStart,exitPrim:shardVelocityPrim,entryPrim:rainVelocityPrim},
  {id:'C11',out:'S11',in:'S12',cut:g4T.rerunStart,exitPrim:g4Rain.exitPrim,entryPrim:t=>g4Copy.entryPrim(g4Voice,t,g4T)},
- {id:'C12-g4-exit-contract',out:'S12',in:'S13-contract',cut:g4T.end,exitPrim:t=>g4Copy.exitPrim(g4Voice,t,g4T),
-   entryPrim:()=>({kind:'line',...CUT.diag13,w:2})},
+ {id:'C12',out:'S12',in:'S13',cut:g4T.end,exitPrim:t=>g4Copy.exitPrim(g4Voice,t,g4T),
+   entryPrim:t=>towerIn(t,g4Audio,chorusScore(g4Audio,g4Lyrics))},
 );
 test('G4 registers five owned cut contracts (C12 incoming implementation is external)',()=>{
  const own=CUTS.filter(c=>c.id.startsWith('C8')||c.id==='C9'||c.id.startsWith('C10')||c.id==='C11'||c.id.startsWith('C12'));

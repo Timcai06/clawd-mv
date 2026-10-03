@@ -104,14 +104,14 @@ describe('E v3 typography, word timing, seek determinism', () => {
     expect(S14_LEVELS.lyric).toBeGreaterThanOrEqual(50); expect(S14_LEVELS.lyric).toBeLessThanOrEqual(110);
     expect(S14_LEVELS.label).toBeGreaterThanOrEqual(14); expect(S14_LEVELS.label).toBeLessThanOrEqual(22);
   });
-  test('all owned and crossing words are unborn 10ms before their aligned onset', () => {
+  test('owned words are unborn before onset; machine is absorbed in S13', () => {
     const owned = lyrics.linesIn(D.start, T.s16[0]!);
     const words = owned.flatMap(l => l.words);
     expect(words.length).toBeGreaterThan(40);
     for (const word of words) expect(voice.form(word, word.start - 0.01).born).toBe(0);
     const carried = lyrics.get('But it works on my machine').words.at(-1)!;
     expect(carried.start).toBeLessThan(D.start); expect(carried.end).toBeGreaterThan(D.start);
-    expect(voice.form(carried, D.start).born).toBeGreaterThan(0);
+    expect(D.words.some(e => e.word.gi === carried.gi)).toBe(false); // C13 explicitly has no carry.
     const one = lyrics.get('One goes green').words[0]!;
     // v6 R1: the S16 cut sits on the beat before "One", so the whole line belongs to S16.
     expect(one.start).toBeGreaterThanOrEqual(T.s16[0]! - 0.02);
