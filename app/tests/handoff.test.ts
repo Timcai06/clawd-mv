@@ -20,8 +20,6 @@ import audioJSON from '../../data/audio.json';
 import lyricsJSON from '../../data/lyrics.json';
 const g3Audio = new AudioData(audioJSON), g3Lyrics = new Lyrics(lyricsJSON);
 const g3Score = commitScore(g3Audio,g3Lyrics), g3Next = resolveX9Times({ audio:g3Audio,lyrics:g3Lyrics });
-CUTS.push({ id:'C7 / V6 contract; S07 implementation pending',out:'S07 contract',in:'S08',cut:g3Score.start,
-  exitPrim:() => ({ kind:'rect',x:0,y:0,w:1920,h:1080 }),entryPrim:entry08 });
 CUTS.push({ id:'C8',out:'S08',in:'S09',cut:g3Score.end,exitPrim:exit08,entryPrim:t => {
   const p=entry09(t,g3Audio,g3Next); return { kind:'line',x0:p.x0,y0:p.y,x1:p.x1,y1:p.y,w:2 };
 } });
@@ -97,7 +95,6 @@ function rainVelocityPrim(t:number):Prim {
   return {kind:'line',x0:0,y0:0,x1:(b.x-a.x)*960/0.00001,y1:-(b.y-a.y)*540/0.00001,w:1};
 }
 CUTS.push(
- {id:'C8-g4-entry',out:'S08',in:'S09',cut:g4T.terminal,exitPrim:t=>{const h=hashOut(t,g4Audio,g4Commit);return {kind:'line',x0:h.x0,y0:h.y,x1:h.x1,y1:h.y,w:2};},entryPrim:g4Scope.entryPrim},
  {id:'C9',out:'S09',in:'S10',cut:g4T.wallStart,exitPrim:g4Scope.exitPrim,entryPrim:g4Glass.entryPrim},
  {id:'C10-motion',out:'S10',in:'S11',cut:g4T.rainStart,exitPrim:shardVelocityPrim,entryPrim:rainVelocityPrim},
  {id:'C11',out:'S11',in:'S12',cut:g4T.rerunStart,exitPrim:g4Rain.exitPrim,entryPrim:t=>g4Copy.entryPrim(g4Voice,t,g4T)},
@@ -106,7 +103,7 @@ CUTS.push(
 );
 test('G4 registers five owned cut contracts (C12 incoming implementation is external)',()=>{
  const own=CUTS.filter(c=>c.id.startsWith('C8')||c.id==='C9'||c.id.startsWith('C10')||c.id==='C11'||c.id.startsWith('C12'));
- expect(own.length).toBe(5);
+ expect(own.length).toBe(5); // C8 is registered once (S08 v6 exit against S09 entry)
  for(const cut of own){
   const errors=Array.from({length:5},(_,i)=>primError(cut.exitPrim(cut.cut-(1-i/4)/60),cut.entryPrim(cut.cut+i/4/60)));
   console.log('G4_CUT',cut.id,JSON.stringify({px:Math.max(...errors.map(e=>e.px)),size:Math.max(...errors.map(e=>e.size))}));
@@ -140,7 +137,7 @@ CUTS.push(
   {id:'C4',motion:true,out:'S04',in:'S05',cut:g2P.start,exitPrim:t=>g2s04.exitPrim(t,g2a,g2C),entryPrim:t=>g2s05.entryPrim(t,g2a,g2l)},
   {id:'C5',out:'S05',in:'S06',cut:g2T.todo,exitPrim:t=>g2s05.exitPrim(t,g2a,g2l),entryPrim:t=>g2s06.entryPrim(t,g2a,g2T)},
   {id:'C6',out:'S06',in:'S07',cut:g2T.keyboard,exitPrim:t=>g2s06.exitPrim(t,g2a,g2T),entryPrim:t=>g2s07.entryPrim(t,g2a,g2T)},
-  {id:'C7',out:'S07',in:'S08-contract',cut:g2T.end,exitPrim:t=>g2s07.exitPrim(t,g2a,g2T),entryPrim:()=>({kind:'rect',x:0,y:0,w:1920,h:1080})},
+  {id:'C7',out:'S07',in:'S08',cut:g2T.end,exitPrim:t=>g2s07.exitPrim(t,g2a,g2T),entryPrim:entry08},
 );
 test('G2 C3/C5/C6/C7 retain their full adjacent-frame contracts',()=>{
   for(const cut of CUTS.filter(c=>['C3','C5','C6','C7'].includes(c.id)))for(let i=0;i<=4;i++){
