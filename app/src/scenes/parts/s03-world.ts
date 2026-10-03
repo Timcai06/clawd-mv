@@ -9,11 +9,12 @@ import { varRun } from '../../kit/vartype';
 import type { StrokeText } from '../../engine/stroke';
 import { audio, lyrics, T, voice } from './s01-timing';
 import { screenAffines } from './s02-world';
-import { projectedBox } from './s01-print';
+import { projectedBox, boxCorners } from './s01-print';
 export const PAPER={x0:0.6,z0:0.57,w:17.9,h:10};
 export const CAL={x:13.55,z:0.90,w:5.11,h:4.38};
 export const STAMP={x:11.9,z:7.66,angle:-0.21,w:8.1,h:3.4,r:0.18,depth:0.6};
 export const KEY=p3(-0.8,0.35,-0.3),KEY_NORM=Math.hypot(KEY.x,KEY.y,KEY.z);
+export const KEY_INTENSITY=(0.88-0.18)/(KEY.y/KEY_NORM);
 const words=lyrics.lines[1]!.words;
 export function press(t:number){
   const a=t-T.bug;if(a<0)return 0;if(a<0.03)return a/0.03;if(a<0.17)return 1;
@@ -70,7 +71,15 @@ vec3 paperNormal(float x,float z){
 }`;
 export function paperShift(t:number){return 5*(1-ease.outCubic(span(t,T.issue+1/60,afterBeats(audio,T.issue,1))));}
 export function paperPoint(x:number,z:number,t:number):P3 {return p3(x+paperShift(t),paperY(x,z,t),z);}
-export function paperLight(x:number,z:number,t:number){const n=paperNormal(x,z,t);return clamp(0.18+Math.max(0,(n.x*KEY.x+n.y*KEY.y+n.z*KEY.z)/KEY_NORM));}
+export function paperLight(x:number,z:number,t:number){const n=paperNormal(x,z,t);return clamp(0.18+KEY_INTENSITY*Math.max(0,(n.x*KEY.x+n.y*KEY.y+n.z*KEY.z)/KEY_NORM));}
+export function heightShadow(p:P3,t:number){
+  let shadow=1;for(let i=1;i<=16;i++){
+    const step=i*0.12,x=p.x+KEY.x/KEY_NORM*step-paperShift(t),y=p.y+KEY.y/KEY_NORM*step,z=p.z+KEY.z/KEY_NORM*step;
+    if(x<PAPER.x0||x>PAPER.x0+PAPER.w||z<PAPER.z0||z>PAPER.z0+PAPER.h)continue;
+    shadow=Math.min(shadow,smoothstep(-0.01,0.06,y-paperY(x,z,t)));
+  }return shadow;
+}
+export function tableTone(p:P3,t:number){return 0.18+KEY_INTENSITY*KEY.y/KEY_NORM*heightShadow(p,t);}
 let got:PathLayout|undefined,report:PathLayout|undefined,notes:PathLayout|undefined,screen:PathLayout|undefined;
 export function titleLayouts(){
   return [got??=layoutPath(words.slice(0,2),{capH:3.156,axes:w=>voice.form(w,w.end).axes}),
@@ -158,9 +167,17 @@ export function incomingScreenAffines(t:number):GlyphAffine[]{
   return lerpAffines(shared,screenOnPaper(t),ease.outCubic(span(t,lyrics.lines[0]!.words[6]!.end,lyrics.lines[0]!.words[6]!.end+0.12)));
 }
 export function stampPose(t:number){
-  const at=T.bug,impact=paperPoint(STAMP.x,STAMP.z,at),cam=cameraAt(at-0.12),near=p3(cam.pos.x,cam.pos.y-0.7,cam.pos.z-0.7);
+  const at=T.bug,impact=paperPoint(STAMP.x,STAMP.z,at),cam=cameraAt(at-0.12),d=p3(cam.pos.x-cam.tgt.x,cam.pos.y-cam.tgt.y,cam.pos.z-cam.tgt.z),len=Math.hypot(d.x,d.y,d.z);
+  const near=p3(cam.pos.x+d.x/len+150,cam.pos.y+d.y/len,cam.pos.z+d.z/len);
   const fall=ease.inQuad(span(t,at-0.12,at)),lift=ease.outCubic(span(t,at+0.17,at+0.37));
-  return {visible:t>=at-0.12&&t<at+0.37,x:lerp(near.x,impact.x,fall),z:lerp(near.z,impact.z,fall),y:lerp(near.y,impact.y+0.08,fall)+lift*9-0.05*press(t),press:press(t),ink:t>=at+0.17};
+  return {visible:t>=at-0.12&&t<at+0.37,x:lerp(near.x,impact.x,fall)+lift*80,z:lerp(near.z,impact.z,fall),y:lerp(near.y,impact.y+0.08,fall)+lift*9-0.05*press(t),press:press(t),ink:t>=at+0.17};
 }
+/** Conservative bounds include the raised, reversed BUG on the rubber face. */
+export function stampCorners(t:number):P3[]{
+  const pose=stampPose(t),c=Math.cos(STAMP.angle),s=Math.sin(STAMP.angle);
+  return boxCorners(p3(0,0,(STAMP.depth-0.093)/2),p3(STAMP.w/2,STAMP.h/2,(STAMP.depth+0.093)/2))
+    .map(p=>p3(pose.x+c*p.x+s*p.y,pose.y+p.z,pose.z+s*p.x-c*p.y));
+}
+export function stampBox(t:number){const rig=new Rig();rig.set(cameraAt(t));return projectedBox(rig,stampCorners(t));}
 export function calendarNumbers(t:number){return lerp(0.6,0.3,span(t,afterBeats(audio,T.end,-0.5),T.end-1/60));}
 export function gain(t:number){return exitEnvelope(t,T.end).gain;}

@@ -11,12 +11,20 @@ import { drawNote } from '../kit/note';
 import { afterBeats } from '../kit/time';
 import { audio, T, voice, bootState } from './parts/s01-timing';
 import { S01_GLSL, cameraAt, cursorSolidPoints, cursorCenter, cursorAt, cursorGain, blink, flare, worldBoxes,
-  lyricPath, line01Layout, lyricAlpha, FRAME_PATH } from './parts/s01-world';
+  lyricPath, line01Layout, lyricAlpha, FRAME_PATH, AMBIENT, LIGHT_POWER, INK_MAX_COV } from './parts/s01-world';
 export { cameraAt, cursorAt, line01Affines, line01Next } from './parts/s01-world';
 export const TYPE_LEVELS={giant:null,lyric:50.8,label:20};
 const SHADE=/* glsl */`
 ${S01_GLSL}
 uniform vec3 paperC,inkC,clayC,lightPos;uniform float lightI;
+// Exact periodic box filtering: zero line coverage stays zero even when many
+// world lines lie inside one pixel. The generic hatch's AA would average to grey.
+float lineIntegral(float x,float cov){return floor(x)*cov+min(fract(x),cov);}
+float lightLines(float u,float tone,float maxCov){
+  float cov=min(maxCov,pow(clamp(tone,0.0,1.0),1.8)*0.95),aa=max(fwidth(u),1e-4)*0.5;
+  float x=u+cov*0.5;
+  return clamp((lineIntegral(x+aa,cov)-lineIntegral(x-aa,cov))/(2.0*aa),0.0,1.0);
+}
 float pointShadow(vec3 p,vec3 n,vec3 L,float stop){
   float shadow=1.0;vec3 ro=p+n*0.01,inv=1.0/(L+vec3(1e-20));
   for(int i=0;i<32;i++){
@@ -30,15 +38,18 @@ vec3 background(vec3 rd,vec2 px){return inkC;}
 vec3 shade(vec3 p,vec3 n,vec3 rd,float id,float travel){
   vec3 delta=lightPos-p;float d2=dot(delta,delta);vec3 L=normalize(delta);
   float E=lightI*max(dot(n,L),0.0)/(d2+0.35)*pointShadow(p,n,L,sqrt(d2));
-  float tone=clamp(0.04+E,0.0,1.0);
+  float tone=clamp(${AMBIENT}+E,0.0,0.92);
   float u=id<0.5?p.z/0.05:faceU(p,n,20.0,0.0);
   // A lit dark-ground surface receives paper lines; a dark one remains ink.
-  float coverage=engraveTone(u,1.0-tone);
-  return mix(inkC,id>2.5?clayC:paperC,coverage);
+  if(id<0.5)return mix(inkC,paperC,lightLines(u,clamp(E,0.0,0.92),1.0));
+  if(id<1.5)return mix(inkC,paperC,lightLines(u,tone,${INK_MAX_COV}));
+  if(id>2.5)return mix(clayC,inkC,engraveTone(u,tone));
+  // The backing is an opaque paper body, with real occlusion encoded in its ink.
+  return mix(paperC,inkC,engraveTone(u,tone));
 }`;
 class BootWorld {
   users=0;rig=new Rig();layer=new Layer2D();sparks=new SparkLines();
-  scene=new THREE.Scene();cursorGeo=new THREE.BufferGeometry();cursorMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide});
+  scene=new THREE.Scene();cursorGeo=new THREE.BufferGeometry();cursorMat=new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false,side:THREE.DoubleSide});
   cursor:THREE.Mesh;
   rm=new RaymarchPass(SHADE,{
     boxC:{value:Array.from({length:32},()=>new THREE.Vector3())},boxH:{value:Array.from({length:32},()=>new THREE.Vector3())},
@@ -86,10 +97,10 @@ export default class S01Boot extends Scene {
     const w=this.w,t=f.t,r=this.ctx.renderer,cam=cameraAt(t),boxes=worldBoxes(t);
     w.rig.set(cam);w.rm.setCam(cam);w.rm.u.boxN!.value=boxes.length;
     boxes.forEach((b,i)=>{w.rm.u.boxC!.value[i].set(b.c.x,b.c.y,b.c.z);w.rm.u.boxH!.value[i].set(b.h.x,b.h.y,b.h.z);w.rm.u.boxID!.value[i]=b.id;});
-    const light=cursorCenter(t);w.rm.u.lightPos!.value.set(light.x,light.y,light.z);w.rm.u.lightI!.value=blink(t)*(1+3*flare(t));
+    const light=cursorCenter(t);w.rm.u.lightPos!.value.set(light.x,light.y,light.z);w.rm.u.lightI!.value=LIGHT_POWER*blink(t)*(1+3*flare(t));
     w.rm.render(r,out);
     const ps=cursorSolidPoints(t),attr=w.cursorGeo.getAttribute('position');ps.forEach((p,i)=>attr.setXYZ(i,p.x,p.y,p.z));attr.needsUpdate=true;
-    w.cursorMat.color.setRGB(...lin('clay')).multiplyScalar(cursorGain(t));
+    w.cursorMat.emissiveIntensity=cursorGain(t);
     r.setRenderTarget(out);r.clearDepth();r.render(w.scene,w.rig.cam);
     w.layer.clear();const c=w.layer.ctx;w.sparks.begin(c,undefined,'ink');
     drawPathText(c,w.rig,lyricPath,line01Layout(),t,{mode:'stand',base:'paper',on:'ink',axes:(g,time)=>voice.form(g.word,time).axes,

@@ -12,7 +12,7 @@ import { audio, lyrics, T, voice } from './parts/s01-timing';
 import { pingLayout, SPLIT_X } from './parts/s02-layout';
 import { drawAffine, affineBounds, projectedBox } from './parts/s01-print';
 import { S02_GLSL, BEVEL, DEPTH, FRONT, cameraAt, letterPose, lightIntensity, cursorAt, continuationGlyphs,
-  continuationAffines, line01Incoming, screenAffines, landingAt, rippleCenters, gain } from './parts/s02-world';
+  continuationAffines, line01Incoming, screenAffines, landingAt, rippleCenters, gain, KEY_INTENSITY, AMBIENT_TONE, PAPER_LUMA, KEY, cursorEmission } from './parts/s02-world';
 export { cursorAt } from './parts/s02-world';
 export const TYPE_LEVELS={giant:625,lyric:50.8,label:20};
 import { varRun } from '../kit/vartype';
@@ -24,6 +24,26 @@ export function configureSolid(material:THREE.Material){
   solid.group.position.set(lay.x/100-9.6,5.4-lay.y/100+BEVEL*sy,0);
   solid.setLetter(1,{visible:false});return solid;
 }
+export function poseLetter(solid:SolidText,i:number,t:number){
+  const p=letterPose(i,t),letter=solid.letters[i]!,box=letter.mesh.geometry.boundingBox!,cy=(box.min.y+box.max.y)/2,cz=(box.min.z+box.max.z)/2;
+  const dy=cy*(Math.cos(p.rotX)-1)-cz*Math.sin(p.rotX),dz=cy*Math.sin(p.rotX)+cz*(Math.cos(p.rotX)-1);
+  solid.setLetter(i,{d:{x:0,y:p.dy+dy,z:p.z+dz},rot:{x:p.rotX,y:0,z:0},scale:{x:1,y:1,z:p.scaleZ},visible:p.visible});
+  letter.mesh.castShadow=p.castShadow;
+}
+/** CPU hard-shadow reference on the actual posed triangles at the R2 exposure time. */
+export function posterExposureSamples(t:number){
+  const material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide}),solid=configureSolid(material);
+  for(const i of [0,2,3])poseLetter(solid,i,t);solid.group.updateMatrixWorld(true);
+  const dir=new THREE.Vector3(KEY.x,KEY.y,KEY.z).normalize(),ray=new THREE.Raycaster(),lit:{p:{x:number;y:number;z:number};tone:number}[]=[],shadow:typeof lit=[];
+  for(let y=-5;y<=5;y+=0.5)for(let x=-9;x<=9;x+=0.5){
+    const p={x,y,z:0};ray.set(new THREE.Vector3(x,y,0.001),dir);
+    const blocked=ray.intersectObjects(solid.letters.filter(l=>l.mesh.visible&&l.mesh.castShadow).map(l=>l.mesh),false).length>0;
+    const tone=AMBIENT_TONE+KEY_INTENSITY/Math.PI*PAPER_LUMA*dir.z*(blocked?0:1);
+    (blocked?shadow:lit).push({p,tone});
+  }
+  const sample=(ps:typeof lit)=>Array.from({length:5},(_,i)=>ps[Math.floor((ps.length-1)*i/4)]!);
+  solid.dispose();material.dispose();return {at:t,lit:sample(lit),shadow:sample(shadow)};
+}
 export function pingBounds(t:number){
   const solid=configureSolid(new THREE.MeshBasicMaterial()),rig=new Rig();rig.set(cameraAt(t));
   const points=[0,2,3].flatMap(i=>solid.letterCorners(i));
@@ -31,16 +51,42 @@ export function pingBounds(t:number){
   points.push(...[b.x,b.x+b.w].flatMap(x=>[b.y,b.y+b.h].map(y=>({x:x/100-9.6,y:5.4-y/100,z:FRONT}))));
   const rect=projectedBox(rig,points);solid.dispose();(solid.letters[0]!.mesh.material as THREE.Material).dispose();return rect;
 }
+export function printMaterial(letters:boolean){
+  const m=engraveMaterial({ink:lin(letters?'paper':'ink'),paper:lin(letters?'ink':'paper'),splitX:SPLIT_X,angle:0.6,pitch:5,faceAngles:letters});
+  const compile=m.onBeforeCompile;
+  m.onBeforeCompile=(shader,renderer)=>{
+    compile(shader,renderer);
+    // A printed split swaps the palette, while both solid families retain
+    // normal dark-line exposure. No maxCov or paperMap is applied to PING.
+    shader.fragmentShader=shader.fragmentShader.replace('bool engraveLL = (engraveLightLines > 0.5) != engraveSwap;',
+      'bool engraveLL = engraveLightLines > 0.5;')
+      .replace('uniform vec3 engraveInk, engravePaper;',`uniform vec3 engraveInk, engravePaper;
+float solidLineIntegral(float x,float width){return floor(x)*width+min(fract(x),width);}
+float solidLightLine(float u,float tone){
+  float width=0.01*clamp(tone,0.0,1.0),aa=max(fwidth(u),1e-4)*0.5,x=u+width*0.5;
+  return clamp((solidLineIntegral(x+aa,width)-solidLineIntegral(x-aa,width))/(2.0*aa),0.0,1.0);
+}`)
+      .replace('outgoingLight = mix(engraveP,engraveI,engraveCov)+totalEmissiveRadiance;',`
+bool solidInk=${letters?'!engraveSwap':'engraveSwap'};
+// Opaque ink bodies carry fine light-cut lines; shadows reduce that real-light
+// line field. Paper bodies retain the kit's normal engraved shadows. No maxCov.
+outgoingLight = solidInk
+  ? mix(${letters?'engraveBase,engraveInk':'engraveInk,engraveBase'},solidLightLine(engraveU,engraveT))+totalEmissiveRadiance
+  : mix(engraveP,engraveI,engraveCov)+totalEmissiveRadiance;`);
+  };
+  m.customProgramCacheKey=()=>`s02-solid-print-${letters}-${SCALE}`;
+  return m;
+}
 class NotifyWorld {
   users=0;scene=new THREE.Scene();rig=new Rig();layer=new Layer2D();
-  material=engraveMaterial({ink:lin('ink'),paper:lin('paper'),splitX:SPLIT_X,angle:0.6,pitch:5,faceAngles:true});
-  posterMaterial=engraveMaterial({ink:lin('ink'),paper:lin('paper'),splitX:SPLIT_X,angle:0.6,pitch:5,faceAngles:false});
+  material=printMaterial(true);
+  posterMaterial=printMaterial(false);
   poster=new THREE.Mesh(new THREE.PlaneGeometry(80,45),this.posterMaterial);
   solid=configureSolid(this.material);
-  cursorMat=new THREE.MeshBasicMaterial({color:new THREE.Color().setRGB(...lin('clay')),toneMapped:false});
+  cursorMat=new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false});
   cursor=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),this.cursorMat);
   point=new THREE.PointLight(new THREE.Color().setRGB(...lin('paper')),1,60,2);
-  key=new THREE.DirectionalLight(new THREE.Color().setRGB(...lin('paper')),0.55);
+  key=new THREE.DirectionalLight(new THREE.Color().setRGB(...lin('paper')),KEY_INTENSITY);
   rippleUniforms={rippleAge:{value:new THREE.Vector3()},rippleCenters:{value:[0,2,3].map(i=>new THREE.Vector2(rippleCenters()[i]!.x,1080-rippleCenters()[i]!.y))}};
   constructor(){
     // Keep the kit's lighting/shadow conversion; alter only the scene's hatch
@@ -55,7 +101,8 @@ class NotifyWorld {
           float engraveU=dot(engravePx,vec2(-sin(engraveA),cos(engraveA)))/(engravePitch*ripple);`);
     };
     this.posterMaterial.customProgramCacheKey=()=>`s02-engrave-ripple-${SCALE}`;
-    this.poster.receiveShadow=true;this.scene.add(this.poster,this.solid.group,this.cursor,this.point,this.key,this.key.target);
+    this.poster.receiveShadow=true;this.scene.add(this.poster,this.solid.group,this.cursor,this.point,this.key,this.key.target,
+      new THREE.AmbientLight(new THREE.Color().setRGB(...lin('paper')),Math.PI*AMBIENT_TONE/PAPER_LUMA));
     this.point.castShadow=this.key.castShadow=true;
     this.point.shadow.mapSize.set(512*SCALE,512*SCALE);this.point.shadow.camera.near=0.05;this.point.shadow.camera.far=60;this.point.shadow.bias=-0.0004;
     this.key.position.set(-12,14,8);this.key.target.position.set(0,0,0);this.key.shadow.mapSize.set(1024*SCALE,1024*SCALE);
@@ -71,14 +118,7 @@ export default class S02Notify extends Scene {
   override dispose(){if(--this.w.users===0){this.w.dispose();shared=undefined;}}
   override render(f:Frame,out:THREE.WebGLRenderTarget){
     const w=this.w,t=f.t,r=this.ctx.renderer;w.rig.set(cameraAt(t));
-    for(const i of [0,2,3]){
-      const p=letterPose(i,t),letter=w.solid.letters[i]!,box=letter.mesh.geometry.boundingBox!,cy=(box.min.y+box.max.y)/2,cz=(box.min.z+box.max.z)/2;
-      // SolidText rotates about the glyph centre. This offset makes its bottom
-      // baseline the fixed pivot, as required by the falling-letter exit.
-      const dy=cy*(Math.cos(p.rotX)-1)-cz*Math.sin(p.rotX),dz=cy*Math.sin(p.rotX)+cz*(Math.cos(p.rotX)-1);
-      w.solid.setLetter(i,{d:{x:0,y:p.dy+dy,z:p.z+dz},rot:{x:p.rotX,y:0,z:0},scale:{x:1,y:1,z:p.scaleZ},visible:p.visible});
-      letter.mesh.castShadow=p.castShadow;
-    }
+    for(const i of [0,2,3])poseLetter(w.solid,i,t);
     const cur=cursorAt(t),rect=pingLayout().letters[1]!,k=1-cur.h/rect.h,ip=letterPose(1,t);
     const pxPerUnit=540/Math.tan(34*Math.PI/360)/(w.rig.cam.position.z-FRONT);
     const width=rect.w*(1-k)+7*k,height=cur.h;
@@ -86,9 +126,11 @@ export default class S02Notify extends Scene {
     w.cursor.position.set((cur.x-960)/pxPerUnit,(540-cur.y)/pxPerUnit,FRONT-DEPTH/2);
     w.cursor.rotation.x=ip.rotX;w.cursor.position.y+=(height/pxPerUnit/2)*(Math.cos(ip.rotX)-1)+ip.dy;
     w.cursor.position.z+=(height/pxPerUnit/2)*Math.sin(ip.rotX);w.cursor.visible=ip.emissive||ip.visible;
-    w.cursorMat.color.setRGB(...lin(ip.emissive?'clay':'paper')).multiplyScalar(ip.emissive?lightIntensity(t):1);
+    w.cursorMat.color.setRGB(...(ip.emissive?[0,0,0] as [number,number,number]:lin('paper')));
+    w.cursorMat.emissiveIntensity=ip.emissive?cursorEmission(t):0;
+    w.cursor.castShadow=!ip.emissive&&ip.visible;
     w.point.position.set(w.cursor.position.x,w.cursor.position.y,DEPTH+0.1);w.point.intensity=ip.emissive?lightIntensity(t):0;
-    if(t>=T.issue-1/60)w.cursorMat.color.multiplyScalar(gain(t));
+    if(t>=T.issue-1/60)w.cursorMat.emissiveIntensity*=gain(t);
     w.rippleUniforms.rippleAge.value.set(...[0,2,3].map(i=>t-landingAt(i)) as [number,number,number]);
     const enabled=r.shadowMap.enabled,type=r.shadowMap.type;
     try{r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFShadowMap;clearRT(r,out,lin('ink'));r.render(w.scene,w.rig.cam);}
@@ -103,6 +145,6 @@ export default class S02Notify extends Scene {
     if(k>=0.999){c.fillStyle=css('clay');c.fillRect(cur.x-3.5,cur.y-6,7,12);}
     this.ctx.comp.draw(r,w.layer.upload(),out);
     let shake=0;if(t<T.issue-0.1)for(const i of [0,2,3])if(t>=landingAt(i))shake+=6*Math.exp(-(t-landingAt(i))/0.08);
-    return {...POSTER_POST,hud:0,shake:[noise1(t*71,2)*shake,noise1(t*83,3)*shake] as [number,number]};
+    return {...POSTER_POST,bloom:0,hud:0,shake:[noise1(t*71,2)*shake,noise1(t*83,3)*shake] as [number,number]};
   }
 }

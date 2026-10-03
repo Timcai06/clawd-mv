@@ -8,7 +8,7 @@ import { Rig, mixCam, orbitCam, p3, type Cam, type P3 } from '../../kit/rig';
 import { layoutPath, path3, pathAt, type PathGlyph, type PathLayout } from '../../kit/pathtext';
 import { varRun } from '../../kit/vartype';
 import type { GlyphAffine } from '../../kit/carry';
-import { audio, lyrics, T, voice, bootState } from './s01-timing';
+import { audio, lyrics, T, voice, bootState, WELCOME_BOX } from './s01-timing';
 import { iStemRect } from './s02-layout';
 import { boxCorners, projectedBox } from './s01-print';
 
@@ -16,7 +16,8 @@ export const FRAME = { cx:0,y0:0.62,w:9.6,h:4.79,bar:0.07,depth:0.18 };
 export const FRAME_PATH={length:2*(FRAME.w+FRAME.h),edges:[FRAME.h,FRAME.w,FRAME.w,FRAME.h],starts:[0,FRAME.h,FRAME.h+FRAME.w,FRAME.h+2*FRAME.w]};
 export const VOX = 0.364;
 export const CUR = {x:0,y:0,z:1.25,w:0.18,h:0.40,d:0.06};
-export const LYRIC_CAP = 0.42;
+export const LYRIC_CAP = 0.5;
+export const AMBIENT = 0.02, LIGHT_POWER = 70, INK_MAX_COV = 0.3;
 export interface WorldBox { c:P3; h:P3; id:number }
 export function sdBox(p:P3,h:P3):number {
   const x=Math.abs(p.x)-h.x,y=Math.abs(p.y)-h.y,z=Math.abs(p.z)-h.z;
@@ -69,20 +70,32 @@ export function blink(t:number):number {
   const frameEnd=afterBeats(audio,T.welcome,1.4);
   if((t>=T.welcome&&t<=frameEnd)||t>=afterBeats(audio,T.ping,-1))return 1;
   const b=audio.beatAt(t),floor=Math.floor(b),off=audio.timeOfBeat(floor+0.55);
-  return b-floor<=0.55?1:Math.exp(-(t-off)/0.09);
+  return b-floor<=0.55?1:Math.exp(-(t-off)/0.07);
 }
 export function flare(t:number):number {
   return ease.inCubic(span(t,lyrics.lines[0]!.words[2]!.start,T.ping-1/60));
+}
+let wideFit:{targetY:number;dist:number}|undefined;
+export function wideCameraFit(){
+  if(wideFit)return wideFit;
+  const rig=new Rig(),corners=boxCorners(p3(0,FRAME.y0+FRAME.h/2,0),p3(FRAME.w/2+FRAME.bar,FRAME.h/2+FRAME.bar,FRAME.depth));
+  let targetY=2.1,dist=540/Math.tan(34*Math.PI/360)*(FRAME.w+2*FRAME.bar)/WELCOME_BOX.w+FRAME.depth;
+  // Fit width and vertical centre; the retained 0.05 pitch keeps height within 3%.
+  for(let i=0;i<12;i++){
+    rig.set(orbitCam(p3(0,targetY,0),0,0.05,dist,34));const b=projectedBox(rig,corners);
+    const centre=b.y+b.h/2,want=WELCOME_BOX.y+WELCOME_BOX.h/2;
+    targetY-=(centre-want)/(b.w/(FRAME.w+2*FRAME.bar));
+    dist=(dist-FRAME.depth)*b.w/WELCOME_BOX.w+FRAME.depth;
+  }
+  return wideFit={targetY,dist};
 }
 export function cameraAt(t:number):Cam {
   // Freeze the entire camera value, including its kick-driven breath.
   t=Math.min(t,T.ping-0.1);
   const a=afterBeats(audio,T.welcome,-1.5),b=afterBeats(audio,T.welcome,3),lean=afterBeats(audio,T.ping,-2);
   const micro=orbitCam(p3(CUR.x,CUR.h/2,CUR.z),0.25,0.12,lerp(1.6,1.35,span(t,T.start,a)),28);
-  // Width fit includes the bars and front depth. The specified target is kept;
-  // its vertical location cannot also fit WELCOME_BOX (see final report).
-  const focal=540/Math.tan(34*Math.PI/360),dist=focal*(FRAME.w+2*FRAME.bar)/960+FRAME.depth;
-  const wide=orbitCam(p3(0,2.95,0),0,0.05,dist,34);
+  const {targetY,dist}=wideCameraFit();
+  const wide=orbitCam(p3(0,targetY,0),0,0.05,dist,34);
   if(t<a)return micro;
   if(t<b){const u=span(t,a,b),k=ease.inOutCubic(u);const c=mixCam(micro,wide,k);
     const yaw=u<0.25?0.25+0.07*Math.sin(u/0.25*Math.PI/2):0.32*Math.cos((u-0.25)/0.75*Math.PI/2);
@@ -155,7 +168,8 @@ export function lightAt(p:P3,t:number,n:P3=p3(0,1,0)):number {
     const travel=clamp(near,0.03,len),q=p3(ro.x+dir.x*travel-b.c.x,ro.y+dir.y*travel-b.c.y,ro.z+dir.z*travel-b.c.z);
     sh=Math.min(sh,10*Math.max(0,sdBox(q,b.h))/travel);
   }
-  return blink(t)*(1+3*flare(t))*Math.max(0,n.x*dir.x+n.y*dir.y+n.z*dir.z)/(len*len+0.35)*clamp(sh);
+  return LIGHT_POWER*blink(t)*(1+3*flare(t))*Math.max(0,n.x*dir.x+n.y*dir.y+n.z*dir.z)/(len*len+0.35)*clamp(sh);
 }
+export function surfaceTone(p:P3,t:number,n:P3){return clamp(AMBIENT+lightAt(p,t,n),0,0.92);}
 export function lyricAlpha(p:P3,t:number) {return 0.3+0.7*clamp(lightAt(p,t));}
-export function cursorGain(t:number) {return blink(t)*(1+3*flare(t))*exitEnvelope(t,T.ping).gain;}
+export function cursorGain(t:number) {return (1+3*flare(t))*exitEnvelope(t,T.ping).gain;}

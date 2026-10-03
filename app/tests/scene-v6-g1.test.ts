@@ -11,7 +11,7 @@ import * as S01 from '../src/scenes/parts/s01-world';
 import * as S02 from '../src/scenes/parts/s02-world';
 import * as S03 from '../src/scenes/parts/s03-world';
 import { pingLayout, PING_BOX } from '../src/scenes/parts/s02-layout';
-import { pingBounds } from '../src/scenes/s02-notify';
+import { pingBounds, posterExposureSamples, printMaterial } from '../src/scenes/s02-notify';
 import { stampBodyGeometry } from '../src/scenes/s03-issue';
 import { cityTimes, handoffIn as main04Entry } from '../src/scenes/parts/s04-city-model';
 import { affineBounds } from '../src/scenes/parts/s01-print';
@@ -66,21 +66,20 @@ describe('V6 g1 deterministic mathematical worlds',()=>{
     }expect(err).toBeLessThan(1e-4);expect(normalErr).toBeLessThan(1e-4);metrics.s03Parity={points:points.length,maxHeightError:err,maxNormalError:normalErr};
   });
 });
-describe('V6 g1 projected composition and specification conflicts',()=>{
-  test('S01 fixed world/target conflicts are measured, never replaced by declared screen boxes',()=>{
+describe('V6 g1 projected composition',()=>{
+  test('S01 round-2 wide target fits the actual frame within 3 percent',()=>{
     const t=afterBeats(audio,T.welcome,4),frame=S01.frameBox(t),clawd=S01.clawdBox(t),target={x:BOOT_CLAWD.x,y:BOOT_CLAWD.y,w:16*BOOT_CLAWD.px,h:5*BOOT_CLAWD.px};
-    expect(frame.w).toBeGreaterThan(930);expect(frame.w).toBeLessThan(990);expect(S01.FRAME.y0).toBe(.62);expect(S01.cameraAt(t).tgt).toEqual(p3(0,2.95,0));
-    // These cannot pass the supplied screen-position thresholds with the supplied world coordinates.
-    expect(Math.abs(frame.y-WELCOME_BOX.y)).toBeGreaterThan(WELCOME_BOX.h*.03);
-    expect(Math.abs(clawd.y-target.y)).toBeGreaterThan(target.h*.05);
+    expect(S01.FRAME.y0).toBe(.62);const fit=S01.wideCameraFit();expect(S01.cameraAt(t).tgt).toEqual(p3(0,fit.targetY,0));
+    const error=boxError(frame,WELCOME_BOX);
+    expect(Math.abs(error.x)).toBeLessThanOrEqual(WELCOME_BOX.w*.03);expect(Math.abs(error.y)).toBeLessThanOrEqual(WELCOME_BOX.h*.03);
+    expect(error.widthPct).toBeLessThanOrEqual(3);expect(error.heightPct).toBeLessThanOrEqual(3);
     metrics.s01Composition={t,frame,frameError:boxError(frame,WELCOME_BOX),clawd,clawdError:boxError(clawd,target),specifiedFrameArea:WELCOME_BOX.w*WELCOME_BOX.h/(1920*1080)};
-    expect(WELCOME_BOX.w*WELCOME_BOX.h/(1920*1080)).toBeLessThan(.30);
   });
-  test('S01 lyrics have actual projected cap heights; the fixed 0.42 m limit is recorded',()=>{
+  test('S01 0.5 m lyrics project to 50-110 px in the wide shot',()=>{
     const t=afterBeats(audio,T.welcome,4),heights=S01.line01Layout().glyphs.map(g=>{
       const aff=S01.standAffine(g,t),run=varRun(g.ch,100,voice.form(g.word,t).axes);return Math.hypot(aff.c,aff.d)*run.capH;});
     metrics.s01LyricCap={at:t,min:Math.min(...heights),max:Math.max(...heights),required:[50,110]};
-    expect(Math.min(...heights)).toBeGreaterThan(40);expect(Math.max(...heights)).toBeLessThanOrEqual(110);
+    expect(S01.LYRIC_CAP).toBe(.5);expect(Math.min(...heights)).toBeGreaterThanOrEqual(50);expect(Math.max(...heights)).toBeLessThanOrEqual(110);
   });
   test('S02 actual extruded glyph corners project to PING_BOX within 2 percent',()=>{
     const at=5.95,b=pingBounds(at),e=boxError(b,PING_BOX);metrics.s02Composition={at,b,error:e,axes:pingLayout().axes,scaleX:pingLayout().scaleX};
@@ -101,6 +100,38 @@ describe('V6 g1 projected composition and specification conflicts',()=>{
   });
 });
 describe('V6 g1 letter clocks, light, stamp and relay',()=>{
+  test('R2 real light exposure: five main-face and five shadow samples per scene',()=>{
+    const clawd=[[-1.5,1.5],[-.5,2],[0,2.2],[.5,2],[1.5,1.5]].map(([x,y])=>({p:p3(x,y,.728),tone:S01.surfaceTone(p3(x,y,.728),4.4,p3(0,0,1))}));
+    const back=[[-2,2],[-1,3],[0,4],[1,3],[2,2]].map(([x,y])=>({p:p3(x,y,-.15),tone:S01.surfaceTone(p3(x,y,-.15),4.4,p3(0,0,1))}));
+    for(const s of clawd){expect(s.tone).toBeGreaterThanOrEqual(.85);expect(s.tone).toBeLessThanOrEqual(.95);}
+    // R2 specifies 0.02 ambient for S01. An opaque full umbra necessarily has
+    // that tone, below the generic 0.10 minimum; record the explicit exception.
+    for(const s of back)expect(s.tone).toBe(S01.AMBIENT);
+    const poster=posterExposureSamples(6.2);expect(poster.lit.length).toBe(5);expect(poster.shadow.length).toBe(5);
+    for(const s of poster.lit){expect(s.tone).toBeGreaterThanOrEqual(.85);expect(s.tone).toBeLessThanOrEqual(.92+1e-12);}
+    for(const s of poster.shadow){expect(s.tone).toBeGreaterThanOrEqual(.15);expect(s.tone).toBeLessThanOrEqual(.30);}
+    const paper=[.85,4,8,12,17].map(x=>({p:p3(x,S03.paperY(x,2,7.45),2),tone:S03.paperLight(x,2,7.45)}));
+    const table=[1.5,3,5,7,9].map(z=>({p:p3(S03.PAPER.x0+S03.PAPER.w+.03,0,z),tone:S03.tableTone(p3(S03.PAPER.x0+S03.PAPER.w+.03,0,z),7.45)}));
+    for(const s of paper){expect(s.tone).toBeGreaterThanOrEqual(.85);expect(s.tone).toBeLessThanOrEqual(.92);}
+    for(const s of table){expect(s.tone).toBeGreaterThanOrEqual(.10);expect(s.tone).toBeLessThanOrEqual(.35);}
+    metrics.exposure={s01:{at:4.4,clawd,shadow:back,commonShadowMinimumException:true},s02:poster,s03:{at:7.45,paper,shadow:table}};
+  });
+  test('S02 solid print keeps the split palette and emission-independent normal engraving',()=>{
+    for(const letters of [true,false]){const m=printMaterial(letters),shader={uniforms:{},fragmentShader:'#include <common>\n#include <opaque_fragment>'};
+      m.onBeforeCompile(shader as any,null as any);expect(shader.fragmentShader).toContain('bool engraveLL = engraveLightLines > 0.5;');
+      expect((shader.uniforms as any).engraveMaxCov.value).toBe(1);expect((shader.uniforms as any).engraveUseMap.value).toBe(0);m.dispose();}
+  });
+  test('S03 starts behind the camera and every on-screen stamp box stays below 45 percent',()=>{
+    const start=T.bug-.12,pose=S03.stampPose(start),cam=S03.cameraAt(start),d=p3(cam.pos.x-cam.tgt.x,cam.pos.y-cam.tgt.y,cam.pos.z-cam.tgt.z);
+    expect((pose.x-cam.pos.x)*d.x+(pose.y-cam.pos.y)*d.y+(pose.z-cam.pos.z)*d.z).toBeGreaterThan(0);
+    let max=0,at=0,count=0;
+    // 600 Hz includes sub-frame motion, not only 60 fps frame centres.
+    for(let i=0;i<=294;i++){const t=start+i/600,b=S03.stampBox(t),p=S03.stampPose(t);
+      if(!p.visible||b.w===0||b.x>=1920||b.x+b.w<=0||b.y>=1080||b.y+b.h<=0)continue;
+      const area=b.w*b.h/(1920*1080);if(area>max){max=area;at=t;}count++;
+    }
+    expect(count).toBeGreaterThan(0);metrics.stampProjection={max,at,samples:295,visibleSamples:count};expect(max).toBeLessThanOrEqual(.45);
+  });
   test('every first letter and every later letter is not earlier than its word',()=>{
     const lays=[S01.line01Layout(),S01.continuedLayout(),...S03.titleLayouts(),S03.notesLayout(),S03.screenLayout()];
     for(const lay of lays){const indices=new Map<number,number>();for(const g of lay.glyphs){const index=indices.get(g.word.gi)??0;indices.set(g.word.gi,index+1);expect(g.t0).toBeGreaterThanOrEqual(g.word.start);expect(g.t0).toBe(letterTimes(g.word)[index]!.t0);}}
@@ -115,10 +146,11 @@ describe('V6 g1 letter clocks, light, stamp and relay',()=>{
     const ps=S01.cursorSolidPoints(0.6);expect(ps.length).toBe(8);
     expect(Math.abs(ps[0]!.z-ps[4]!.z)).toBeCloseTo(S01.CUR.d,10);
   });
-  test('specified blink decay and word alpha respond to the single light; 10x example conflict recorded',()=>{
-    const bright=T.start,dark=afterBeats(audio,T.start,.8),p=p3(.2,0,1.4),a=S01.lightAt(p,bright),b=S01.lightAt(p,dark);
+  test('round-2 70 ms phosphor decays by at least 10x at 0.95 beat',()=>{
+    const bright=T.start,dark=afterBeats(audio,T.start,.95),p=p3(1.5,0,2.3),a=S01.lightAt(p,bright),b=S01.lightAt(p,dark);
     expect(b).toBeLessThan(a);expect(S01.lyricAlpha(p,dark)).toBeLessThan(S01.lyricAlpha(p,bright));
-    expect(S01.blink(dark)).toBeCloseTo(Math.exp(-(dark-audio.timeOfBeat(Math.floor(audio.beatAt(dark))+.55))/.09),10);
+    expect(S01.blink(dark)).toBeCloseTo(Math.exp(-(dark-audio.timeOfBeat(Math.floor(audio.beatAt(dark))+.55))/.07),10);
+    expect(a/b).toBeGreaterThanOrEqual(10);
     metrics.s01Blink={bright,dark,brightE:a,darkE:b,ratio:a/b,requiredRatio:10};
   });
   test('C1 projected cursor matches I and the incoming phrase uses identical frozen affines',()=>{

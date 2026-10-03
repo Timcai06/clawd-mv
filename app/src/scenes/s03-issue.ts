@@ -17,7 +17,7 @@ import { drawForm, drawCalendar, FORM } from './parts/s03-form';
 import { T, lyrics, voice } from './parts/s01-timing';
 import { S03_GLSL, PAPER, CAL, STAMP, KEY, cameraAt, paperShift, paperNormal, paperY, paperLight, press,
   titleLayouts, notesLayout, textPath, calendarFit, calendarNumbers, circleStroke, stampPose, cursorAt,
-  writeHeadWorld, incomingScreenAffines, gain } from './parts/s03-world';
+  writeHeadWorld, incomingScreenAffines, gain, KEY_INTENSITY } from './parts/s03-world';
 export { cursorAt } from './parts/s03-world';
 export const TYPE_LEVELS={giant:315.6,lyric:50.8,label:20};
 const VERT=/* glsl */`
@@ -38,7 +38,7 @@ ${ENGRAVE}
 uniform sampler2D printMap;uniform vec3 keyL,paperC,inkC;
 void main(){
   vec3 n=paperNormal(vWorld.x,vWorld.z);
-  float light=clamp(0.18+max(dot(n,keyL),0.0),0.0,1.0);
+  float light=clamp(0.18+${KEY_INTENSITY}*max(dot(n,keyL),0.0),0.0,1.0);
   vec3 printC=texture(printMap,vUv).rgb;
   vec3 base=printC*(0.6+0.4*light);
   float lines=engraveTone(vWorld.z/0.035,light);
@@ -62,7 +62,7 @@ float heightShadow(vec3 p){
     shadow=min(shadow,smoothstep(-0.01,0.06,q.y-paperY(x,q.z)));
   }return shadow;
 }
-void main(){float light=(0.18+max(keyL.y,0.0))*heightShadow(vWorld);
+void main(){float light=0.18+${KEY_INTENSITY}*max(keyL.y,0.0)*heightShadow(vWorld);
   float line=engraveTone(vWorld.z/0.05,1.0-clamp(light,0.0,1.0));
   fragColor=vec4(mix(inkC,paperC,line*0.045),1.0);
 }`;

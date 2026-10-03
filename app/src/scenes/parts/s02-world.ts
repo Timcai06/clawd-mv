@@ -8,8 +8,14 @@ import { letterTimes } from '../../kit/pathtext';
 import { audio, lyrics, T, voice } from './s01-timing';
 import { continuedLayout, line01Layout, line01Affines, line01Next } from './s01-world';
 import { iStemRect, pingLayout, SPLIT_X } from './s02-layout';
+import { lin } from '../../theme';
 export { iStemRect } from './s02-layout';
 export const DEPTH=6.25*0.12,BEVEL=DEPTH*0.1,FRONT=DEPTH+2*BEVEL;
+export const KEY={x:-0.6,y:0.7,z:0.4}, AMBIENT_TONE=0.3;
+export const PAPER_LUMA=lin('paper').reduce((s,v,i)=>s+v*[0.2126,0.7152,0.0722][i]!,0);
+// Three's Lambert BRDF divides both direct and ambient irradiance by pi.
+export const KEY_INTENSITY=Math.PI*(0.92-AMBIENT_TONE)/(KEY.z/Math.hypot(KEY.x,KEY.y,KEY.z)*PAPER_LUMA);
+export function posterTone(shadow=1){return AMBIENT_TONE+(0.92-AMBIENT_TONE)*shadow;}
 export const pingWord=lyrics.lines[0]!.words[3]!;
 export const pingTimes=letterTimes({...pingWord,w:'PING'});
 export function landingAt(i:number){return pingTimes[i]!.t0;}
@@ -43,8 +49,9 @@ export function cameraAt(t:number):Cam {
   const focal=540/Math.tan(34*Math.PI/360);
   return orbitCam(p3(0,0,FRONT),0,0,focal/100/(1+surge),34);
 }
+export function cursorEmission(t:number){return 1+3*(1-ease.outCubic(span(t,T.ping+1/60,afterBeats(audio,T.ping,0.3))));}
 export function lightIntensity(t:number){
-  let k=1+3*(1-ease.outCubic(span(t,T.ping+1/60,afterBeats(audio,T.ping,0.3))));
+  let k=cursorEmission(t);
   for(const i of [0,2,3])k+=2.5*pulse(t,landingAt(i),0.12);return k;
 }
 export function entryPrim(_t:number):Prim {return {kind:'rect',...iStemRect()};}
