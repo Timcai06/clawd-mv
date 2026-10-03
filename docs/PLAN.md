@@ -197,7 +197,10 @@ T 2026-10-03：v5 方向对；剩下的场景继续按 v5 方法优化；**场�
 - ✅ 2026-10-03 设计规格：`docs/tasks/V6-common.md`（共同约定）、`V6-cuts.md`（17 个切点 + 片尾闭环的交接表、光标接力）、`V6-S01` … `V6-S18`（每场的世界、镜头、逐字母歌词、交接、光、验收）、`V6-groups.md`（分组）。COMMIT 三级：S08 活字印刷（纸）→ S13 提交塔（栈）→ S17 设备群拼字（世界）。
 - ✅ R1 容差改为 50 ms（照 pdoom dense），S03→S04、S05→S06 不再切断上一句的最后一个词。
 - ✅ 公共部件已合并：V6-K（`kit/pathtext.ts`、`kit/wordplane.ts`、`kit/carry.ts`、`kit/handoff.ts` v2）、V6-K2（`kit/solidtype.ts`、`kit/engrave-mat.ts`）；C 补：`engraveMaterial` 的 `lightLines`/`splitX`/`paperMap`，`layoutPath` 按词的轴占位，`CUT` 常量和 `points` 原语。331 项测试通过。
-- 🔜 7 组场景任务（g1–g7）已并行派给 Codex；逐组审查 → 合并 → 交接联调 → 整片预览 v6。
+- ✅ 7 组场景（g1–g7）全部审查合并：g1 S01–S03（2 轮）· g2 S04–S07（2 轮）· g3 S08（2 轮）· g4 S09–S12（2 轮）· g5 S13（2 轮）· g6 S15–S16（4 轮，后两轮 gpt-6-astra）· g7 S17–S18（2 轮）。审查中补进共同约定的规则：曝光归一、冲击帧 = 调色板互换、ink 实体 `maxCov`、Clawd 保持 clay、像素统计验收。
+- ✅ 交接：17 个切点 + 片尾闭环全部是两场真实画面对接（`tests/handoff.test.ts`），最大误差 1.03 px（C1）。475 项测试通过。
+- ✅ 已发给 T 的短片：`out/review/v6-S01-S03.mp4`、`v6-S04-S08.mp4`、`v6-S09-S12.mp4`、`v6-S13.mp4`。
+- 🔜 打磨轮 V6-P1（gpt-6-astra，`docs/tasks/V6-P1.md`）→ 第二轮打磨（S16 的 GREEN 出画等，`V6-polish.md`）→ 整片预览 v6。
 
 ## ⏳ 阶段 9：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。
