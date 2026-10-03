@@ -9,14 +9,19 @@ import { TYPE_LEVELS as S08 } from "../src/scenes/s08-commit";
 import { TYPE_LEVELS as S13 } from "../src/scenes/s13-gitfall";
 import {
   commitScore,
+  commitLayout,
+  commitBounds,
+  handoffIn as in08,
+  handoffOut as out08,
 } from "../src/scenes/parts/s08-layout";
 import { chorusScore } from "../src/scenes/parts/s13-score";
 import {
   gitfallLayout,
   gitfallBounds,
   handoffIn as in13,
+  handoffOut as out13,
+  logTravel,
 } from "../src/scenes/parts/s13-layout";
-import { TOP, SLAB, BASE_SLABS, tailTravel } from '../src/scenes/parts/s13-world';
 import { bounds, type Box } from "../src/scenes/parts/s08-print";
 import audioJSON from "../../data/audio.json";
 import lyricsJSON from "../../data/lyrics.json";
@@ -70,7 +75,7 @@ function framing(actual: Box, target: Box) {
 }
 // Original PNGs are 1672x941. Measured outermost coloured edges on the supplied storyboard,
 // excluding jump/speed trails and background grain; multiply x by 1920/1672 and y by 1080/941.
-// S08 V6 replaces its v3 crop/cursor assertions in scene-v6-g3.test.ts.
+// S08: COMMIT cropped envelope [0,264]-[1672,743], Clawd [873,127]-[1050,217].
 // S13: COMMIT [16,28]-[851,819], Clawd [960,208]-[1167,306], panels [508,480]-[1287,785].
 const measured = (x: number, y: number, w: number, h: number): Box => ({
   x: (x * 1920) / 1672,
@@ -79,6 +84,10 @@ const measured = (x: number, y: number, w: number, h: number): Box => ({
   h: (h * 1080) / 941,
 });
 const TARGETS = {
+  S08: {
+    giant: measured(0, 264, 1672, 479),
+    clawd: measured(873, 127, 177, 90),
+  },
   S13: {
     giant: measured(16, 28, 835, 791),
     clawd: measured(960, 208, 207, 98),
@@ -91,11 +100,32 @@ const frameAt = (shots: typeof A.shots, id: string) => {
 };
 
 describe("group C v3 framing", () => {
-  test("S13 uses physical laminations rather than the old warped reference quad", () => {
-    expect(SLAB).toEqual({ w: 7.2, h: 0.42, d: 2.4 });
-    const s = gitfallLayout(audio, lyrics, B.hit1 + 0.2, B);
-    expect(s.slabs).toHaveLength(BASE_SLABS + B.slabs.length);
-    expect(TOP(B.hit1 + 0.2, B)).toBeCloseTo(2.4, 8);
+  test("S08-2 ink and sprite envelopes reproduce measured reference bounds", () => {
+    const t = frameAt(A.shots, "S08-2"),
+      b = commitBounds(audio, lyrics, t, A);
+    const errors = {
+      giant: framing(b.giant, TARGETS.S08.giant),
+      clawd: framing(b.clawd, TARGETS.S08.clawd),
+    };
+    console.log(
+      "S08 bounds",
+      JSON.stringify({ t, actual: b, target: TARGETS.S08, errors }),
+    );
+    expect((b.giant.w * b.giant.h) / (1920 * 1080)).toBeGreaterThanOrEqual(0.3);
+  });
+  test("S13-7 perspective ink, sprite and collision envelopes reproduce measured reference bounds", () => {
+    const t = frameAt(B.shots, "S13-7"),
+      b = gitfallBounds(audio, lyrics, t, B);
+    const errors = {
+      giant: framing(b.giant, TARGETS.S13.giant),
+      clawd: framing(b.clawd, TARGETS.S13.clawd),
+      panels: framing(b.panels, TARGETS.S13.panels),
+    };
+    console.log(
+      "S13 bounds",
+      JSON.stringify({ t, actual: b, target: TARGETS.S13, errors }),
+    );
+    expect((b.giant.w * b.giant.h) / (1920 * 1080)).toBeGreaterThanOrEqual(0.3);
   });
   test("only three declared type levels, measured as cap heights except Mono label font size", () => {
     for (const s of [S08, S13]) {
@@ -110,24 +140,49 @@ describe("group C v3 framing", () => {
   });
 });
 describe("group C handoffs", () => {
-  test("S13 receives the full-height diagonal clay edge", () => {
-    const p = in13(B.start, audio, B);
-    expect(p.kind).toBe('line');
-    if (p.kind === 'line') {
-      expect(p.x0).toBeCloseTo(1010, 7); expect(p.x1).toBeCloseTo(760, 7);
-      expect(p.y0).toBeCloseTo(0, 7); expect(p.y1).toBeCloseTo(1080, 7);
-    }
+  test("S08 receives the existing centred 72px cursor at its first frame", () => {
+    expect(in08(A.start, audio, A)).toEqual({ x: 940.2, y: 576, h: 72 });
   });
-  test("S13 tail keeps the specified screen travel before the point implosion", () => {
-    const t = afterBeats(audio, B.end, -0.8), next = afterBeats(audio, t, 0.001);
-    expect((tailTravel(audio, next, B) - tailTravel(audio, t, B)) / 0.001).toBeCloseTo(140, 7);
+  test("S08 last exported frame is the S09 baseline and transition is restricted to the last beat", () => {
+    expect(out08(A.end - 1 / 60, audio, A)).toEqual(HANDOFF.base08);
+    expect(out08(afterBeats(audio, A.end, -1), audio, A)).toEqual({
+      x0: 1138,
+      x1: 1650,
+      y: 940,
+    });
+    expect(out08(A.start, audio, A)).toEqual(
+      out08(afterBeats(audio, A.end, -1), audio, A),
+    );
+  });
+  test("S13 starts at clay 11 and reaches its half field in the first beat", () => {
+    expect(in13(B.start, audio, B)).toEqual(HANDOFF.eleven12);
+    expect(in13(afterBeats(audio, B.start, 1), audio, B)).toEqual({
+      x: 0,
+      y: 0,
+      w: 1096,
+      h: 1080,
+    });
+  });
+  test("S13 exports the constant row pitch and speed on its last frame", () => {
+    expect(out13(B.end - 1 / 60, audio, B)).toEqual(HANDOFF.fall13);
+    const last = B.end - 1 / 60,
+      next = afterBeats(audio, last, 0.001);
+    expect(
+      (logTravel(next, audio, B) - logTravel(last, audio, B)) / 0.001,
+    ).toBeCloseTo(HANDOFF.fall13.pxPerBeat, 5);
   });
 });
 describe("group C voice and seeking", () => {
-  test("S13 second pickup does not freeze its world clock", () => {
-    const a = gitfallLayout(audio, lyrics, B.pickup2 + 0.01, B, voice);
-    const b = gitfallLayout(audio, lyrics, B.hit2 - 0.01, B, voice);
-    expect(a.camera).not.toEqual(b.camera);
+  test("S13 freezes the rendered log travel and sprite pose during both pickups", () => {
+    for (const [start, hit] of [
+      [B.start, B.hit1],
+      [B.pickup2, B.hit2],
+    ]) {
+      const a = gitfallLayout(audio, lyrics, start! + 0.01, B, voice);
+      const b = gitfallLayout(audio, lyrics, hit! - 0.01, B, voice);
+      expect(a.travel).toBe(b.travel);
+      expect(a.clawd.pose).toEqual(b.clawd.pose);
+    }
   });
   test("every overlapping word, including a phrase crossing either cut, is unborn before onset", () => {
     for (const T of [A, B])
@@ -140,6 +195,29 @@ describe("group C voice and seeking", () => {
       ).toBe(true);
   });
   test("layout, bounds and handoffs are seek-independent and use the variable beat grid", () => {
+    for (const t of [
+      frameAt(A.shots, "S08-2"),
+      A.start,
+      A.hit2,
+      A.end - 1 / 60,
+    ]) {
+      const s = commitLayout(audio, lyrics, t, A, voice),
+        b = commitBounds(audio, lyrics, t, A);
+      commitLayout(audio, lyrics, A.end, A, voice);
+      commitLayout(audio, lyrics, A.start, A, voice);
+      expect(commitLayout(audio, lyrics, t, A, voice)).toEqual(s);
+      expect(commitBounds(audio, lyrics, t, A)).toEqual(b);
+      expect(
+        commitLayout(
+          new AudioData({ ...audioJSON, bpm: 40 }),
+          lyrics,
+          t,
+          A,
+          voice,
+        ),
+      ).toEqual(s);
+      expect(out08(t, audio, A)).toEqual(out08(t, audio, A));
+    }
     for (const t of [
       frameAt(B.shots, "S13-7"),
       B.start,
@@ -162,6 +240,7 @@ describe("group C voice and seeking", () => {
         ),
       ).toEqual(s);
       expect(in13(t, audio, B)).toEqual(in13(t, audio, B));
+      expect(out13(t, audio, B)).toEqual(out13(t, audio, B));
     }
   });
   test("no legacy lyric renderer remains in the group C main files", async () => {

@@ -1,78 +1,134 @@
-// V6 — one plotter, one paper bed, one lowering directional light.
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
+import { drawNote } from '../kit/note';
+import { PrintOverlay } from '../kit/print-overlay';
+// S06 — the cropped CHECK headline and a front-elevation pen-plotter sheet.
 import * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { Layer2D, clearRT } from '../engine/gl';
-import { LineBatch } from '../engine/lines';
-import { F,font } from '../engine/type';
-import { lin,css,POSTER_POST } from '../theme';
-import { engraveMaterial } from '../kit/engrave-mat';
-import { SolidText } from '../kit/solidtype';
-import { Rig,planeAffine } from '../kit/rig';
-import { afterBeats,span } from '../kit/time';
-import { heatColor } from '../kit/lyric-moves';
-import { exitEnvelope } from '../kit/handoff';
-import { resolveCTimes } from './parts/s06-timing';
-import { setCamera } from './parts/s05-print';
-import * as W from './parts/s06-world';
-export const TYPE_LEVELS={giant:526,lyric:62,label:18};
-class Plotter {
-  users=0;T;scene=new THREE.Scene();rig=new Rig();layer=new Layer2D();
-  lines=new LineBatch(5000,{screen2D:false,blend:'normal',depthTest:true});
-  mat=engraveMaterial({ink:lin('ink'),paper:lin('paper')});
-  clay=new THREE.MeshBasicMaterial({color:new THREE.Color(...lin('clay'))});
-  light=new THREE.DirectionalLight(0xffffff,1);check:SolidText;
-  beam:THREE.Mesh;carriage:THREE.Mesh;pen:THREE.Mesh;tip:THREE.Mesh;
-  constructor(ctx:SceneCtx){
-    this.T=resolveCTimes(ctx.audio,ctx.lyrics);this.scene.add(new THREE.AmbientLight(0xffffff,.12));
-    const compile=this.mat.onBeforeCompile;this.mat.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.fragmentShader=shader.fragmentShader.replace('float engraveT = engraveSat(engraveL);','float engraveT = clamp(engraveL,0.0,0.92);');};this.mat.customProgramCacheKey=()=> 'g2-plotter-normalized';
-    this.light.castShadow=true;this.light.shadow.mapSize.set(1024,1024);Object.assign(this.light.shadow.camera,{left:-20,right:20,top:18,bottom:-18,near:.1,far:100});this.light.shadow.bias=-.0004;this.scene.add(this.light,this.light.target);
-    const paper=new THREE.Mesh(new THREE.BoxGeometry(W.PAPER_W,.025,W.PAPER_D),this.mat);paper.position.y=-.013;paper.receiveShadow=true;this.scene.add(paper);
-    const table=new THREE.Mesh(new THREE.BoxGeometry(24,.3,14),engraveMaterial({ink:lin('paper'),paper:lin('ink'),lightLines:true,maxCov:.3}));table.position.y=-.2;table.receiveShadow=true;this.scene.add(table);
-    this.check=new SolidText('CHECK',{axes:{wdth:100,wght:900},capH:4.2,depth:.25,bevel:0,material:this.mat});this.check.group.rotation.x=-Math.PI/2;this.check.group.position.set(-this.check.width/2,.012,-2.6);this.scene.add(this.check.group);
-    const box=(x:number,y:number,z:number)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(x,y,z),this.mat);m.castShadow=m.receiveShadow=true;this.scene.add(m);return m;};
-    this.beam=box(21,.3,.4);this.carriage=box(.5,.5,.6);
-    this.pen=new THREE.Mesh(new THREE.CylinderGeometry(.035,.025,.8,8),this.mat);this.pen.castShadow=true;this.scene.add(this.pen);
-    this.tip=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),this.clay);this.scene.add(this.tip);
-  }
-  dispose(){this.check.dispose();this.lines.geo.dispose();this.lines.mat.dispose();this.layer.texture.dispose();this.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(o.material!==this.mat&&o.material!==this.clay&&!Array.isArray(o.material))o.material.dispose();}});this.mat.dispose();this.clay.dispose();this.light.dispose();}
+import { FSPass, Layer2D } from '../engine/gl';
+import { F, font } from '../engine/type';
+import { css, lin } from '../theme';
+import { drawCursor, drawTrail, trailHead } from '../kit/cursor';
+import { postFor } from '../kit/ground';
+import { afterBeats, span } from '../kit/time';
+import { ease, lerp } from '../engine/util';
+import { heatColor, Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { varRun } from '../kit/vartype';
+import * as Clawd from '../kit/clawd';
+import { checkHeadline, resolveCTimes, todoLayout, type CTimes } from './parts/s06-timing';
+import { printRun } from './parts/s05-print';
+
+export const TYPE_LEVELS = { giant: 526, lyric: 56, label: 18 }; // cap px; mono machine item can use the lyric tier
+const PAPER = /* glsl */ `
+uniform vec3 paper,ink;
+void main() {
+  vec2 p=FRAG_PX;
+  float fibre=hash12(floor(p*vec2(0.7,0.15)));
+  float grain=hash12(floor(p));
+  fragColor=vec4(mix(paper,ink,fibre*0.009+grain*0.009),1.0);
+}`;
+class TodoWorld {
+  print = new PrintOverlay();
+  sparks = new SparkLines();
+  users=0;
+  layer=new Layer2D();
+  bg=new FSPass(PAPER,{paper:{value:new THREE.Vector3(...lin('paper'))},ink:{value:new THREE.Vector3(...lin('ink'))}});
+  times: CTimes;
+  voice: Voice;
+  constructor(ctx: SceneCtx) { this.times=resolveCTimes(ctx.audio,ctx.lyrics); this.voice=new Voice(ctx.lyrics,ctx.audio); }
+  dispose() { this.sparks.dispose(); this.print.dispose(); this.bg.mat.dispose(); this.layer.texture.dispose(); }
 }
-let world:Plotter|undefined;
+let world: TodoWorld | undefined;
 export default class S06Todo extends Scene {
-  w!:Plotter;override init(){this.w=world??=new Plotter(this.ctx);this.w.users++;}override dispose(){if(--this.w.users===0){this.w.dispose();world=undefined;}}
-  override render(f:Frame,out:THREE.WebGLRenderTarget){
-    const w=this.w,T=w.T,a=this.ctx.audio,t=f.t,p=W.penAt(t,a,T);
-    setCamera(w.rig,W.cameraAt(t,a,T));const light=W.checkLight(t,T),L=light.dir;w.light.intensity=Math.PI*light.intensity;w.light.position.set(L.x,L.y,L.z).multiplyScalar(35);
-    w.beam.position.set(0,.9,p.z);w.carriage.position.set(p.x,.75,p.z);w.pen.position.set(p.x,p.y+.4,p.z);w.tip.position.set(p.x,p.y+.01,p.z);w.clay.color.setRGB(...lin('clay'),THREE.LinearSRGBColorSpace).multiplyScalar(exitEnvelope(t,T.keyboard).gain);
-    // Tip radius is six logical pixels at every camera distance.
-    const q=w.rig.proj(p.x,p.y,p.z);if(q)w.tip.scale.setScalar(6/q.s/.035);
-    clearRT(this.ctx.renderer,out,lin('ink'));const r=this.ctx.renderer,shadow=r.shadowMap.enabled;r.shadowMap.enabled=true;r.setRenderTarget(out);r.clearDepth();r.render(w.scene,w.rig.cam);r.shadowMap.enabled=shadow;
-    const lb=w.lines;lb.clear();
-    const seg=(A:{x:number;y:number;z:number},B:typeof A,color:[number,number,number],width=2,alpha=1)=>lb.seg(A.x,A.y,A.z,B.x,B.y,B.z,width,...color,alpha);
-    for(let k=0;k<3;k++){
-      const [A,B]=W.rowLine(k),cool=k===0?1-span(t,T.todo,afterBeats(a,T.todo,.5)):0,ink=lin('ink'),clay=lin('clay'),color=ink.map((v,i)=>v+(clay[i]!-v)*cool) as [number,number,number];seg(A,B,color,k===0?3:1,.6);
-      const z=A.z-.275,x=A.x-.7,pts=[{x,y:.007,z},{x:x+.55,y:.007,z},{x:x+.55,y:.007,z:z+.55},{x,y:.007,z:z+.55}];for(let j=0;j<4;j++){
-        const P=pts[j]!,Q=pts[(j+1)%4]!,mid={x:(P.x+Q.x)/2,y:.007,z:(P.z+Q.z)/2},scale=w.rig.proj(mid.x,mid.y,mid.z)?.s??0;
-        seg(P,Q,lin('ink'),.025*scale,.8);
+  private w!: TodoWorld;
+  override init() { this.w=world??=new TodoWorld(this.ctx); this.w.users++; }
+  override dispose() { if(--this.w.users===0) {this.w.dispose();world=undefined;} }
+  override render(f: Frame,out: THREE.WebGLRenderTarget) {
+    const {w}=this,T=w.times,au=this.ctx.audio,c=w.layer.ctx,s=todoLayout(au,f.t,T);
+    w.layer.clear();
+    // v4 motion: the sheet is filmed, not pinned. A slow push on the pen; a punch toward each box on
+    // its check (the third, stressed one hardest); the last beat dives into the pen tip, which S07
+    // receives as its first lit key.
+    const punch=T.checks.reduce((a,at,i)=>a+(f.t>=at?[0.05,0.07,0.13][i]!*Math.pow(0.5,(f.t-at)/0.1):0),0);
+    const tilt=T.checks.reduce((a,at,i)=>a+(f.t>=at?[0.012,-0.014,0.02][i]!*Math.pow(0.5,(f.t-at)/0.14):0),0);
+    const drift=ease.inOutQuad(span(f.t,T.todo,T.keyboard));
+    const dive=ease.inCubic(span(f.t,afterBeats(au,T.keyboard,-1),T.keyboard));
+    const entry=1-ease.outCubic(span(f.t,T.todo,afterBeats(au,T.todo,1.2)));
+    const zoom=1+0.14*drift+punch+0.25*entry+1.6*dive;
+    const fx=s.pen.x, fy=s.pen.y;
+    c.save();
+    c.translate(lerp(fx,960,0.2*drift+0.8*dive),lerp(fy,540,0.2*drift+0.8*dive)-30*entry);
+    c.rotate(tilt-0.015*entry); c.scale(zoom,zoom); c.translate(-fx,-fy);
+    w.sparks.begin(c, undefined, 'paper');
+    let writing = false;
+    const head=checkHeadline(f.t,T),checks=T.plan.words.filter(x=>x.w.toLowerCase().startsWith('check'));
+    if(head.born>0) {
+      const active=checks.filter(x=>x.start<=f.t).at(-1)!;
+      const form=w.voice.form(active,f.t);
+      c.fillStyle=heatColor('ink', 'paper', form.age); c.globalAlpha=form.born;
+      const run=varRun('CHECK',730,{...form.axes,wght:head.weight});
+      printRun(c,run,s.title);
+      // Keep the storyboard's ink headline: the stressed third check passes a
+      // clay ink roller through its lower edge instead of recolouring the poster.
+      if(form.stress) {
+        c.save();c.beginPath();c.rect(0,425,1920,39*form.sung);c.clip();
+        c.fillStyle=heatColor('clay', 'paper', form.age);printRun(c,run,s.title);c.restore();
       }
-      if(t>=T.checks[k]!){const u=span(t,T.checks[k]!,afterBeats(a,T.checks[k]!,.27)),points=W.checkPoints(k),mid=W.checkPoint(k,u);seg(points[0]!,u<.35?mid:points[1]!,lin('clay'),4);if(u>=.35)seg(points[1]!,mid,lin('clay'),4);}
+      c.globalAlpha=1;
     }
-    for(const writing of W.writings(T)){
-      const {st,times,origin}=writing;
-      // Each segment keeps its own birth time; cooling follows ink deposition, not row completion.
-      for(let i=0;i<st.strokes.length;i++){
-        const ci=st.charOf[i]!,[t0,t1]=times[ci]!,[lo,hi]=st.charRange[ci]!,len=t<=t0?lo:t>=t1?hi:lo+(hi-lo)*(t-t0)/(t1-t0);
-        if(t<t0)continue;
-        const points=st.strokes[i]!,L=st.lens[i]!,start=st.startLen[i]!;
-        for(let j=1;j<points.length;j++){
-          const rem=len-start-L[j-1]!;if(rem<=0)break;const u=Math.min(1,rem/Math.max(1e-8,L[j]!-L[j-1]!)),A=points[j-1]!,B=points[j]!;
-          const born=t0+(start+L[j-1]!-lo)/Math.max(1e-8,hi-lo)*(t1-t0),age=t-born;
-          const clay=Math.exp(-Math.max(0,age)/.28),ink=lin('ink'),hot=lin('clay'),color=ink.map((v,k)=>v+(hot[k]!-v)*clay) as [number,number,number];
-          seg({x:origin.x+A.x,y:origin.y,z:origin.z+A.y},{x:origin.x+A.x+(B.x-A.x)*u,y:origin.y,z:origin.z+A.y+(B.y-A.y)*u},color,2.4);
-        }
+    c.strokeStyle=css('ink',0.6); c.lineWidth=1.4;
+    c.beginPath();c.moveTo(424,460);c.lineTo(424,1080);
+    for(const y of [612,750]) {c.moveTo(424,y);c.lineTo(1920,y);}c.stroke();
+    for(let i=0;i<3;i++) {
+      const row=s.rows[i]!,b=row.box;
+      const forms=w.voice.forms(T.plan,f.t).slice(i===0?0:3,i===0?3:6);
+      if(i===2 || forms.some(x=>x.born>0)) {
+        c.strokeStyle=css('ink',0.6);c.lineWidth=i===2?4:2;
+        c.strokeRect(b.x,b.y,b.w,b.h);
+      }
+      if(i<2) drawSet(c,setLine(forms,row.size,{space:0.4}),row.x,row.y,{on:'paper'});
+      else { // This is a machine task, never a sung/predicted word.
+        c.fillStyle=css('ink',0.6);c.font=font(F.mono(500),row.size);c.fillText('Fix October',row.x,row.y);
+      }
+      // Plotter strokes remain single strokes. Vocal check onsets start the pen;
+      // the measured snares supply the hop accents, without revealing a future lyric.
+      const at=checks[i]!.start,progress=span(f.t,at,afterBeats(au,at,i===2?1:0.4));
+      const pts: [number,number][]=[[b.x+b.w*0.18,b.y+b.h*0.48],[b.x+b.w*0.41,b.y+b.h*0.7],[b.x+b.w*1.02,b.y+3]];
+      const finish = afterBeats(au, at, i===2?1:0.4);
+      const path = (tb: number) => trailHead(pts, span(tb, at, finish));
+      const lengths = [Math.hypot(pts[1]![0]-pts[0]![0],pts[1]![1]-pts[0]![1]), Math.hypot(pts[2]![0]-pts[1]![0],pts[2]![1]-pts[1]![1])];
+      heatTrail(w.sparks, f.t, path, { from: at, to: finish, width: i===2?21:11,
+        knots: [at + (finish-at)*lengths[0]!/(lengths[0]!+lengths[1]!)], cold: sparkFade(f.t, T.keyboard)===0 });
+      if (f.t >= at && f.t < finish) {
+        writing = true;
+        cursorSpark(c, undefined, w.sparks, f.t, tb => ({ ...path(tb), h: 27 }),
+          { on: 'paper', from: at, to: finish, end: T.keyboard, seed: 60+i });
+      }
+      if(i<2) {
+        const strike=i===0?s.strike:{x0:588,x1:1250,y:681};
+        const p=span(f.t,T.checks[i]!,afterBeats(au,T.checks[i]!,0.7));
+        // Incoming clay highlight line is received before the first local check.
+        const visible=i===0?Math.max(1-span(f.t,T.todo,afterBeats(au,T.todo,1)),p):p;
+        drawTrail(c,[[strike.x0,strike.y],[strike.x1,strike.y]],visible,{width:2,color:i===0?'clay':'ink',alpha:i===0?1:0.6});
       }
     }
-    lb.render(r,out,w.rig.cam);w.layer.clear();const c=w.layer.ctx,P={x:-2.4,y:.012,z:W.rowLine(2)[0].z-.08},aff=planeAffine(w.rig,P,{x:1,y:0,z:0},{x:0,y:0,z:1},.42/.7/100);
-    if(aff){c.save();c.setTransform(aff.a,aff.b,aff.c,aff.d,aff.e,aff.f);c.font=font(F.mono(),100);c.fillStyle=css('ink',.6);c.fillText('Fix October',0,0);c.restore();}
-    this.ctx.comp.draw(r,w.layer.upload(),out);return {...POSTER_POST,hud:0,frame:0,grain:.02,exposure:1};
+    { const b=s.rows[2]!.box; drawNote(c,{ax:b.x+b.w*0.5,ay:b.y+b.h,x:b.x+b.w+24,y:b.y+b.h+46,text:'est. 1 line',t0:afterBeats(au,T.checks[2]!,0.5),on:'paper'},f.t); }
+    // Pixel sprite at the third check's tip; the hop is a rigid translation only.
+    const at=T.checks.filter(x=>x<=f.t).at(-1)??T.todo;
+    const phase=span(f.t,at,afterBeats(au,at,0.6));
+    const hop=-10*Math.sin(phase*Math.PI);
+    const pose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(at),p:0,travel:0});
+    Clawd.draw(c,s.clawd.x,s.clawd.y+hop,pose,{px:s.clawd.px});
+    if (!writing) drawCursor(c,{x:s.pen.x,y:s.pen.y,h:27,on:1});
+    // The next line begins in this scene: carry its sung prefix on the lower margin.
+    if(f.t>=T.claws.start) {
+      const set=setLine(w.voice.forms(T.claws,f.t),78,{space:0.22});
+      c.save();c.translate(98,1060);c.scale(Math.min(1,1700/set.width),1);
+      drawSet(c,set,0,0,{on:'paper'});c.restore();
+    }
+    c.restore();
+    w.bg.render(this.ctx.renderer,out);
+    this.ctx.comp.draw(this.ctx.renderer,w.layer.upload(),out);
+    w.print.render(this.ctx.renderer, out);
+    return {...postFor('paper'),hud:0,frame:0,bloom:0,grain:0.019};
   }
 }

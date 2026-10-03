@@ -1,300 +1,324 @@
-// S08 V6: a deterministic, debossed letterpress; twelve editorial cameras share one world.
-import * as THREE from 'three';
-import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { FSPass, Layer2D, clearRT, makeRT } from '../engine/gl';
-import { css, lin } from '../theme';
-import { heatColor } from '../kit/lyric-moves';
-import { VoxelClawd } from '../kit/clawd3d';
-import { engraveMaterial, setEngrave, type EngraveOpts } from '../kit/engrave-mat';
-import { SolidText } from '../kit/solidtype';
-import { drawCarry } from '../kit/carry';
-import { drawPathText, layoutPath, path3, runInkBounds } from '../kit/pathtext';
-import { Rig, p3 } from '../kit/rig';
-import { afterBeats, span } from '../kit/time';
-import { varRun } from '../kit/vartype';
-import { F, font } from '../engine/type';
-import { PressAtlas } from './parts/s08-print';
+import { PrintOverlay } from '../kit/print-overlay';
+// S08: the flat, bilateral-bleed COMMIT print in kf-S08; one shared world for all twelve cuts.
+import type * as THREE from "three";
+import { Scene, type Frame, type SceneCtx } from "../engine/scene";
+import { Layer2D } from "../engine/gl";
+import { F, font } from "../engine/type";
+import { hash, frameIdx, ease, lerp } from "../engine/util";
+import { css } from "../theme";
+import { postFor } from "../kit/ground";
+import { heatColor, Voice, gridSnap } from "../kit/lyric-moves";
+import { varRun, type Axes } from "../kit/vartype";
+import { drawCursor, blink } from "../kit/cursor";
+import { afterBeats, beatsSince, span } from "../kit/time";
+import { MONTH_SOURCE } from "../kit/content";
 import {
-  AMBIENT, ATLAS, KEY_INTENSITY, KEY_TOP, LIGHT, PAGE, S08_GLSL, cameraAt, clawdAt, clawdFrontTone, cursorAt, exitState, hashAffine, impactHits, impactPost,
-  machineAffines, machineSpec, machineVisible, onPaper, paperExposure, pressAt, printingWorld, screenTilt, type PrintWorld,
-} from './parts/s08-world';
-import { paperTravel, type PressEvent } from './parts/s08-layout';
-export { cursorAt } from './parts/s08-world';
-export const TYPE_LEVELS = { giant:550,lyric:80,label:18 };
+  commitScore,
+  commitLayout,
+  handoffIn,
+  handoffOut,
+  type CommitScore,
+} from "./parts/s08-layout";
+import {
+  drawWarped,
+  drawSprite,
+  printTexture,
+  rule,
+  polygon,
+} from "./parts/s08-print";
 
-/** r186 Lambert returns irradiance / PI. Normalize the lighting before engraving,
- * then swap local palette colours during impacts; RGB inversion is never used. */
-function pressMaterial(opts: EngraveOpts, swap: THREE.IUniform<number>, exposure = { value:1 }) {
-  const mat=engraveMaterial(opts), compile=mat.onBeforeCompile;
-  mat.onBeforeCompile=(shader,renderer) => {
-    compile.call(mat,shader,renderer);
-    Object.assign(shader.uniforms,{ pressSwap:swap,pressExposure:exposure });
-    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-      '#include <common>\nuniform float pressSwap,pressExposure;')
-      .replace('float engraveFace =',`engraveL = ${AMBIENT}+(engraveL*3.14159265359-${AMBIENT})*pressExposure;\nfloat engraveFace =`)
-      .replace('outgoingLight = mix(engraveP,engraveI,engraveCov)',
-        'if(pressSwap > 0.5) { vec3 original=engraveP; engraveP=engraveI; engraveI=original; }\noutgoingLight = mix(engraveP,engraveI,engraveCov)');
-  };
-  mat.customProgramCacheKey=() => 's08-normalized-palette-v6-r2';
-  return mat;
-}
-function paperMaterial(atlas: PressAtlas, hits: THREE.IUniform<THREE.Vector4[]>, swap:THREE.IUniform<number>, exposure:THREE.IUniform<number>) {
-  const mat=pressMaterial({ ink:lin('ink'),paper:lin('paper'),paperMap:true,angle:0.6,pitch:5,faceAngles:false },swap,exposure);
-  mat.map=atlas.printTexture;
-  const baseCompile=mat.onBeforeCompile;
-  mat.onBeforeCompile=(shader,renderer) => {
-    baseCompile.call(mat,shader,renderer);
-    Object.assign(shader.uniforms,{ deboss:{ value:atlas.depthTexture },hits });
-    const head=`uniform sampler2D deboss; uniform vec4 hits[8];\n${S08_GLSL}
-      float pageHeight(vec2 q) {
-        vec2 p=(q-0.5)*vec2(PAGE_W,-PAGE_H);
-        return heightAt(p,texture2D(deboss,q).r,hits);
-      }`;
-    shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+head)
-      .replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>
-        vec2 du=vec2(1.0/${ATLAS.w}.0,0.0),dv=vec2(0.0,1.0/${ATLAS.h}.0);
-        float hx=(pageHeight(uv+du)-pageHeight(uv-du))/(2.0*PAGE_W/${ATLAS.w}.0);
-        float hy=(pageHeight(uv+dv)-pageHeight(uv-dv))/(2.0*PAGE_H/${ATLAS.h}.0);
-        objectNormal=normalize(vec3(-hx,-hy,1.0));`)
-      .replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.z+=pageHeight(uv);');
-    // Clay is the substrate with sparse ink lines; ink impressions are dark solids.
-    shader.fragmentShader=shader.fragmentShader
-      .replace('bool engraveLL =','bool clayArea = distance(engraveBase,vec3('+lin('clay').join(',')+')) < 0.025;\nbool inkArea = distance(engraveBase,engraveInk) < 0.025;\nbool engraveLL = inkArea ||')
-      .replace('vec3 engraveP =', 'if(clayArea && engraveT >= 0.8) engraveCov=min(engraveCov,0.08);\nif(inkArea) engraveCov=min(engraveCov,0.3);\nvec3 engraveP =')
-      .replace('engraveI = engraveInk;', 'engraveI = inkArea ? engravePaper : engraveInk;');
-  };
-  mat.customProgramCacheKey=() => 's08-letterpress-paper-v6';
-  return mat;
-}
-
-class PrintingPress {
-  users=0;
-  model: PrintWorld;
-  atlas: PressAtlas;
-  scene=new THREE.Scene();
-  rig=new Rig();
-  layer=new Layer2D();
-  content=new Layer2D();
-  rt=makeRT();
-  sheet=new THREE.Group();
-  paper: THREE.Mesh<THREE.PlaneGeometry,THREE.MeshLambertMaterial>;
-  hits={ value:Array.from({ length:8 },() => new THREE.Vector4()) };
-  clawd=new VoxelClawd();
-  machineBody: SolidText;
-  solids: { event:PressEvent; text:SolidText; mat:THREE.MeshLambertMaterial }[]=[];
-  boxes: THREE.Mesh[]=[];
-  screenFrame=new THREE.Group();
-  materials: THREE.Material[]=[];
-  key=new THREE.DirectionalLight(0xffffff,KEY_INTENSITY);
-  swap={ value:0 };
-  paperExposure={ value:1 };
-  hashes: { layout:ReturnType<typeof layoutPath>; at:number }[]=[];
-  tableWords: ReturnType<typeof layoutPath>;
-  crt=new FSPass(`
-    uniform sampler2D image; uniform float flatK,extension,gain; uniform vec3 pressInk,pressPaper;
-    void main() {
-      vec2 p=vUv-0.5;
-      if(flatK <= 0.0001) {
-        float line=1.0-smoothstep(0.5,1.5,abs(FRAG_PX.y-540.0));
-        float width=mix(0.36,1.0,extension);
-        line*=step(abs(p.x),width*0.5);
-        fragColor=vec4(mix(pressInk,pressPaper*gain,line),1.0); return;
-      }
-      vec2 q=vec2(p.x,p.y/max(flatK,0.0001))+0.5;
-      fragColor=vec4(pressInk,1.0);
-      if(q.y>=0.0 && q.y<=1.0) fragColor=texture(image,q);
-    }`,{ image:{ value:this.rt.texture },flatK:{ value:1 },extension:{ value:0 },gain:{ value:1 },
-      pressInk:{ value:new THREE.Vector3(...lin('ink')) },pressPaper:{ value:new THREE.Vector3(...lin('paper')) } });
-
+// Values are cap heights for Archivo; label is the Mono font size (as permitted by the task).
+export const TYPE_LEVELS = { giant: 550, lyric: 72, label: 20 };
+class World {
+  print = new PrintOverlay();
+  layer = new Layer2D();
+  grain = printTexture(8);
+  voice: Voice;
+  T: CommitScore;
+  users = 0;
   constructor(ctx: SceneCtx) {
-    this.model=printingWorld(ctx.audio,ctx.lyrics); const m=this.model;
-    this.crt.mat.transparent=true; this.crt.mat.blending=THREE.NormalBlending;
-    this.atlas=new PressAtlas(m);
-    const mat=paperMaterial(this.atlas,this.hits,this.swap,this.paperExposure); this.materials.push(mat);
-    this.paper=new THREE.Mesh(new THREE.PlaneGeometry(PAGE.w,PAGE.h,768,432),mat);
-    this.paper.rotation.x=-Math.PI/2; this.paper.receiveShadow=true;
-    this.sheet.add(this.paper); this.scene.add(this.sheet);
-    this.scene.add(new THREE.AmbientLight(0xffffff,AMBIENT));
-    this.key.position.set(LIGHT[0]*80,LIGHT[1]*80,LIGHT[2]*80);
-    this.key.castShadow=true; this.key.shadow.mapSize.set(2048,2048);
-    Object.assign(this.key.shadow.camera,{ left:-70,right:70,top:70,bottom:-70,near:0.1,far:200 });
-    this.key.shadow.bias=-0.00015; this.key.shadow.normalBias=0.015;
-    this.key.shadow.camera.updateProjectionMatrix(); this.scene.add(this.key,this.key.target);
-    for (const event of m.events) if (event.kind !== 'tap') {
-      const color=event.kind === 'commit' ? 'clay' : event.ink;
-      const mat=pressMaterial({ ink:lin(color === 'ink' ? 'paper' : 'ink'),paper:lin(color),lightLines:color === 'ink',maxCov:color === 'ink' ? 0.3 : 1,angle:0.6,pitch:5,faceAngles:false },this.swap);
-      if(event.word === m.T.first.words[0]) {
-        const compile=mat.onBeforeCompile;
-        mat.onBeforeCompile=(shader,renderer) => {
-          compile.call(mat,shader,renderer);
-          shader.fragmentShader=shader.fragmentShader.replace('vec3 engraveP =',
-            'if(engraveT >= 0.8) engraveCov=engraveHatch(engraveU,1.2/5.0)*(0.08/(1.2/5.0));\nvec3 engraveP =');
-        };
-        mat.customProgramCacheKey=() => 's08-entry-1.2px-v6-r2';
-      }
-      const text=new SolidText(event.text,{ capH:event.capH,axes:event.axes,depth:0.5*event.capH,bevel:0,material:mat,curveSegments:4 });
-      text.group.rotation.set(-Math.PI/2,0,0);
-      this.scene.add(text.group); this.solids.push({ event,text,mat }); this.materials.push(mat);
-    }
-    const box=(w:number,h:number,d:number,x:number,y:number,z:number,color:'paper'|'ink',parent=this.scene as THREE.Object3D) => {
-      const mat=pressMaterial({ ink:lin(color === 'ink' ? 'paper' : 'ink'),paper:lin(color),lightLines:color === 'ink',maxCov:color === 'ink' ? 0.3 : 1,pitch:5,angle:0.6 },this.swap,
-        { value:w === 220 ? 0.07 : 1 });
-      if(w === 220) {
-        const compile=mat.onBeforeCompile;
-        mat.onBeforeCompile=(shader,renderer) => {
-          compile.call(mat,shader,renderer);
-          shader.fragmentShader=shader.fragmentShader.replace('float engraveFace =','engraveL *= 0.1;\nfloat engraveFace =')
-            .replace('vec3 engraveP =','engraveCov *= engraveT;\nvec3 engraveP =');
-        };
-        mat.customProgramCacheKey=() => 's08-low-environment-table-v6-r2';
-      }
-      const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
-      mesh.position.set(x,y,z); mesh.castShadow=mesh.receiveShadow=true; parent.add(mesh); this.boxes.push(mesh); this.materials.push(mat); return mesh;
-    };
-    this.scene.add(this.screenFrame);
-    // Screen opening: all four bezel strips are in the same hinged sheet coordinates.
-    box(50,1.1,0.6,0,0,-13.9,'ink',this.screenFrame);
-    box(50,1.1,0.6,0,0,13.9,'ink',this.screenFrame);
-    box(1.0,1.1,27,-24.5,0,0,'ink',this.screenFrame);
-    box(1.0,1.1,27,24.5,0,0,'ink',this.screenFrame);
-    box(50,1.6,30,0,-0.8,28.5,'paper');
-    // Keycaps are geometric, including shadows; no text labels add a fourth size tier.
-    for (let row=0;row<4;row++) for (let col=0;col<13;col++) box(2.5,0.45,2.1,-18+col*3,KEY_TOP-0.225,18+row*3,'ink');
-    box(12,0.2,6,0,0.08,37,'ink'); box(220,1,180,0,-2.1,15,'ink');
-    this.clawd.mesh.scale.setScalar(0.5); this.clawd.light([...LIGHT],clawdFrontTone().ambient,0);
-    this.clawd.mesh.castShadow=true; this.scene.add(this.clawd.mesh);
-    const machineMaterial=pressMaterial({ ink:lin('ink'),paper:lin('paper'),pitch:5,angle:0.6 },this.swap);
-    this.materials.push(machineMaterial);
-    this.machineBody=new SolidText('machine',{ capH:2.8,axes:machineSpec(m).axes,depth:1.4,bevel:0,material:machineMaterial });
-    this.scene.add(this.machineBody.group);
-    const hashWord=m.T.first.words.at(-1)!;
-    for (const [i,text] of ['a1f3c9e','5d2b70f'].entries()) {
-      const at=afterBeats(m.audio,i ? m.T.mit2 : m.T.mit1,1);
-      const word={ ...hashWord,w:text,start:at,end:afterBeats(m.audio,at,0.5) };
-      this.hashes.push({ layout:layoutPath([word],{ capH:0.4,axes:{ wdth:100,wght:500 } }),at });
-    }
-    this.tableWords=layoutPath(m.T.machineLine.words.slice(3,5),{ capH:5,axes:w => m.voice.form(w,w.end).axes });
+    this.voice = new Voice(ctx.lyrics, ctx.audio);
+    this.T = commitScore(ctx.audio, ctx.lyrics);
   }
-  update(t: number) {
-    const m=this.model, tilt=screenTilt(t,m.T), travel=paperTravel(m.audio,t,m.T);
-    this.swap.value=impactPost(t,m).paletteSwap;
-    this.paperExposure.value=paperExposure(t,m);
-    this.atlas.update(t); this.rig.set(cameraAt(t,m));
-    this.sheet.rotation.x=tilt;
-    // Around hinge z=13.5: translation and rotation are CPU paperPoint's exact transform.
-    this.sheet.position.set(0,Math.sin(tilt)*(13.5-travel),13.5+Math.cos(tilt)*(travel-13.5));
-    this.screenFrame.rotation.x=tilt;
-    this.screenFrame.position.set(0,Math.sin(tilt)*13.5,13.5-Math.cos(tilt)*13.5);
-    const hits=impactHits(t,m);
-    this.hits.value.forEach((h,i) => hits[i] ? h.set(...hits[i]! as [number,number,number,number]) : h.set(0,0,0,1));
-    for (const s of this.solids) {
-      const e=s.event,p=pressAt(e,t,m),group=s.text.group;
-      const pos=onPaper(p3(p.x,p.y,p.z),t,m);
-      group.position.set(pos.x,pos.y,pos.z);
-      const qSheet=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),tilt);
-      const qRot=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),e.rot);
-      const qFace=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
-      group.quaternion.copy(qSheet).multiply(qRot).multiply(qFace);
-      const heldWorks=/^works$/i.test(e.word.w) && e.kind === 'word';
-      const axes=m.voice.form(e.word,t).axes, ratio=heldWorks ? axes.wdth/e.axes.wdth : 1;
-      group.scale.set(ratio,1,1);
-      group.visible=p.visible;
-      // Metal approaches ahead of the contact; only the printed impression waits
-      // for the event's vocal time. WORKS reveals its held letters while suspended.
-      s.text.letters.forEach((g,i) => s.text.setLetter(i,{ d:p3(e.baselineX,e.baselineZ*-1,0),
-        visible:heldWorks ? t >= e.times[i]! : p.visible }));
-      // Heat is on the physical metal face; no bloom or extra light changes the paper tone.
-      s.mat.color.setRGB(1,1,1);
-      const heat=new THREE.Color(heatColor(e.kind === 'commit' ? 'clay' : e.ink,'ink',t-e.tp));
-      // Per-material palette uniforms are updated without rebuilding shader programs.
-      const cold=lin(e.kind === 'commit' ? 'clay' : e.ink);
-      const entryFace=e.word === m.T.first.words[0] && t < m.T.start+1/60;
-      setFaceColor(s.mat,t >= e.tp && !entryFace ? [heat.r,heat.g,heat.b] : cold);
-    }
-    const clawd=clawdAt(t,m); this.clawd.update(clawd.pose);
-    this.clawd.mesh.visible=clawd.visible;
-    this.clawd.mesh.position.set(clawd.point.x,clawd.point.y,clawd.point.z);
-    for (const mesh of this.boxes) mesh.visible=t >= m.T.works;
-    const overlay=this.content.ctx; this.content.clear(); this.layer.clear();
-    const machineOnset=m.T.machineLine.words.at(-1)!.start;
-    const carryStart=afterBeats(m.audio,m.T.end,-0.5);
-    const machineGroup=this.machineBody.group, machinePosition=onPaper(p3(-8,3,7),t,m);
-    const machineRun=varRun('machine',100,machineSpec(m).axes),machineRatio=m.voice.form(m.T.machineLine.words.at(-1)!,t).axes.wdth/machineSpec(m).axes.wdth;
-    machineGroup.position.set(machinePosition.x-runInkBounds(machineRun).x0*2.8/machineRun.capH*machineRatio,machinePosition.y,machinePosition.z);
-    machineGroup.rotation.set(tilt-Math.PI/2,0,0);
-    machineGroup.scale.set(machineRatio,1,1);
-    machineGroup.visible=t >= machineOnset && t < carryStart;
-    const machineGlyphs=machineVisible(t,m);
-    this.machineBody.letters.forEach((_,i) => this.machineBody.setLetter(i,{ visible:machineGlyphs[i] }));
-    for (const [i,h] of this.hashes.entries()) {
-      if (t < h.at) continue;
-      // pathtext currently has no Mono-font parameter. Keep the same paper path,
-      // but place Plex outlines with the shared planeAffine and explicit glyph times.
-      const aff=hashAffine(t,i,m);
-      if (aff) {
-        overlay.save(); overlay.setTransform(aff.a,aff.b,aff.c,aff.d,aff.e,aff.f);
-        overlay.font=font(F.mono(500),100); overlay.fillStyle=css('ink');
-        const text=i ? '5d2b70f' : 'a1f3c9e', end=afterBeats(m.audio,h.at,0.5);
-        const count=Math.min(text.length,1+Math.floor(span(t,h.at,end)*text.length));
-        overlay.fillText(text.slice(0,count),0,0); overlay.restore();
-      }
-    }
-    if (t >= m.T.machineLine.words[3]!.start && t < m.T.machine) {
-      drawPathText(overlay,this.rig,path3([p3(-19,-1.5,47),p3(22,-1.5,47)]),this.tableWords,t,
-        { mode:'stand',base:'paper',on:'ink',axes:(g,time) => m.voice.form(g.word,time).axes,pop:0,minPx:70,maxPx:90 });
-    }
-    if (t >= carryStart) {
-      const aff=machineAffines(t,m),visible=machineVisible(t,m);
-      drawCarry(this.layer.ctx,machineSpec(m),aff.filter(g => visible[g.i]));
-    }
-    if (t >= machineOnset && t < machineOnset+2/60) {
-      const q=onPaper(p3(23.4,0.03,12.9),t,m),p=this.rig.proj(q.x,q.y,q.z);
-      if (p) { overlay.fillStyle=css('fail'); overlay.fillRect(p.x,p.y,Math.max(2,p.s*0.5),Math.max(2,p.s*0.5)); }
-    }
-    if (t < m.T.machine) {
-      const p=cursorAt(t,m); overlay.fillStyle=css('clay'); overlay.fillRect(p.x-3,p.y-3,6,6);
-    }
-  }
-  dispose() {
-    this.atlas.dispose(); this.paper.geometry.dispose(); this.solids.forEach(s => s.text.dispose()); this.machineBody.dispose();
-    this.boxes.forEach(s => s.geometry.dispose()); this.materials.forEach(m => m.dispose());
-    this.clawd.dispose(); this.layer.texture.dispose(); this.content.texture.dispose(); this.rt.dispose(); this.crt.mat.dispose();
-    this.key.shadow.map?.dispose();
+  dispose() { this.print.dispose();
+    this.layer.texture.dispose();
   }
 }
-function setFaceColor(mat:THREE.MeshLambertMaterial,paper:readonly [number,number,number]) { setEngrave(mat,{ paper }); }
-let world: PrintingPress | undefined;
+let world: World | undefined;
 export default class S08Commit extends Scene {
-  private w!: PrintingPress;
-  override init() { this.w=world ??= new PrintingPress(this.ctx); this.w.users++; }
-  override dispose() { if (--this.w.users === 0) { this.w.dispose(); world=undefined; } }
-  override render(f:Frame,out:THREE.WebGLRenderTarget) {
-    const w=this.w,t=f.t,r=this.ctx.renderer,m=w.model;
-    w.update(t);
-    const oldShadow=r.shadowMap.enabled,oldType=r.shadowMap.type;
-    r.shadowMap.enabled=true; r.shadowMap.type=THREE.PCFShadowMap;
-    try {
-      if (t >= m.T.machine) {
-        // Only the display content collapses. The bezel, keyboard and floating
-        // machine type stay in the physical world until the opaque final line.
-        clearRT(r,out,lin('ink')); w.sheet.visible=false;
-        r.setRenderTarget(out); r.render(w.scene,w.rig.cam); w.sheet.visible=true;
-        const visible=w.scene.children.map(child => child.visible);
-        try {
-          w.scene.children.forEach(child => { child.visible=child === w.sheet || child instanceof THREE.Light || child === w.key.target; });
-          clearRT(r,w.rt,lin('ink'),0); r.setRenderTarget(w.rt); r.render(w.scene,w.rig.cam);
-          this.ctx.comp.draw(r,w.content.upload(),w.rt);
-        } finally { w.scene.children.forEach((child,i) => { child.visible=visible[i]!; }); }
-        const s=exitState(t,m.T); w.crt.u.flatK!.value=s.flat;
-        w.crt.u.extension!.value=s.width; w.crt.u.gain!.value=s.gain;
-        w.crt.render(r,out);
-      } else {
-        clearRT(r,out,lin('ink')); r.setRenderTarget(out); r.render(w.scene,w.rig.cam);
-        this.ctx.comp.draw(r,w.content.upload(),out);
+  private w!: World;
+  override init() {
+    this.w = world ??= new World(this.ctx);
+    this.w.users++;
+  }
+  override dispose() {
+    if (--this.w.users === 0) {
+      this.w.dispose();
+      world = undefined;
+    }
+  }
+  override render(f: Frame, out: THREE.WebGLRenderTarget) {
+    const w = this.w,
+      T = w.T,
+      t = f.t,
+      au = this.ctx.audio,
+      v = w.voice;
+    const s = commitLayout(au, this.ctx.lyrics, t, T, v),
+      c = w.layer.ctx;
+    const clay = s.hook && !s.frozen;
+    w.layer.clear(css(clay ? "clay" : "paper"));
+    const cam = this.camera(t, s, T);
+    c.save();
+    c.translate(cam.fx, cam.fy); c.rotate(cam.rot); c.scale(cam.zoom, cam.zoom); c.translate(-cam.fx, -cam.fy);
+    if (clay && s.form.born > 0) {
+      drawWarped(
+        c,
+        "COMMIT",
+        { ...s.form.axes, wght: Math.max(800, s.form.axes.wght) },
+        s.giant,
+        "paper",
+        heatColor("paper", "clay", s.form.age),
+      );
+      this.brackets(c, "ink");
+      // One machine annotation and its fine rule; second hash replaces the first after the repeat.
+      c.font = font(F.mono(500), TYPE_LEVELS.label);
+      c.fillStyle = css("ink", 0.6);
+      c.fillText(
+        s.second
+          ? "b7e42af · fix: calendar loop"
+          : "a1f3c9e · fix: calendar loop",
+        96,
+        960,
+      );
+      drawSprite(c, s.clawd, "ink", "clay");
+      for (let i = 0; i < 3; i++) {
+        rule(
+          c,
+          [800 + i * 15, 290 + i * 9],
+          [950 + i * 15, 210 + i * 9],
+          "paper",
+          0.85,
+          1.5,
+        );
+        rule(
+          c,
+          [1220 + i * 20, 270 + i * 8],
+          [1300 + i * 20, 232 + i * 8],
+          "paper",
+          0.85,
+          1.5,
+        );
       }
-      this.ctx.comp.draw(r,w.layer.upload(),out);
-    } finally { r.shadowMap.enabled=oldShadow; r.shadowMap.type=oldType; }
-    const { paletteSwap:_,...post }=impactPost(t,m);
-    return { bloom:0,halation:0,ca:0,grain:0,vignette:0,hud:0,frame:0,exposure:1,...post };
+    } else {
+      if (!(t >= T.brackets && t < T.taps[0]!)) this.brackets(c, "ink");
+      if (s.taps) this.keyboard(c, f, T);
+      else if (s.preview) this.preview(c, f);
+      else if (t >= T.quit && t < T.pick2) this.code(c, f, T);
+      if (!s.frozen)
+        drawSprite(c, { ...s.clawd, x: 1560, y: 650, angle: 0 }, "clay", "ink");
+    }
+    const line = this.ctx.lyrics.lastLine(t);
+    if (line && v.presence(line, t, 1) > 0) {
+      const hook = /one more commit/i.test(line.text);
+      if (!hook || s.frozen) {
+        // The preceding scene's last line survives the cut; forms retain already sung words.
+        const forms = v.forms(line, t);
+        const pres = v.presence(line, t, 1);
+        c.save();
+        c.translate(960, 360);
+        c.scale(v.breath(f.a.kick), v.breath(f.a.kick));
+        c.translate(-960, -360);
+        const cells = gridSnap(c, forms, {
+          x: 96,
+          y: 170,
+          colW: 144,
+          rowH: 144,
+          cols: 12,
+          size: 100,
+          on: clay ? "clay" : "paper",
+          t,
+          alpha: pres,
+        });
+        c.restore();
+        if (t >= T.brackets && t < T.taps[0]!) this.fitBrackets(c, t, cells, f);
+      }
+    }
+    if (s.frozen) {
+      const p = handoffIn(t, au, { ...T, start: s.second ? T.pick2 : T.start });
+      drawCursor(c, { ...p, on: blink(au.beatAt(t)) });
+    }
+    c.restore();
+    // The hash's hairline is the only outgoing object; no transition outside the last beat.
+    if (t >= T.hit1) {
+      const p = handoffOut(t, au, T);
+      const exiting = t >= afterBeats(au, T.end, -1);
+      rule(
+        c,
+        [p.x0, p.y],
+        [p.x1, p.y],
+        exiting ? "clay" : "ink",
+        exiting ? 1 : 0.6,
+        exiting ? 2 : 1,
+      );
+    }
+    c.drawImage(w.grain, 0, 0, 1920, 1080);
+    this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
+    w.print.render(this.ctx.renderer, out, clay ? 0.04 : 0.05);
+    const magnitude = 10 * s.impact,
+      fi = frameIdx(t);
+    return {
+      ...postFor(clay ? "clay" : "paper"),
+      hud: 0,
+      frame: 0,
+      bloom: 0,
+      vignette: 0,
+      shake: [
+        (hash(fi, 81) - 0.5) * magnitude,
+        (hash(fi, 82) - 0.5) * magnitude,
+      ] as [number, number],
+    };
+  }
+  /**
+   * v4 motion: the print is filmed. Before each hook the frame creeps in on the cursor (tension),
+   * inhales on the last half beat, then the slam throws it back out; held COMMITs drift; paper
+   * lines bump on every sung word; "my machine" pushes into the calendar preview.
+   */
+  private camera(t: number, s: ReturnType<typeof commitLayout>, T: CommitScore) {
+    const au = this.ctx.audio;
+    const hit = s.second ? T.hit2 : T.hit1, pre = s.second ? T.pick2 : T.start;
+    let zoom = 1, rot = 0, fx = 960, fy = 540;
+    if (s.frozen) {
+      const creep = ease.inQuad(span(t, pre, hit));
+      const inhale = ease.inOutCubic(span(t, afterBeats(au, hit, -0.5), hit));
+      zoom = 1 + 0.22 * creep - 0.12 * inhale;
+      fx = 960; fy = 560;
+    } else {
+      const b = Math.max(0, beatsSince(au, t, hit));
+      // slam: arrives too close, kicks back past 1 and settles
+      zoom = 1 + 0.16 * Math.exp(-b * 6) * Math.cos(b * 9);
+      rot = 0.025 * Math.exp(-b * 5) * Math.sin(b * 11);
+      if (s.hook) zoom += 0.05 * ease.inOutQuad(span(t, hit, s.second ? T.works : T.brackets));
+    }
+    if (!s.hook && !s.frozen) {
+      const line = this.ctx.lyrics.lastLine(t);
+      let bump = 0, sign = 1;
+      for (const w of line?.words ?? []) if (t >= w.start) { bump = Math.pow(0.5, (t - w.start) / 0.08); sign = w.index % 2 ? 1 : -1; }
+      zoom += 0.02 * bump + 0.03 * ease.inOutQuad(span(t, T.brackets, T.end));
+      rot += 0.004 * bump * sign;
+      if (s.preview) {
+        const k = ease.inOutCubic(span(t, T.works, T.end));
+        zoom += 0.16 * k; fx = lerp(960, 420, k); fy = lerp(540, 560, k);
+      }
+    }
+    return { zoom, rot, fx, fy };
+  }
+
+  /** "Every bracket's gonna fit": the corner brackets creep in word by word, then snap shut on "fit". */
+  private fitBrackets(c: CanvasRenderingContext2D, t: number, cells: { x: number; y: number; w: number; h: number; form: { text: string; t0: number; born: number; axes: Axes } }[], f: Frame) {
+    const fit = cells.find((x) => /^fit/i.test(x.form.text));
+    const born = cells.filter((x) => x.form.born > 0).length;
+    const creep = Math.min(1, born / 4) * 0.25;
+    const snap = fit && t >= fit.form.t0 ? ease.outBack(span(t, fit.form.t0, fit.form.t0 + 0.16), 2.2) : 0;
+    const homeL = { x: 96, y: 200 }, homeR = { x: 212, y: 200 };
+    const cy = fit ? fit.y + fit.h * 0.5 + 34 : 200;
+    const fw = fit ? varRun(fit.form.text, 100, fit.form.axes).width : 0;
+    const tl = fit ? { x: fit.x - 46, y: cy } : homeL, tr = fit ? { x: fit.x + 14 + fw + 12, y: cy } : homeR;
+    const k = Math.max(creep, snap);
+    c.font = font(F.mono(400), 100);
+    c.fillStyle = css(snap > 0 ? "clay" : "ink", snap > 0 ? 1 : 0.6);
+    c.fillText("[", lerp(homeL.x, tl.x, k), lerp(homeL.y, tl.y, k));
+    c.fillText("]", lerp(homeR.x, tr.x, k), lerp(homeR.y, tr.y, k));
+    // the other pairs lean in with the creep and recoil on the snap
+    const rec = snap > 0 ? Math.exp(-(t - fit!.form.t0) / 0.12) : 0;
+    c.fillStyle = css("ink", 0.6);
+    c.fillText("{", 1490 - 120 * creep + 40 * rec, 200);
+    c.fillText("}", 1605 - 120 * creep + 40 * rec, 200);
+    c.fillText("(", 1670 - 90 * creep + 30 * rec, 980);
+    c.fillText(")", 1790 - 90 * creep + 30 * rec, 980);
+    rule(c, [270, 146], [840, 146], "ink", 0.6 * (1 - k));
+    void f;
+  }
+
+  private brackets(c: CanvasRenderingContext2D, color: "ink" | "paper") {
+    // Graphic brackets share the lyric cap level, never create another type scale.
+    c.font = font(F.mono(400), 100);
+    c.fillStyle = css(color, 0.6);
+    c.fillText("[", 96, 200);
+    c.fillText("]", 212, 200);
+    rule(c, [270, 146], [840, 146], color, 0.6);
+    c.fillText("{", 1490, 200);
+    c.fillText("}", 1605, 200);
+    rule(c, [1660, 146], [1824, 146], color, 0.6);
+    c.fillText("(", 1670, 980);
+    c.fillText(")", 1790, 980);
+  }
+  private keyboard(c: CanvasRenderingContext2D, f: Frame, T: CommitScore) {
+    const shot = T.taps.filter((t) => f.t >= t).length - 1;
+    c.save();
+    c.translate(shot === 1 ? 80 : 0, shot === 2 ? -70 : 0);
+    c.transform(1, shot === 1 ? -0.09 : 0, shot === 2 ? 0 : 0.15, 1, 0, 0);
+    for (let row = 0; row < 3; row++)
+      for (let col = 0; col < 10; col++) {
+        const x = 210 + col * 135,
+          y = 630 + row * 98,
+          hot = (col + row) % 3 === Math.floor(f.beat * 4) % 3;
+        polygon(
+          c,
+          [
+            [x, y + 70],
+            [x + 110, y + 70],
+            [x + 123, y + 92],
+            [x + 13, y + 92],
+          ],
+          "ink",
+          0.55,
+        );
+        for (let i = 0; i < 26; i += 2)
+          rule(
+            c,
+            [x + 6 + i * 4, y + 72],
+            [x + 19 + i * 4, y + 90],
+            "paper",
+            0.6,
+          );
+        c.fillStyle = css(hot ? "clay" : "paper");
+        c.fillRect(x, y, 110, 70);
+        rule(c, [x, y], [x + 110, y], "ink", 0.4);
+      }
+    c.restore();
+  }
+  private code(c: CanvasRenderingContext2D, f: Frame, T: CommitScore) {
+    c.font = font(F.mono(400), 20);
+    c.fillStyle = css("ink", 0.35);
+    const offset = Math.floor(
+      (this.ctx.audio.beatAt(f.t) - this.ctx.audio.beatAt(T.quit)) * 3,
+    );
+    for (let i = 0; i < 10; i++)
+      c.fillText(
+        MONTH_SOURCE[(i + offset) % MONTH_SOURCE.length]!,
+        210,
+        610 + i * 36,
+      );
+  }
+  private preview(c: CanvasRenderingContext2D, f: Frame) {
+    c.fillStyle = css("ink", 0.12);
+    c.fillRect(1000, 550, 650, 420);
+    for (let day = 1; day <= 31; day++) {
+      const x = 1020 + ((day + 3) % 7) * 88,
+        y = 580 + Math.floor((day + 3) / 7) * 65;
+      c.fillStyle = css("paper");
+      c.fillRect(x, y, 80, 55);
+      c.font = font(F.mono(400), 20);
+      c.fillStyle = css("ink", 0.5);
+      c.fillText(String(day), x + 12, y + 35);
+      if (
+        day === 31 &&
+        f.t >= this.w.T.shots.at(-1)!.start &&
+        Math.floor(f.beat * 8) % 2 === 0
+      ) {
+        c.fillStyle = css("fail");
+        c.fillRect(x + 65, y + 8, 5, 5);
+      }
+    }
   }
 }

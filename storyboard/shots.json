@@ -1,5 +1,5 @@
 {
- "_doc": "Storyboard v2 (source of truth). Shots are anchored to a sung word (anchor.word inside anchor.line, anchor.occ-th occurrence of that line in the song, 1-based), snapped to the beat grid (snap: downbeat|beat|none, plus offset_beats). 't' is the approximate time (s) measured by Whisper on the final WAV; it is only a fallback when the anchor cannot be resolved. anchor.word null = use 't' (instrumental passages). anchor.syl (optional) picks the n-th aligned syllable of the word (data/lyrics.json 'syl'); hook landings use syl 2 with snap none, because the song sings the stressed -MIT about half a beat before the bar line and the visual hit must follow the heard accent (Tim, 2026-09-30). snap 'cut' (v6 R1, 2026-10-03) = the last beat at/before the word, pdoom's timeline cut(): a scene boundary sits on the beat before the first word of its line, never mid-line. Each shot lasts until the next shot starts. clawd = action id from docs/STORYBOARD.md (A1-A13). Text fields are Chinese (for Tim); ids and anchors are machine-readable.",
+ "_doc": "Storyboard v2 (source of truth). Shots are anchored to a sung word (anchor.word inside anchor.line, anchor.occ-th occurrence of that line in the song, 1-based), snapped to the beat grid (snap: downbeat|beat|none, plus offset_beats). 't' is the approximate time (s) measured by Whisper on the final WAV; it is only a fallback when the anchor cannot be resolved. anchor.word null = use 't' (instrumental passages). anchor.syl (optional) picks the n-th aligned syllable of the word (data/lyrics.json 'syl'); hook landings use syl 2 with snap none, because the song sings the stressed -MIT about half a beat before the bar line and the visual hit must follow the heard accent (Tim, 2026-09-30). Each shot lasts until the next shot starts. clawd = action id from docs/STORYBOARD.md (A1-A13). Text fields are Chinese (for Tim); ids and anchors are machine-readable.",
  "version": 2,
  "song": {"file": "audio/song.wav", "duration": 160.6},
  "scenes": [
@@ -29,20 +29,20 @@
   {"id": "S02-1", "scene": "S02", "t": 4.6, "anchor": {"line": "Nine o'clock, a ping on my screen", "occ": 1, "word": "ping", "snap": "beat"}, "clawd": "A2", "camera": "推到右下角", "visual": "通知从右下弹出：`Issue #1031 · calendar`，唱到 ping 的那一下弹跳。Clawd 睁开一只眼。"},
   {"id": "S02-2", "scene": "S02", "t": 5.8, "anchor": {"line": "Nine o'clock, a ping on my screen", "occ": 1, "word": "screen", "snap": "beat"}, "clawd": "A2", "camera": "穿过通知往里推（匹配剪辑）", "visual": "镜头穿过通知气泡，进入 issue 页面。"},
 
-  {"id": "S03-1", "scene": "S03", "t": 7.3, "anchor": {"line": "Got a bug report, the weirdest I've seen", "occ": 1, "word": "Got", "snap": "cut"}, "clawd": "A3", "camera": "正面，中景", "visual": "issue 卡片：标题 `Calendar shows October 32` 逐字出现；标签 `bug` 像盖章一样卡拍落下。Clawd 站在标题上。"},
+  {"id": "S03-1", "scene": "S03", "t": 7.3, "anchor": {"line": "Got a bug report, the weirdest I've seen", "occ": 1, "word": "bug", "snap": "downbeat"}, "clawd": "A3", "camera": "正面，中景", "visual": "issue 卡片：标题 `Calendar shows October 32` 逐字出现；标签 `bug` 像盖章一样卡拍落下。Clawd 站在标题上。"},
   {"id": "S03-2", "scene": "S03", "t": 8.6, "anchor": {"line": "Got a bug report, the weirdest I've seen", "occ": 1, "word": "weirdest", "snap": "beat"}, "clawd": "A3", "camera": "推近附图，一直推进去", "visual": "issue 附图：日历缩略图，一个圆圈跟着拍子画出来，圈住「32」。"},
 
-  {"id": "S04-1", "scene": "S04", "t": 10.3, "anchor": {"line": "There's a thirty-second day in October", "occ": 1, "word": "There's", "snap": "cut"}, "clawd": "A5", "camera": "斜俯视，跟随横移", "visual": "日历网格铺成地面。1–31 号格子每拍亮一个，Clawd 沿着格子一路横着走。"},
+  {"id": "S04-1", "scene": "S04", "t": 10.3, "anchor": {"line": "There's a thirty-second day in October", "occ": 1, "word": "There's", "snap": "downbeat"}, "clawd": "A5", "camera": "斜俯视，跟随横移", "visual": "日历网格铺成地面。1–31 号格子每拍亮一个，Clawd 沿着格子一路横着走。"},
   {"id": "S04-2", "scene": "S04", "t": 12.0, "anchor": {"line": "There's a thirty-second day in October", "occ": 1, "word": "October", "snap": "beat"}, "clawd": "A3", "camera": "停在 32 号格前", "visual": "第 32 格从地面里「弹」出来。Clawd 停在它面前，眼睛像素往一侧移（歪头看）。"},
 
-  {"id": "S05-1", "scene": "S05", "t": 13.1, "anchor": {"line": "So I crack my claws and read it all over", "occ": 1, "word": "So", "snap": "cut"}, "clawd": "A10", "camera": "Clawd 特写", "visual": "Clawd 活动手臂像素，准备开工。"},
-  {"id": "S05-2", "scene": "S05", "t": 14.6, "anchor": {"line": "So I crack my claws and read it all over", "occ": 1, "word": "claws", "snap": "beat"}, "clawd": "A5", "camera": "往下摇", "visual": "文件树像抽屉阶梯一样一层层拉开：src → calendar → month.ts，每拍一层。"},
-  {"id": "S05-3", "scene": "S05", "t": 16.2, "anchor": {"line": "So I crack my claws and read it all over", "occ": 1, "word": "read", "snap": "beat"}, "clawd": "A5", "camera": "横移跟拍（横版卷轴）", "visual": "代码行变成横向平台，Clawd 在行间横着爬，读过的行一行行变亮。"},
+  {"id": "S05-1", "scene": "S05", "t": 13.1, "anchor": {"line": "So I crack my claws and read it all over", "occ": 1, "word": "crack", "snap": "downbeat"}, "clawd": "A10", "camera": "Clawd 特写", "visual": "Clawd 活动手臂像素，准备开工。"},
+  {"id": "S05-2", "scene": "S05", "t": 14.6, "anchor": {"line": "So I crack my claws and read it all over", "occ": 1, "word": "read", "snap": "beat"}, "clawd": "A5", "camera": "往下摇", "visual": "文件树像抽屉阶梯一样一层层拉开：src → calendar → month.ts，每拍一层。"},
+  {"id": "S05-3", "scene": "S05", "t": 16.2, "anchor": {"line": "So I crack my claws and read it all over", "occ": 1, "word": "over", "snap": "beat"}, "clawd": "A5", "camera": "横移跟拍（横版卷轴）", "visual": "代码行变成横向平台，Clawd 在行间横着爬，读过的行一行行变亮。"},
 
-  {"id": "S06-1", "scene": "S06", "t": 17.6, "anchor": {"line": "Read the code, write a plan, check, check, check", "occ": 1, "word": "Read", "snap": "cut"}, "clawd": "A3", "camera": "正面，中景", "visual": "待办清单逐行打出三项：☐ Read the code / ☐ Write a plan / ☐ Fix October。"},
+  {"id": "S06-1", "scene": "S06", "t": 17.6, "anchor": {"line": "Read the code, write a plan, check, check, check", "occ": 1, "word": "Read", "snap": "downbeat"}, "clawd": "A3", "camera": "正面，中景", "visual": "待办清单逐行打出三项：☐ Read the code / ☐ Write a plan / ☐ Fix October。"},
   {"id": "S06-2", "scene": "S06", "t": 19.6, "anchor": {"line": "Read the code, write a plan, check, check, check", "occ": 1, "word": "check", "snap": "beat"}, "clawd": "A6", "camera": "每个 check 轻微一冲", "visual": "三个 check 各打一个勾：☐ → ☑，加一道删除线；每打一个，Clawd 小跳一下。"},
 
-  {"id": "S07-1", "scene": "S07", "t": 20.8, "anchor": {"line": "Claws on the keys and I'm not looking back", "occ": 1, "word": "Claws", "snap": "cut"}, "clawd": "A6", "camera": "俯视", "visual": "超大键盘。Clawd 从画面上方落到 Enter 键上，落地那一帧压扁。"},
+  {"id": "S07-1", "scene": "S07", "t": 20.8, "anchor": {"line": "Claws on the keys and I'm not looking back", "occ": 1, "word": "Claws", "snap": "downbeat"}, "clawd": "A6", "camera": "俯视", "visual": "超大键盘。Clawd 从画面上方落到 Enter 键上，落地那一帧压扁。"},
   {"id": "S07-2", "scene": "S07", "t": 22.8, "anchor": {"line": "Claws on the keys and I'm not looking back", "occ": 1, "word": "looking", "snap": "beat"}, "clawd": "A4", "camera": "急推向屏幕光标（为副歌蓄力）", "visual": "键帽跟着节奏像波浪一样起伏；镜头从键盘一路冲向屏幕上的光标。"},
 
   {"id": "S08-1", "scene": "S08", "t": 24.5, "anchor": {"line": "I need one more commit", "occ": 1, "word": "I", "snap": "none"}, "clawd": null, "camera": "固定", "visual": "刹车：弱起的半小节，一切冻结，只有光标还在闪。"},
@@ -97,7 +97,7 @@
   {"id": "S15-5", "scene": "S15", "t": 103.0, "anchor": {"line": "Snip the extra line and set October free", "occ": 1, "word": "Snip", "snap": "beat"}, "clawd": "A10", "camera": "卡在 snip 上", "visual": "咔嚓：横线被夹走，`≤` 变成 `<`。"},
   {"id": "S15-6", "scene": "S15", "t": 105.2, "anchor": {"line": "Snip the extra line and set October free", "occ": 1, "word": "October", "snap": "beat"}, "clawd": "A12", "camera": "拉远到日历", "visual": "日历上的「32」像气泡一样破掉，只剩 31 格。"},
 
-  {"id": "S16-1", "scene": "S16", "t": 106.7, "anchor": {"line": "One goes green, and two, and three", "occ": 1, "word": "One", "snap": "cut"}, "clawd": "A6", "camera": "中景", "visual": "测试 1 变绿。"},
+  {"id": "S16-1", "scene": "S16", "t": 106.7, "anchor": {"line": "One goes green, and two, and three", "occ": 1, "word": "One", "snap": "downbeat"}, "clawd": "A6", "camera": "中景", "visual": "测试 1 变绿。"},
   {"id": "S16-2", "scene": "S16", "t": 108.0, "anchor": {"line": "One goes green, and two, and three", "occ": 1, "word": "two", "snap": "beat"}, "clawd": "A6", "camera": "—", "visual": "测试 2 变绿。"},
   {"id": "S16-3", "scene": "S16", "t": 108.9, "anchor": {"line": "One goes green, and two, and three", "occ": 1, "word": "three", "snap": "beat"}, "clawd": "A6", "camera": "—", "visual": "测试 3 变绿。"},
   {"id": "S16-4", "scene": "S16", "t": 110.0, "anchor": {"line": "Green and green and green and green", "occ": 1, "word": "Green", "snap": "downbeat"}, "clawd": "A12", "camera": "跟着合成器往上摇", "visual": "变绿像多米诺骨牌一样越来越快。"},

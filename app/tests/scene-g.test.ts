@@ -23,12 +23,12 @@ describe('G editorial and musical timing', () => {
     expect(T.end).toBe(audio.duration);
   });
 
-  test('world hardware impact begins on the second syllable and keeps its paper ground', () => {
+  test('CLAY begins on the second commit syllable and ends exactly at the PR cut', () => {
     const commit = lyrics.get('I need one last commit').words.at(-1)!;
     expect(T.hit).toBe(commit.syl![1]![0]);
     expect(T.hit).not.toBe(audio.nearestBeat(T.hit));
     expect(releaseState(audio, T.hit - eps, T).ground).toBe('paper');
-    expect(releaseState(audio, T.hit, T)).toMatchObject({ ground: 'paper', impact: 1, shot: 1 });
+    expect(releaseState(audio, T.hit, T)).toMatchObject({ ground: 'clay', impact: 1, shot: 1 });
     expect(releaseState(audio, T.release[2]!.start, T).ground).toBe('paper');
   });
 
@@ -43,19 +43,21 @@ describe('G editorial and musical timing', () => {
     expect(resolveReleaseTimes(audio, new Lyrics(shifted)).hit - T.hit).toBeCloseTo(0.11);
   });
 
-  test('zipper progress follows to.start through main.end', () => {
-    expect(releaseState(audio, T.zipStart - eps, T).merge).toBe(0);
-    expect(releaseState(audio, T.zipStart, T).merge).toBe(0);
-    expect(releaseState(audio, (T.zipStart + T.zipEnd) / 2, T).merge).toBeCloseTo(0.5);
-    expect(releaseState(audio, T.zipEnd, T).merge).toBe(1);
+  test('the merge is drawn over two measured beats and remains complete in the celebration', () => {
+    const at = T.release[5]!.start;
+    expect(releaseState(audio, at - eps, T).merge).toBe(0);
+    expect(releaseState(audio, at, T).merge).toBe(0);
+    expect(releaseState(audio, afterBeats(audio, at, 1), T).merge).toBeCloseTo(0.5);
+    expect(releaseState(audio, afterBeats(audio, at, 2), T).merge).toBe(1);
+    expect(releaseState(audio, T.release[6]!.start, T).merge).toBe(1);
   });
 
   test('the canonical wall completes before the final one-beat reveal and cranes during the preceding shot', () => {
     expect(WALL_CELLS).toEqual(pose(null, { beat: 0, beat0: 0, p: 0 }).cells);
     expect(WALL_CELLS.filter(cell => cell.k === 'D')).toHaveLength(2);
     const at = T.release[7]!.start, final = T.release[8]!.start;
-    expect(releaseState(audio, at, T).wallLit).toBe(WALL_CELLS.length - 2);
-    expect(releaseState(audio, final, T).wallLit).toBe(WALL_CELLS.length - 2);
+    expect(releaseState(audio, at, T).wallLit).toBe(1);
+    expect(releaseState(audio, final, T).wallLit).toBe(WALL_CELLS.length);
     expect(releaseState(audio, final, T).wallZoom).toBeLessThan(1.4);
     expect(releaseState(audio, T.tomorrow[0]!.start - eps, T).wallZoom).toBeCloseTo(0.82);
   });
@@ -65,25 +67,24 @@ describe('G editorial and musical timing', () => {
     expect(T.dawn).toBeGreaterThan(T.tomorrow[4]!.start);
     expect(T.dawn).toBeLessThan(T.tomorrow[5]!.start);
     expect(outroState(audio, afterBeats(audio, O.dawn, -4), O).dawn).toBe(0);
-    expect(outroState(audio, O.dawn, O).dawn).toBe(0);
-    expect(outroState(audio, afterBeats(audio, O.shots[4]!.start, 4) + 0.6, O).flip).toBe(1);
-    expect(outroState(audio, O.shots[5]!.start, O).dawn).toBe(1);
+    expect(outroState(audio, O.dawn, O).dawn).toBeCloseTo(0.5);
+    expect(outroState(audio, O.dawn, O).flip).toBeCloseTo(0.5);
+    expect(outroState(audio, afterBeats(audio, O.dawn, 4), O).dawn).toBe(1);
   });
 
   test('the printed star map remains on the night side through the dawn shot', () => {
     expect(starState(audio, voice, O.start, O).slice(0, 6).every(p => p.alpha === 1)).toBe(true);
-    expect(starState(audio, voice, O.dawn, O).filter(p => p.at <= O.dawn).every(p => p.alpha === 1)).toBe(true);
-    expect(starState(audio, voice, O.shots[5]!.start, O).filter(p => p.at <= O.shots[5]!.start).every(p => p.alpha === 1)).toBe(true);
+    expect(starState(audio, voice, O.dawn, O).every(p => p.alpha === 1)).toBe(true);
+    expect(starState(audio, voice, O.shots[5]!.start, O).every(p => p.alpha === 1)).toBe(true);
   });
 
-  test('credit rows finish before the cursor-only loop and global fade stays off', () => {
+  test('all credit rows finish before the fade and the last frame is fully faded', () => {
     const at = T.tomorrow[6]!.start;
     const beforeFade = afterBeats(audio, at, 13);
     expect(outroCredits(audio, beforeFade, O).lines.every(row => row.progress === 1)).toBe(true);
     expect(CREDIT_LINES.some(line => line.includes('Every frame drawn by code'))).toBe(true);
     expect(outroState(audio, beforeFade, O).fade).toBe(0);
-    expect(outroState(audio, O.end, O).fade).toBe(0);
-    expect(outroState(audio, O.end - 1/60, O).loop).toBe(1);
+    expect(outroState(audio, O.end, O).fade).toBe(1);
   });
 
   test('nominal BPM changes do not alter the measured-grid animation', () => {

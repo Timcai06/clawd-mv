@@ -15,7 +15,7 @@ import { afterBeats, span } from '../kit/time';
 import { ease } from '../engine/util';
 import { css, lin } from '../theme';
 import { Ground, postFor } from '../kit/ground';
-import { Voice, odometer } from '../kit/lyric-moves';
+import { Voice, setLine, drawSet, odometer } from '../kit/lyric-moves';
 import * as Clawd from '../kit/clawd';
 import { CALENDAR_TESTS } from '../kit/content';
 import { PrintOverlay } from '../kit/print-overlay';
@@ -23,13 +23,9 @@ import { drawNote } from '../kit/note';
 import { Rig, type P3 } from '../kit/rig';
 import { VoxelClawd } from '../kit/clawd3d';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
-import { handoffIn, stripLayout, STRIP_CAP, STRIP_BASE, passIncoming, wallCamera, shardScreen, cursorAt } from './parts/s10-glass';
-export { cursorAt } from './parts/s10-glass';
-import { exitEnvelope } from '../kit/handoff';
-import { drawCarry } from '../kit/carry';
-import { glyphPath, varRun } from '../kit/vartype';
-import { counter19 } from './parts/s09-type';
-import { PLATES, PW, PH, TH, ROW_DIR, ROW_STEP, plateToWorld, shardTri, shardMotion, rot, stampAt, CLAWD_AT, CLAWD_VOX, CLAWD_YAW } from './parts/s10-world';
+import { handoffIn } from './parts/s10-glass';
+import { carry, counter19 } from './parts/s09-type';
+import { PLATES, PW, PH, TH, ROW_DIR, ROW_STEP, plateToWorld, shardTri, shardMotion, rot, cameraAt, stampAt, CLAWD_AT, CLAWD_VOX, CLAWD_YAW } from './parts/s10-world';
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
 
@@ -82,21 +78,18 @@ void main() {
         float y = 0.12 + 0.05 * float(k);
         col = mix(col, ink, 0.35 * (1.0 - smoothstep(0.0, fwidth(vUv.y) * 1.2, abs(vUv.y - y))) * step(0.1, vUv.x) * step(vUv.x, 0.9));
       }
+      // the lyric strip, printed across the whole row (in rest-world coordinates)
+      float s = dot(vRest - rowO, rowD) / stripLen, v = vRest.y / ${PH.toFixed(2)};
+      if (s > 0.0 && s < 1.0 && v > 0.2 && v < 0.58) {
+        vec4 lt = texture(strip, vec2(s, (v - 0.2) / 0.38));
+        col = mix(col, lt.rgb / max(lt.a, 1e-3), lt.a);
+      }
       vec2 e = min(vUv, 1.0 - vUv) * vec2(${PW.toFixed(2)}, ${PH.toFixed(2)});
       col = mix(col, ink, (1.0 - smoothstep(0.035, 0.035 + fwidth(e.x) * 1.5, min(e.x, e.y))) * 0.7);
     } else col *= 0.86;
     // cracks: the shard edges show just before the slab goes
     float b = min(vBary.x, min(vBary.y, vBary.z));
     col = mix(col, ink, (1.0 - smoothstep(0.0, fwidth(b) * 1.6, b)) * crack * 0.9);
-  }
-  // the lyric strip, printed across the whole row (in rest-world coordinates)
-  float s = dot(vRest - rowO, rowD) / stripLen, v = vRest.y / ${PH.toFixed(2)};
-  if (face < 0.5 && s > 0.0 && s < 1.0 && v > 0.30 && v < 0.42) {
-    vec4 lt = texture(strip, vec2(s, (v - 0.30) / 0.12));
-    // CanvasTexture stores straight RGB: coverage changes opacity, never the print colour.
-    // Stop glass engraving beneath the glyph, including the 8% transmitted base.
-    float glyphCoverage = clamp(lt.a / 0.92, 0.0, 1.0);
-    col = mix(mix(col, paper, glyphCoverage), lt.rgb, lt.a);
   }
   fragColor = vec4(col, 1.0);
 }`;
@@ -167,16 +160,9 @@ class World {
         const { pts, c } = shardTri(i, j), m = shardMotion(T, i, j, t);
         const cw = plateToWorld(i, c);
         const P = prism(pts).map(([q]) => {
-          if(t>=afterBeats(au,T.wallEnd,-1)) {
-            const s=shardScreen(au,T,i,j,t,q);
-            if(s){const q3=new THREE.Vector3(s.x/960-1,1-s.y/540,0).unproject(this.rig.cam);
-              const ray=q3.sub(this.rig.cam.position).normalize();
-              return q3.copy(this.rig.cam.position).addScaledVector(ray,s.w/Math.max(1e-6,ray.dot(this.rig.cam.getWorldDirection(new THREE.Vector3()))));}
-          }
           const w = plateToWorld(i, q);
           const r = rot({ x: w.x - cw.x, y: w.y - cw.y, z: w.z - cw.z }, m.axis, m.angle);
-          const slide=i===0 ? -10*(1-ease.outExpo(span(t,T.wallStart,T.wallStart+0.2))) : 0;
-          return { x: cw.x + r.x + m.d.x + slide*ROW_DIR.x, y: Math.max(-40, cw.y + r.y + m.d.y), z: cw.z + r.z + m.d.z + slide*ROW_DIR.z };
+          return { x: cw.x + r.x + m.d.x, y: Math.max(-40, cw.y + r.y + m.d.y), z: cw.z + r.z + m.d.z };
         });
         for (let tri = 0; tri < VERTS / 3; tri++) {
           const a = P[tri * 3]!, b = P[tri * 3 + 1]!, cc = P[tri * 3 + 2]!;
@@ -226,18 +212,11 @@ export default class S10Redwall extends Scene {
     // the lyric strip across the row's faces (words born on their onsets; shards carry their pieces)
     const line = v.line('Nineteen red, and they’re shattering like glass');
     const sc = w.stripLayer.ctx; w.stripLayer.clear();
-    const lay=stripLayout(v,T);
-    for(const g of lay.glyphs) {
-      if(t<g.t0)continue;
-      const axes=v.form(g.word,t).axes,run=varRun(g.ch,100,axes);
-      sc.save(); sc.translate(g.s/STRIP_LEN*STRIP_W,STRIP_H*(1-(STRIP_BASE/PH-0.30)/0.12));
-      sc.scale(STRIP_W/STRIP_LEN*STRIP_CAP/run.capH,STRIP_H/(PH*0.12)*STRIP_CAP/run.capH);
-      sc.globalAlpha=0.92;sc.fillStyle=css(g.word.w==='shattering'?'clay':'ink');
-      sc.fill(glyphPath(run,run.glyphs[0]!));sc.restore();
-    }
+    { const set = setLine(v.forms(line, t).slice(1), 300, { space: 0.2 }); const k = Math.min(1, (STRIP_W - 80) / Math.max(1, set.width));
+      sc.save(); sc.translate(40, 290); sc.scale(k, 1); drawSet(sc, set, 0, 0, { on: 'paper' }); sc.restore(); }
     w.stripLayer.upload();
     // the world
-    w.rig.set(wallCamera(au,t,T));
+    w.rig.set(cameraAt(au, t, T));
     w.update(t, au);
     w.mat.uniforms.crack!.value = Math.min(1, Math.max(0, (t - (T.shatter - 0.12)) / 0.12));
     w.clawd.update(Clawd.pose('A8', { beat: au.beatAt(t), beat0: au.beatAt(T.nineteen), p: t >= T.shatter ? 1 : 0 }));
@@ -248,14 +227,14 @@ export default class S10Redwall extends Scene {
     w.layer.clear(); const c = w.layer.ctx;
     const n = handoffIn(t, au, T), first = v.form(line.words[0]!, t);
     if (t < line.start) counter19(c, n.x, n.baseline, n.capH, 'fail');
-    else if (first.born > 0) odometer(c, 19 * first.sung, n.x, n.baseline, 70,
-      { digits: 2, color: first.stress ? 'clay' : 'fail', on: 'paper', age: first.age, axes: first.axes, pitch: 43 });
-    c.font = font(F.mono(700), 18); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
-    c.fillStyle = css('clay'); const head=cursorAt(au,t,T);if(head)c.fillRect(head.x-6,head.y-12,12,24);
+    else if (first.born > 0) odometer(c, 19 * first.sung, n.x, n.baseline, 196,
+      { digits: 2, color: first.stress ? 'clay' : 'fail', on: 'paper', age: first.age, axes: first.axes, pitch: 98 });
+    c.font = font(F.mono(700), 180); c.fillStyle = css('fail', 0.6); c.fillText('failed', 386, 204);
+    c.fillStyle = css('clay'); c.fillRect(974, 76, 58, 135);
     drawNote(c, { ax: 1040, ay: 150, x: 1100, y: 112, text: '19/19 failing', sub: 'consistent, at least', t0: afterBeats(au, T.nineteen, 1), on: 'paper' }, t);
-    const incoming=passIncoming(v,T,t);if(incoming.alpha>0)drawCarry(c,incoming.spec,incoming.aff,incoming.alpha);
+    carry(c, v, t, T.wallStart, 96, 348, 'paper');
     this.ctx.comp.draw(r, w.layer.upload(), out, { opacity: 1 - dark });
     if (dark < 0.5) w.print.render(r, out);
-    return dark > 0.5 ? { ...postFor('ink'), hud: 0, ca: 0.6,exposure:exitEnvelope(t,T.wallEnd).gain } : { ...postFor('paper'), hud: 0, bloom: 0 };
+    return dark > 0.5 ? { ...postFor('ink'), hud: 0, ca: 0.6 } : { ...postFor('paper'), hud: 0, bloom: 0 };
   }
 }

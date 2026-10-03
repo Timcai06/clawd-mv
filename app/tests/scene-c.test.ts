@@ -14,13 +14,11 @@ describe('C group musical events', () => {
   test('each check uses a distinct measured snare and completes before the keyboard cut', () => {
     expect(T.checks).toHaveLength(3);
     expect(new Set(T.checks).size).toBe(3);
-    // v6 R1: the third check now falls on the keyboard cut itself (S06 v6 re-times it; see docs/tasks/V6-S06.md).
-    for (const t of T.checks.slice(0, 2)) expect(audio.events('snare', t, t + 0.0001).length).toBe(1);
+    for (const t of T.checks) expect(audio.events('snare', t, t + 0.0001).length).toBe(1);
     for (const t of T.checks) expect(todoState(audio, t - 0.00001, T).completed).toBeLessThan(todoState(audio, afterBeats(audio, t, 0.3), T).completed);
-    // v6 R1 moved the keyboard cut to the beat before "Claws"; the last check lands on that cut.
-    const finished = todoState(audio, afterBeats(audio, T.checks[2]!, 0.3), T);
+    const finished = todoState(audio, T.keyboard - 0.00001, T);
     expect(finished.checks).toEqual([1, 1, 1]);
-    // strikes are re-timed by S06 v6 (docs/tasks/V6-S06.md); only the checks are asserted here.
+    expect(finished.strikes).toEqual([1, 1, 1]);
   });
   test('per-word writing never starts ahead of an aligned word', () => {
     for (const line of [T.plan, T.claws]) {
@@ -35,10 +33,15 @@ describe('C group musical events', () => {
       }
     }
   });
-  test('landing uses measured beats; Enter dive starts on back and fills the last frame',()=>{
-    expect(audio.beats).toContain(T.land);expect(T.land).toBeGreaterThan(T.keyboard);expect(T.land).toBeLessThan(T.dive);
-    const back=T.claws.words.at(-1)!;expect(keyboardState(audio,back.start,T).dive).toBe(0);
-    expect(keyboardState(audio,T.end-1/60,T).dive).toBe(1);expect(keyboardState(audio,T.end,T).cursorOnly).toBe(false);
+  test('landing is on a measured beat; the dive waits, rushes, and parks before the chorus', () => {
+    expect(audio.beats).toContain(T.land);
+    expect(audio.beats).toContain(T.arrive);
+    expect(T.land).toBeGreaterThan(T.keyboard);
+    expect(T.land).toBeLessThan(T.dive);
+    expect(keyboardState(audio, T.land, T)).toMatchObject({ fall: 1, landing: 1, altitude: 0, dive: 0 });
+    expect(keyboardState(audio, T.launch, T).dive).toBe(0);
+    expect(keyboardState(audio, T.arrive, T)).toMatchObject({ dive: 1, cursorOnly: true });
+    expect(T.end - T.arrive).toBeGreaterThan(0.1);
   });
   test('changing nominal BPM cannot change measured-grid choreography', () => {
     const low = new AudioData({ ...audioJSON, bpm: 40 });

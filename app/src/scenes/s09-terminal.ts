@@ -6,21 +6,17 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { Layer2D } from '../engine/gl';
 import { css } from '../theme';
 import { Ground, GlowLayer, postFor } from '../kit/ground';
-import { blink } from '../kit/cursor';
+import { drawCursor, blink } from '../kit/cursor';
 import { afterBeats, span } from '../kit/time';
 import { clamp, ease, lerp } from '../engine/util';
-import { glowDraw, Voice } from '../kit/lyric-moves';
+import { glowDraw, heatColor, Voice } from '../kit/lyric-moves';
+import { varRun, fillRun } from '../kit/vartype';
 import * as Clawd from '../kit/clawd';
 import { resolveX9Times, type X9Times } from './s09-z-shared';
-import { mono, counter19 } from './parts/s09-type';
-import { scopeState, handoffIn, handoffOut, SCOPE } from './parts/s09-scope';
+import { mono, carry, counter19 } from './parts/s09-type';
+import { scopeState, handoffIn, handoffOut, SCOPE, scopeHead } from './parts/s09-scope';
 import { Rig } from '../kit/rig';
-import { ridgeY, ridgeZ, RIDGES, wx, wy } from './parts/s09-world';
-import { drawPathText } from '../kit/pathtext';
-import { drawCarry } from '../kit/carry';
-import { exitEnvelope } from '../kit/handoff';
-import { scopeCamera, scanHead, scopeLyrics, lastScan, passCarry, passFrame, machineCarry, cursorAt } from './parts/s09-scope';
-export { cursorAt } from './parts/s09-scope';
+import { cameraAt, ridgeY, ridgeZ, RIDGES, wx, wy } from './parts/s09-world';
 // 19 is a machine counter, capH=140 (reference + nineteen09), not a ≥200px giant.
 // Archivo levels are cap heights; Plex label=18 is its CSS font size.
 export const TYPE_LEVELS = { giant: null, lyric: 65.856, label: 18 };
@@ -38,17 +34,17 @@ export default class S09Terminal extends Scene {
   override dispose() { if (--this.w.users === 0) { this.w.dispose(); world = undefined; } }
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, au = this.ctx.audio, T = w.times, t = f.t;
-    const s = { ...scopeState(au,t,T), head: scanHead(au,t,T) };
+    const s = scopeState(au, t, T);
     w.ground.render(this.ctx.renderer, out, { kind: 'ink', t, grid: 0, haze: 0, streaks: 0 });
     w.layer.clear(); w.glow.clear(); const c = w.layer.ctx;
     // v5: a 3D camera over the instrument (parts/s09-world.ts). The glass is the plane z = 0; past
     // runs stand behind it as ridges, drawn far to near with their undersides filled (hidden lines).
-    const rig = w.rig; rig.set(scopeCamera(au, t, T));
+    const rig = w.rig; rig.set(cameraAt(au, t, T));
     const P = (sx: number, sy: number, z = 0) => rig.proj(wx(sx), wy(sy), z);
     const Pw = (x: number, y: number, z: number) => rig.proj(x, y, z);
-    const rule = (x0: number, y0: number, x1: number, y1: number, alpha: number, width=1) => {
+    const rule = (x0: number, y0: number, x1: number, y1: number, alpha: number) => {
       const a = P(x0, y0), b = P(x1, y1); if (!a || !b) return;
-      c.strokeStyle = css('paper', alpha); c.lineWidth = width; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      c.strokeStyle = css('paper', alpha); c.lineWidth = 1; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
     };
     // history: the runs that already failed, receding (fog by depth)
     const floorY = wy(1012), sxs: number[] = [];
@@ -88,7 +84,7 @@ export default class S09Terminal extends Scene {
     }
     c.stroke();
     const base = handoffIn(t, au, T);
-    rule(base.x0, base.y, base.x1, base.y, 1, 2);
+    rule(base.x0, base.y, base.x1, base.y, 0.94);
     for (let x = 108; x < s.head; x += SCOPE.period / 2) {
       const q = P(x, SCOPE.y); if (!q) continue;
       const r = 9 * q.s / 100;
@@ -97,37 +93,45 @@ export default class S09Terminal extends Scene {
     }
     const headP = P(s.head, SCOPE.y) ?? { x: s.head, y: SCOPE.y, s: 100, w: 1 };
     w.sparks.begin(c, w.glow.ctx, 'ink');
-    const scan = (tb: number) => { const q = cursorAt(au,tb,T); return { x: q.x - 16, y: q.y + 16, h: 32, w: 32 }; };
+    const scan = (tb: number) => { const q = P(scopeHead(tb, T), SCOPE.y) ?? headP; return { x: q.x - 16, y: q.y + 16, h: 32, w: 32 }; };
     cursorSpark(c, w.glow.ctx, w.sparks, t, scan,
       { on: 'ink', from: T.waiting, to: T.terminalEnd-1/60, end: T.terminalEnd, seed: 9 });
     if (sparkFade(t, T.terminalEnd) > 0) heatTrail(w.sparks, t, tb => {
-      const x = scanHead(au,tb,T);
+      const x = scopeHead(tb, T);
       return P(x, 540 - ridgeY(0, x) * 100) ?? headP;
     }, { from: Math.max(T.waiting, t-0.4), width: 2.5, alpha: sparkFade(t, T.terminalEnd) });
     const n = handoffOut(t, au, T);
     mono(c, 'npm test', 96, 290, TYPE_LEVELS.label, 'paper');
     mono(c, 'running 19 tests…', 96, 322, TYPE_LEVELS.label, 'paper');
-    const v=w.voice, ly=scopeLyrics(v,T), startCarry=afterBeats(au,T.terminalEnd,-0.5);
-    const ordinary={...ly.layout,glyphs:ly.layout.glyphs.filter(g=>g.word!==ly.pass)};
-    for(const g of ordinary.glyphs)if(t>=g.t0){
-      const refreshed=Math.max(g.t0,lastScan(au,T,g.s,t)),heatGlyph={...g,t0:refreshed};
-      drawPathText(c,rig,ly.path,{...ordinary,glyphs:[heatGlyph]},t,{mode:'lie',normal:()=>({x:0,y:0,z:1}),base:'paper',on:'ink',pop:0,
-        axes:(g,at)=>v.form(g.word,at).axes,offset:()=>({alpha:Math.max(0.55,Math.exp(-(t-refreshed)/1.6))})});
+    const v = w.voice, line = v.line("So I run the tests, I’m waiting for a pass");
+    // Mono-like equal-pitch cells, but sung outlines/axes still come exclusively from vartype.
+    let x = 96;
+    for (const form of v.forms(line, t)) {
+      const pass = form.text.replace(/[^a-z]/gi, '').toLowerCase() === 'pass';
+      const run = varRun(form.text, 96, form.axes);
+      if (form.born > 0) {
+        c.save(); c.beginPath(); c.rect(pass ? headP.x - run.width : x, 338, run.width * form.sung, 122); c.clip();
+        c.fillStyle = heatColor(form.stress ? 'clay' : 'paper', 'ink', form.age);
+        fillRun(c, run, pass ? headP.x - run.width : x, 427);
+        if (form.stress) glowDraw(c, w.glow.ctx, g => {
+          g.beginPath(); g.rect(pass ? headP.x - run.width : x, 338, run.width * form.sung, 122); g.clip();
+          g.fillStyle = c.fillStyle; fillRun(g, run, pass ? headP.x - run.width : x, 427);
+        }); c.restore();
+        drawCursor(c, { x: pass ? headP.x : x + run.width * form.sung, y: 427, h: 72,
+          on: form.singing ? 1 : pass ? blink(f.beat) : 0 });
+        glowDraw(c, w.glow.ctx, g => drawCursor(g, { x: pass ? headP.x : x + run.width * form.sung, y: 427, h: 72,
+          on: form.singing ? 1 : pass ? blink(f.beat) : 0 }));
+      }
+      x += run.width + 24;
     }
-    if(t<startCarry) drawPathText(c,rig,ly.path,{...ly.layout,glyphs:ly.layout.glyphs.filter(g=>g.word===ly.pass)},t,
-      {mode:'lie',normal:()=>({x:0,y:0,z:1}),base:'clay',on:'ink',pop:0,axes:(g,at)=>v.form(g.word,at).axes,offset:()=>({alpha:0.65+0.35*blink(f.beat)})});
-    else {
-      const spec=passCarry(v,T), aff=passFrame(v,T,t);
-      if(t>=ly.pass.start)drawCarry(c,spec,aff.filter(g=>t>=ly.layout.glyphs.filter(h=>h.word===ly.pass)[g.i]!.t0),exitEnvelope(t,T.terminalEnd).still?1:0.65+0.35*blink(f.beat));
-    }
-    const machine=machineCarry(v,t,T); if(machine.alpha)drawCarry(c,machine.spec,machine.aff,machine.alpha);
+    carry(c, v, t, T.terminal, 96, 427, 'ink', 96, w.glow.ctx);
     drawNote(c, { ax: headP.x, ay: headP.y - 18, x: headP.x + 46, y: headP.y - 120, text: 'expected: pass', sub: 'actual: pending', t0: T.waiting + 0.4, on: 'ink' }, t);
     const crab = s.clawd; Clawd.draw(c, crab.x, crab.y, crab.pose, { px: crab.px });
     glowDraw(c, w.glow.ctx, g => Clawd.draw(g, crab.x, crab.y, { ...crab.pose, cells: crab.pose.cells.filter(cell => cell.k === 'O') }, { px: crab.px, alpha: 0.25 }));
-    counter19(c,n.x,n.baseline,n.capH,exitEnvelope(t,T.terminalEnd).gain>1.1?'hot':'paper');
+    counter19(c, n.x, n.baseline, n.capH, 'paper');
     this.ctx.comp.draw(this.ctx.renderer, w.layer.upload(), out);
     w.sparks.finish(this.ctx, out);
     w.glow.composite(this.ctx, out, 2.0);
-    return { ...postFor('ink'), ca: 0.6, hud: 0,exposure:exitEnvelope(t,T.terminalEnd).gain };
+    return { ...postFor('ink'), ca: 0.6, hud: 0 };
   }
 }

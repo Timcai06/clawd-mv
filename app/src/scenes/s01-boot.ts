@@ -1,125 +1,96 @@
-// V6 S01: the cursor is the only point light; geometry and letters query its world.
-import * as THREE from 'three';
-import { Scene, type Frame } from '../engine/scene';
-import { Layer2D } from '../engine/gl';
-import { lin, POSTER_POST } from '../theme';
-import { RaymarchPass } from '../kit/raymarch';
-import { Rig } from '../kit/rig';
-import { drawPathText, pathAt } from '../kit/pathtext';
-import { SparkLines, heatTrail } from '../kit/spark';
+import { SparkLines, cursorSpark, heatTrail, sparkFade } from '../kit/spark';
 import { drawNote } from '../kit/note';
-import { afterBeats } from '../kit/time';
-import { audio, T, voice, bootState } from './parts/s01-timing';
-import { S01_GLSL, cameraAt, cursorSolidPoints, cursorCenter, cursorAt, cursorGain, blink, flare, worldBoxes,
-  lyricPath, line01Layout, lyricAlpha, FRAME_PATH, AMBIENT, LIGHT_POWER, INK_MAX_COV } from './parts/s01-world';
-export { cameraAt, cursorAt, line01Affines, line01Next } from './parts/s01-world';
-export const TYPE_LEVELS={giant:null,lyric:50.8,label:20};
-const SHADE=/* glsl */`
-${S01_GLSL}
-uniform vec3 paperC,inkC,clayC,lightPos;uniform float lightI;
-// Exact periodic box filtering: zero line coverage stays zero even when many
-// world lines lie inside one pixel. The generic hatch's AA would average to grey.
-float lineIntegral(float x,float cov){return floor(x)*cov+min(fract(x),cov);}
-float lightLines(float u,float tone,float maxCov){
-  float cov=min(maxCov,pow(clamp(tone,0.0,1.0),1.8)*0.95),aa=max(fwidth(u),1e-4)*0.5;
-  float x=u+cov*0.5;
-  return clamp((lineIntegral(x+aa,cov)-lineIntegral(x-aa,cov))/(2.0*aa),0.0,1.0);
+// S01: frontal welcome frame, partial paper rules, clay pixels and a perspective floor.
+import type * as THREE from 'three';
+import { Lens } from '../kit/lens';
+import { Scene, type Frame, type SceneCtx } from '../engine/scene';
+import { Layer2D } from '../engine/gl';
+import { F, font } from '../engine/type';
+import { css } from '../theme';
+import { Ground, GlowLayer, postFor } from '../kit/ground';
+import { blink } from '../kit/cursor';
+import { glowDraw, Voice, drawSet, setLine } from '../kit/lyric-moves';
+import { varRun } from '../kit/vartype';
+import { afterBeats, span } from '../kit/time';
+import { ease, lerp } from '../engine/util';
+import { cursorFromTop, printInBox } from './parts/s01-print';
+import * as Clawd from '../kit/clawd';
+import { openingTimes, bootState, handoffOut, WELCOME_BOX, BOOT_CLAWD } from './parts/s01-timing';
+export const TYPE_LEVELS = { giant: null, lyric: 50.8, label: 20 }; // cap heights; Archivo 74 px = 50.764 cap px
+class BootWorld { lens = new Lens();
+  sparks = new SparkLines();
+  users = 0; ground = new Ground(); text = new Layer2D(); glow = new GlowLayer(); T; voice;
+  constructor(ctx: SceneCtx) { this.T = openingTimes(ctx.audio, ctx.lyrics); this.voice = new Voice(ctx.lyrics, ctx.audio); }
+  dispose() { this.sparks.dispose(); this.lens.dispose(); this.ground.pass.mat.dispose(); this.ground.pass.mesh.geometry.dispose(); this.text.texture.dispose(); this.glow.dispose(); }
 }
-float pointShadow(vec3 p,vec3 n,vec3 L,float stop){
-  float shadow=1.0;vec3 ro=p+n*0.01,inv=1.0/(L+vec3(1e-20));
-  for(int i=0;i<32;i++){
-    if(i>=boxN)break;vec3 a=(boxC[i]-boxH[i]-ro)*inv,b=(boxC[i]+boxH[i]-ro)*inv;
-    vec3 mn=min(a,b),mx=max(a,b);float near=max(mn.x,max(mn.y,mn.z)),far=min(mx.x,min(mx.y,mx.z));
-    if(far>max(near,0.001)&&near<stop)return 0.0;
-    float d=clamp(near,0.03,stop);shadow=min(shadow,10.0*max(0.0,sdBoxW(ro+L*d-boxC[i],boxH[i]))/d);
-  }return clamp(shadow,0.0,1.0);
-}
-vec3 background(vec3 rd,vec2 px){return inkC;}
-vec3 shade(vec3 p,vec3 n,vec3 rd,float id,float travel){
-  vec3 delta=lightPos-p;float d2=dot(delta,delta);vec3 L=normalize(delta);
-  float E=lightI*max(dot(n,L),0.0)/(d2+0.35)*pointShadow(p,n,L,sqrt(d2));
-  float tone=clamp(${AMBIENT}+E,0.0,0.92);
-  float u=id<0.5?p.z/0.05:faceU(p,n,20.0,0.0);
-  // A lit dark-ground surface receives paper lines; a dark one remains ink.
-  if(id<0.5)return mix(inkC,paperC,lightLines(u,clamp(E,0.0,0.92),1.0));
-  if(id<1.5)return mix(inkC,paperC,lightLines(u,tone,${INK_MAX_COV}));
-  if(id>2.5)return mix(clayC,inkC,engraveTone(u,tone));
-  // The backing is an opaque paper body, with real occlusion encoded in its ink.
-  return mix(paperC,inkC,engraveTone(u,tone));
-}`;
-class BootWorld {
-  users=0;rig=new Rig();layer=new Layer2D();sparks=new SparkLines();
-  scene=new THREE.Scene();cursorGeo=new THREE.BufferGeometry();cursorMat=new THREE.MeshLambertMaterial({color:0,emissive:new THREE.Color().setRGB(...lin('clay')),emissiveIntensity:1,toneMapped:false,side:THREE.DoubleSide});
-  cursor:THREE.Mesh;
-  rm=new RaymarchPass(SHADE,{
-    boxC:{value:Array.from({length:32},()=>new THREE.Vector3())},boxH:{value:Array.from({length:32},()=>new THREE.Vector3())},
-    boxID:{value:new Float32Array(32)},boxN:{value:0},
-    paperC:{value:new THREE.Vector3(...lin('paper'))},inkC:{value:new THREE.Vector3(...lin('ink'))},clayC:{value:new THREE.Vector3(...lin('clay'))},
-    lightPos:{value:new THREE.Vector3()},lightI:{value:1},
-  });
-  constructor(){
-    // An AABB supplies the exact first possible hit of every SDF primitive.
-    // Skip empty marching intervals, then refine against the same union SDF.
-    // SS_TAP and the full-resolution four-tap main() remain the kit's version.
-    const declarations='uniform vec3 boxC[32],boxH[32];uniform float boxID[32];uniform int boxN;';
-    const shader=this.rm.pass.mat.fragmentShader.replace(declarations,'');
-    const accelerated=/* glsl */`
-vec3 render(vec2 px){
-  vec3 rd=normalize(camF*focal+camR*px.x+camU*px.y),inv=1.0/(rd+vec3(1e-20));
-  float travel=rd.y<0.0?-camPos.y/rd.y:1e9,id=0.0;int hit=-1;
-  for(int i=0;i<32;i++){
-    if(i>=boxN)break;vec3 a=(boxC[i]-boxH[i]-camPos)*inv,b=(boxC[i]+boxH[i]-camPos)*inv;
-    vec3 mn=min(a,b),mx=max(a,b);float near=max(mn.x,max(mn.y,mn.z)),far=min(mx.x,min(mx.y,mx.z));
-    if(far>=max(near,0.0)&&near>=0.0&&near<travel){travel=near;hit=i;id=boxID[i];}
-  }
-  if(travel>maxDist)return background(rd,px);
-  // A short SDF refinement makes the acceleration valid for the union, not
-  // just an independently painted list of boxes.
-  float refined=travel;
-  for(int i=0;i<2;i++){float mid;float d=map(camPos+rd*refined,mid);if(abs(d)<0.0001)break;refined+=d*0.9;}
-  vec3 p=camPos+rd*refined,n=vec3(0,1,0);
-  if(hit>=0){vec3 q=p-boxC[hit],d=abs(abs(q)-boxH[hit]);
-    n=d.x<=d.y&&d.x<=d.z?vec3(sign(q.x),0,0):d.y<=d.z?vec3(0,sign(q.y),0):vec3(0,0,sign(q.z));}
-  return shade(p,n,rd,id,refined);
-}
-`;
-    this.rm.pass.mat.fragmentShader=shader.slice(0,shader.indexOf('vec3 render(vec2 px)'))+declarations+'\n'+accelerated+shader.slice(shader.indexOf('void main()'));
-    this.cursorGeo.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(24),3));
-    this.cursorGeo.setIndex([0,1,2,0,2,3,4,6,5,4,7,6,0,4,5,0,5,1,1,5,6,1,6,2,2,6,7,2,7,3,3,7,4,3,4,0]);this.cursor=new THREE.Mesh(this.cursorGeo,this.cursorMat);this.cursor.frustumCulled=false;this.scene.add(this.cursor);}
-  dispose(){this.rm.dispose();this.layer.texture.dispose();this.sparks.dispose();this.cursorGeo.dispose();this.cursorMat.dispose();}
-}
-let shared:BootWorld|undefined;
+let shared: BootWorld | undefined;
 export default class S01Boot extends Scene {
-  private w!:BootWorld;
-  override init(){this.w=shared??=new BootWorld();this.w.users++;}
-  override dispose(){if(--this.w.users===0){this.w.dispose();shared=undefined;}}
-  override render(f:Frame,out:THREE.WebGLRenderTarget){
-    const w=this.w,t=f.t,r=this.ctx.renderer,cam=cameraAt(t),boxes=worldBoxes(t);
-    w.rig.set(cam);w.rm.setCam(cam);w.rm.u.boxN!.value=boxes.length;
-    boxes.forEach((b,i)=>{w.rm.u.boxC!.value[i].set(b.c.x,b.c.y,b.c.z);w.rm.u.boxH!.value[i].set(b.h.x,b.h.y,b.h.z);w.rm.u.boxID!.value[i]=b.id;});
-    const light=cursorCenter(t);w.rm.u.lightPos!.value.set(light.x,light.y,light.z);w.rm.u.lightI!.value=LIGHT_POWER*blink(t)*(1+3*flare(t));
-    w.rm.render(r,out);
-    const ps=cursorSolidPoints(t),attr=w.cursorGeo.getAttribute('position');ps.forEach((p,i)=>attr.setXYZ(i,p.x,p.y,p.z));attr.needsUpdate=true;
-    w.cursorMat.emissiveIntensity=cursorGain(t);
-    r.setRenderTarget(out);r.clearDepth();r.render(w.scene,w.rig.cam);
-    w.layer.clear();const c=w.layer.ctx;w.sparks.begin(c,undefined,'ink');
-    drawPathText(c,w.rig,lyricPath,line01Layout(),t,{mode:'stand',base:'paper',on:'ink',axes:(g,time)=>voice.form(g.word,time).axes,
-      offset:(g,time)=>({alpha:lyricAlpha(pathAt(lyricPath,g.s+g.w/2),time)})});
-    // Exact glyph births and an exact 0.12 s flight are not exposed by
-    // sparkParticles. These one-per-letter arcs therefore use the same line batch.
-    for(const g of line01Layout().glyphs){if(!/[\p{L}\p{N}]/u.test(g.ch))continue;const age=t-g.t0;if(age<0||age>=0.12)continue;
-      const born=cursorAt(g.t0),p=pathAt(lyricPath,g.s),end=w.rig.proj(p.x,p.y,p.z);if(!end)continue;
-      const at=(k:number)=>({x:born.x+(end.x-born.x)*k,y:born.y+(end.y-born.y)*k-100*4*k*(1-k)}),a=at(Math.max(0,(age-0.018)/0.12)),b=at(age/0.12);
-      w.sparks.seg2(a.x,a.y,b.x,b.y,1.6,lin('clay'),1);
+  private w!: BootWorld;
+  override init() { this.w = shared ??= new BootWorld(this.ctx); this.w.users++; }
+  override dispose() { if (--this.w.users === 0) { this.w.dispose(); shared = undefined; } }
+  /** v4 motion: tight on the lone cursor, a long pull-back as the welcome frame draws, a lean-in on the last beat. */
+  private view(t: number) {
+    const au = this.ctx.audio, T = this.w.T;
+    const cur = cursorFromTop(handoffOut(T.start, au, T));
+    const back = ease.inOutCubic(span(t, afterBeats(au, T.welcome, -1.5), afterBeats(au, T.welcome, 3)));
+    const lean = Math.sin(Math.PI * span(t, afterBeats(au, T.ping, -2), T.ping)) * 0.06;
+    const zoom = lerp(2.6, 1, back) + lean;
+    return { zoom, fx: lerp(cur.x + 10, 960, back), fy: lerp(cur.y - 20, 540, back), ax: 960, ay: 540, rot: 0.02 * (1 - back) };
+  }
+
+  override render(f: Frame, finalOut: THREE.WebGLRenderTarget) {
+    const out = this.w.lens.rt;
+    const w = this.w, au = this.ctx.audio, s = bootState(au, f.t, w.T);
+    w.ground.render(this.ctx.renderer, out, { kind: 'ink', t: f.t, grid: 0, haze: 0.24, hazeY: 0.25, kick: f.a.kick });
+    w.text.clear(); w.glow.clear(); const c = w.text.ctx, g = w.glow.ctx;
+    w.sparks.begin(c, g, 'ink');
+    // Perspective rules only below the horizon; the welcome frame's surrounding space stays empty.
+    c.strokeStyle = css('paper', 0.13); c.lineWidth = 1; c.beginPath();
+    for (let x = -1920; x <= 3840; x += 340) { c.moveTo(960 + (x - 960) * 0.03, 775); c.lineTo(x, 1080); }
+    for (let i = 0; i < 12; i++) { const y = 775 + 305 * (i / 11) ** 2.5; c.moveTo(0, y); c.lineTo(1920, y); } c.stroke();
+    if (f.t >= w.T.welcome) {
+      const b = WELCOME_BOX;
+      const frameEnd = afterBeats(au, w.T.welcome, 1.4);
+      const progress = (tb: number) => bootState(au, tb, w.T).frame;
+      const paths = [
+        (tb: number) => ({ x: b.x, y: b.y + b.h * progress(tb) }),
+        (tb: number) => ({ x: b.x + b.w * 0.88 * progress(tb), y: b.y }),
+        (tb: number) => ({ x: b.x + b.w * 0.86 * progress(tb), y: b.y + b.h }),
+        (tb: number) => ({ x: b.x + b.w, y: tb === w.T.welcome ? b.y + b.h * 0.28 : b.y + b.h * 0.57 * progress(tb) }),
+      ];
+      for (const path of paths) heatTrail(w.sparks, f.t, path,
+        { from: w.T.welcome, to: frameEnd, width: 2, cold: sparkFade(f.t, w.T.ping) === 0 });
+      c.save(); c.setLineDash([2, 3]); c.strokeStyle = css('paper', 0.25); c.strokeRect(b.x, b.y, b.w, b.h); c.restore();
+      c.fillStyle = css('paper', 0.6);
+      printInBox(c,varRun('Welcome to Claude Code',74,{wdth:75,wght:700}),{x:582,y:255,w:660,h:50.8});
+      c.font = font(F.mono(), 20); c.fillText('cwd: ~/calendar', 582, 342);
+      const title = 'Works on My Machine', text = title.slice(0, Math.floor(title.length * s.rows[1]!));
+      c.fillText(text, 582, 376);
+      const p = Clawd.pose('A1', { beat: f.beat, beat0: au.beatAt(w.T.welcome), p: s.pixels });
+      for (const cell of p.cells) if (cell.k === 'O') {
+        c.strokeStyle = css('clay', 0.42); c.lineWidth = 0.8;
+        c.strokeRect(BOOT_CLAWD.x + cell.x * BOOT_CLAWD.px, BOOT_CLAWD.y + (cell.y + p.dy) * BOOT_CLAWD.px, BOOT_CLAWD.px, BOOT_CLAWD.px);
+        glowDraw(c, g, g => { g.strokeStyle = c.strokeStyle; g.lineWidth = c.lineWidth;
+          g.strokeRect(BOOT_CLAWD.x + cell.x * BOOT_CLAWD.px, BOOT_CLAWD.y + (cell.y + p.dy) * BOOT_CLAWD.px, BOOT_CLAWD.px, BOOT_CLAWD.px); });
+      }
+      const reveal = { ...p, cells: p.cells.filter((cell, i) => cell.k === 'D' || i < Math.floor(p.cells.length * s.pixels)) };
+      Clawd.draw(c, BOOT_CLAWD.x, BOOT_CLAWD.y, reveal, { px: BOOT_CLAWD.px });
+      Clawd.draw(g, BOOT_CLAWD.x, BOOT_CLAWD.y, { ...reveal, cells: reveal.cells.filter(cell => cell.k === 'O') }, { px: BOOT_CLAWD.px, alpha: 0.25 });
     }
-    const frameEnd=afterBeats(audio,T.welcome,1.4);
-    for(let seg=0;seg<4;seg++)heatTrail(w.sparks,t,tb=>{
-      const k=Math.max(0,Math.min(1,(bootState(audio,tb,T).frame*FRAME_PATH.length-FRAME_PATH.starts[seg]!)/FRAME_PATH.edges[seg]!));
-      const points=[[-4.8,0.62+4.79*k],[-4.8+9.6*k,5.41],[-4.8+9.6*k,0.62],[4.8,0.62+4.79*k]];
-      const p=points[seg]!,q=w.rig.proj(p[0]!,p[1]!,0.18);return q?{x:q.x,y:q.y}:null;
-    },{from:afterBeats(audio,T.welcome,1.4*FRAME_PATH.starts[seg]!/FRAME_PATH.length),to:afterBeats(audio,T.welcome,1.4*(FRAME_PATH.starts[seg]!+FRAME_PATH.edges[seg]!)/FRAME_PATH.length),width:1.5,cold:t>frameEnd+0.3});
-    const cur=cursorAt(t);drawNote(c,{ax:cur.x,ay:cur.y,x:cur.x+80,y:cur.y-70,text:'pid 1031 · idle',t0:T.start,t1:T.welcome,on:'ink'},t);
-    this.ctx.comp.draw(r,w.layer.upload(),out);w.sparks.finish(this.ctx,out);
-    return {...POSTER_POST,hud:0};
+    const frameEnd = afterBeats(au, w.T.welcome, 1.4);
+    const cursorAt = (tb: number) => {
+      const base = cursorFromTop(handoffOut(tb, au, w.T));
+      if (tb >= w.T.welcome && tb < frameEnd) return { x: WELCOME_BOX.x + WELCOME_BOX.w * 0.88 * bootState(au, tb, w.T).frame,
+        y: WELCOME_BOX.y, h: base.h, on: 1 };
+      return { ...base, on: blink(au.beatAt(tb), tb >= afterBeats(au, w.T.ping, -1)) };
+    };
+    cursorSpark(c, g, w.sparks, f.t, cursorAt, { on: 'ink', from: w.T.welcome, to: frameEnd, end: w.T.ping, seed: 1 });
+    const line = w.voice.line(0), forms = w.voice.forms(line, f.t);
+    drawSet(c, setLine(forms, 74), 480, 752, { on: 'ink', glow: g });
+    { const q = cursorFromTop(handoffOut(f.t, au, w.T));
+      drawNote(c, { ax: q.x + 14, ay: q.y - 12, x: q.x + 80, y: q.y - 70, text: 'pid 1031 · idle', t0: w.T.start + 0.6, t1: w.T.welcome, on: 'ink' }, f.t); }
+    this.ctx.comp.draw(this.ctx.renderer, w.text.upload(), out); w.sparks.finish(this.ctx, out); w.glow.composite(this.ctx, out, 2.0);
+    this.w.lens.film(this.ctx.renderer, finalOut, this.view(f.t));
+    return { ...postFor('ink'), hud: 0, grain: 0.03, ca: 0.6, vignette: 0 };
   }
 }

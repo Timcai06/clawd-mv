@@ -73,6 +73,25 @@ describe('X9 scene events', () => {
     expect(rainState(audio, T.why, T).pull).toBe(0);
     expect(rainState(audio, T.rainEnd, T).pull).toBe(1);
   });
+  test('three vocal triggers escalate both zoom and failed-result area, then clearing removes results', () => {
+    const states = T.runs.map((t) => rerunState(audio, afterBeats(audio, t, 0.5), T));
+    expect(states.map((s) => s.run)).toEqual([0, 1, 2]);
+    expect(states.every((s) => s.result && s.chars === 8)).toBe(true);
+    expect(states[1].zoom).toBeGreaterThan(states[0].zoom);
+    expect(states[2].zoom).toBeGreaterThan(states[1].zoom);
+    expect(states[1].red).toBeGreaterThan(states[0].red);
+    expect(states[2].red).toBe(1);
+    expect(rerunState(audio, T.clear, T)).toMatchObject({ clearing: true, result: false, clear: 0 });
+    expect(rerunState(audio, T.cache, T).clear).toBe(1);
+  });
+  test('all eleven digits appear, with the extra digit held for at least 1.5 beats and inside the requested clip', () => {
+    const seen = new Set<number>();
+    for (let t = T.count; t < T.end; t += 1 / 60) seen.add(rerunState(audio, t, T).number);
+    expect([...seen]).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(beatsSince(audio, T.end, T.eleven)).toBeGreaterThanOrEqual(1.5 - eps);
+    expect(T.eleven).toBeLessThan(66.5);
+    expect(rerunState(audio, 66.99, T).number).toBe(11);
+  });
   test('nonuniform beat grids drive events without consulting the nominal BPM', () => {
     const a = new AudioData({ ...audioJSON, bpm: 40 });
     const b = new AudioData({ ...audioJSON, bpm: 240 });

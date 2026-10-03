@@ -117,14 +117,3 @@ function box(pts: { x: number; y: number }[]) {
   const y0 = clamp(Math.min(...pts.map((p) => p.y)), 0, 1080), y1 = clamp(Math.max(...pts.map((p) => p.y)), 0, 1080);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
-
-export const PLATE_GLSL=`
-vec3 plateToWorld(float i,vec3 l) {
- float c=cos(-0.15),s=sin(-0.15);
- vec3 o=vec3(1.0,0.0,-1.2)/length(vec2(1.0,-1.2))*1.45*i;
- return o+vec3(c*l.x+s*l.z,l.y,-s*l.x+c*l.z);
-}
-vec3 rot(vec3 p,vec3 a,float ang) {
- return p*cos(ang)+cross(a,p)*sin(ang)+a*dot(a,p)*(1.0-cos(ang));
-}
-`;

@@ -55,10 +55,10 @@ export function boxError(a: Rect, b: Rect) {
 }
 const actual = {
   S09: scope.scopeState(audio, at('S09-2'), T), S10: glass.glassState(audio, at('S10-2'), T),
-  S11: rain.headlineState(voice, at('S11-3'), T),
+  S11: rain.headlineState(voice, at('S11-3'), T), S12: count.countState(voice, at('S12-5'), T),
 };
 describe('D v3 composition from production geometry / outlines', () => {
-  for (const scene of ['S09', 'S10', 'S11'] as const) {
+  for (const scene of ['S09', 'S10', 'S11', 'S12'] as const) {
     test(`${scene}: main and Clawd center ≤96px, dimensions ≤15%`, () => {
       for (const [a, b] of [[actual[scene].dominant!, TARGETS[scene].main], [actual[scene].clawdBox, TARGETS[scene].clawd]]) {
         const error = boxError(a, b);
@@ -96,17 +96,17 @@ describe('D v3 cut positions (last output frame and first input frame)', () => {
   });
   test('S11→S12 nine boxes / S12→S13 clay 11', () => {
     match(rain.handoffOut(T.rainEnd - 1 / 60, audio, T), HANDOFF.boxes11);
-
+    match(count.handoffIn(T.rerunStart, audio, T), HANDOFF.boxes11);
     const boxes = handoffBoxes(rain.handoffOut(T.rainEnd - 1 / 60, audio, T));
     const outer = union(boxes.flatMap(b => [[b.x, b.y], [b.x + b.w, b.y + b.h]] as [number, number][]));
     match({ cx: outer.x + outer.w / 2, cy: outer.y + outer.h / 2, w: outer.w, n: boxes.length }, HANDOFF.boxes11);
-
-
+    match(count.handoffOut(T.end - 1 / 60, audio, T), HANDOFF.eleven12);
+    match(count.countState(voice, T.end - 1 / 60, T).digits[10]!.box, HANDOFF.eleven12);
   });
   test('handoffs finish within the final beat and leave keyframe composition untouched', () => {
     expect(rain.handoffOut(afterBeats(audio, T.rainEnd, -1.01), audio, T)).toEqual(rain.handoffOut(T.rainStart, audio, T));
     expect(scope.handoffIn(afterBeats(audio, T.terminal, 1), audio, T).y).toBe(scope.SCOPE.y);
-
+    expect(count.handoffIn(afterBeats(audio, T.rerunStart, 1), audio, T).w).toBe(1760);
   });
 });
 
@@ -115,7 +115,7 @@ describe('D v3 type / vocal onsets / crossing lines / determinism', () => {
     for (const L of [L09, L10, L11, L12]) {
       expect(L.lyric).toBeGreaterThanOrEqual(50); expect(L.lyric).toBeLessThanOrEqual(110);
       expect(L.label).toBeGreaterThanOrEqual(14); expect(L.label).toBeLessThanOrEqual(22);
-
+      expect(L.lyric).toBe(varRun('H', 96, { wdth: 100, wght: 700 }).capH);
       expect(L.lyric / L.label).toBeGreaterThanOrEqual(2.5);
       if (L.giant !== null) { expect(L.giant).toBeGreaterThanOrEqual(200); expect(L.giant / L.lyric).toBeGreaterThanOrEqual(2.5); }
     }
@@ -144,10 +144,16 @@ describe('D v3 type / vocal onsets / crossing lines / determinism', () => {
       for (const set of wrap(voice.forms(line, cut), 96, 1728)) expect(set.width).toBeLessThanOrEqual(1728);
     }
   });
+  test('count ten never appears before ten; eleven is clay and all eleven persist', () => {
+    expect(count.countState(voice, T.ten - 0.01, T).number).toBeLessThan(10);
+    const all = count.countState(voice, at('S12-5'), T);
+    expect(all.digits.length).toBe(11); expect(all.digits[10]!.color).toBe('clay');
+    expect(count.COPIES.length).toBe(6);
+  });
   test('same t, repeated and after seeking elsewhere, produces identical real layouts', () => {
     const states = [
       (t: number) => scope.scopeState(audio, t, T), (t: number) => glass.glassState(audio, t, T),
-      (t: number) => rain.headlineState(voice, t, T),
+      (t: number) => rain.headlineState(voice, t, T), (t: number) => count.countState(voice, t, T),
     ];
     states.forEach((state, i) => {
       const t = [at('S09-2'), at('S10-2'), at('S11-3'), at('S12-5')][i]!, initial = state(t);
@@ -155,7 +161,7 @@ describe('D v3 type / vocal onsets / crossing lines / determinism', () => {
     });
   });
 });
-if (process.env.D_REPORT) for (const scene of ['S09', 'S10', 'S11'] as const)
+if (process.env.D_REPORT) for (const scene of ['S09', 'S10', 'S11', 'S12'] as const)
   console.log(scene, JSON.stringify({ actual: { main: actual[scene].dominant, clawd: actual[scene].clawdBox },
     errors: { main: boxError(actual[scene].dominant!, TARGETS[scene].main), clawd: boxError(actual[scene].clawdBox, TARGETS[scene].clawd) } }));
 
@@ -171,9 +177,9 @@ if (process.env.D_REPORT) {
     [glass.handoffOut(T.wallEnd - 1 / 60, audio, T), HANDOFF.fall10],
     [rain.handoffIn(T.rainStart, audio, T), HANDOFF.fall10],
     [rain.handoffOut(T.rainEnd - 1 / 60, audio, T), HANDOFF.boxes11],
-
-
-
+    [count.handoffIn(T.rerunStart, audio, T), HANDOFF.boxes11],
+    [count.handoffOut(T.end - 1 / 60, audio, T), HANDOFF.eleven12],
+    [count.countState(voice, T.end - 1 / 60, T).digits[10]!.box, HANDOFF.eleven12],
   ];
   console.log('HANDOFF_MAX_ERROR', Math.max(...cases.flatMap(([a, b]) => Object.entries(b).map(([k, n]) => Math.abs(a[k]! - n)))));
 }

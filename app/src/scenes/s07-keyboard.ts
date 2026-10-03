@@ -4,18 +4,14 @@ import { Scene, type Frame, type SceneCtx } from '../engine/scene';
 import { FSPass, Layer2D } from '../engine/gl';
 import { GLSL_COMMON } from '../engine/glsl/common';
 import { F, font } from '../engine/type';
-import { css, lin, POSTER_POST } from '../theme';
+import { css, lin } from '../theme';
 import { postFor, GlowLayer } from '../kit/ground';
-import { Voice } from '../kit/lyric-moves';
+import { Voice, Plate, drawSet, setLine } from '../kit/lyric-moves';
 import { varRun } from '../kit/vartype';
 import { drawCursor } from '../kit/cursor';
 import { afterBeats, span } from '../kit/time';
 import * as Clawd from '../kit/clawd';
 import { resolveCTimes, keyboardState, type CTimes } from './parts/s06-timing';
-import { WordPlane } from '../kit/wordplane';
-import { letterTimes } from '../kit/pathtext';
-import { exitEnvelope } from '../kit/handoff';
-import { keyTop,keyEvents,LOOKING_KEYS,ENTER,enterCovers } from './parts/s07-terrain';
 import { KEY_FIELD, TERRAIN_KEYS, WORD_KEYS, RIDER_KEY, keyHeight, terrainOpacity, cameraAt, atScreen, handoffIn, handoffOut, riderAt, riderGeometry, titleSlice } from './parts/s07-terrain';
 import { printRun } from './parts/s05-print';
 
@@ -24,18 +20,17 @@ const INK=lin('ink'),PAPER=lin('paper'),CLAY=lin('clay');
 const KEY_VERT=/* glsl */ `
 attribute vec4 keyMeta;
 attribute float keySung;
-attribute float keyLift; attribute float keyHeat;
 uniform float beat,kick,landing;
 varying vec3 vWorld,vNormal;
 varying float vEnter;
-varying float vSung; varying float vHeat;
+varying float vSung;
 void main() {
   float x=keyMeta.x,z=keyMeta.y;
   float height=0.48+sin(beat*3.14159265359-x*0.62-z*0.85)*0.16
     +sin(beat*3.14159265359*0.5+x*0.22)*0.055+kick*0.13*cos(x*0.34+z*0.5);
   if(keyMeta.w>0.5)height=0.5-landing*0.22;
-  vec4 p=instanceMatrix*vec4(position,1.0);p.y+=height+keyLift;
-  vWorld=p.xyz;vNormal=normalize(mat3(instanceMatrix)*normal);vEnter=keyMeta.w;vSung=keySung;vHeat=keyHeat;
+  vec4 p=instanceMatrix*vec4(position,1.0);p.y+=height;
+  vWorld=p.xyz;vNormal=normalize(mat3(instanceMatrix)*normal);vEnter=keyMeta.w;vSung=keySung;
   gl_Position=projectionMatrix*modelViewMatrix*p;
 }`;
 // v5: real light on the wave. The key tops follow one analytic height field (the same equation as
@@ -44,10 +39,10 @@ void main() {
 // terrain method), and the light is printed as engraving density.
 const KEY_FRAG=/* glsl */ `
 uniform vec3 paper,ink,clay;
-uniform float opacity, glowOnly, beat, kick, exitGain;
+uniform float opacity, glowOnly, beat, kick;
 varying vec3 vWorld,vNormal;
 varying float vEnter;
-varying float vSung; varying float vHeat;
+varying float vSung;
 float H(vec2 q) {
   return 0.48+sin(beat*3.14159265359-q.x*0.62-q.y*0.85)*0.16+sin(beat*3.14159265359*0.5+q.x*0.22)*0.055+kick*0.13*cos(q.x*0.34+q.y*0.5);
 }
@@ -77,12 +72,8 @@ void main() {
   // tops: paper in the light; in a crest's shadow, fine diagonal rules
   vec3 roof=mix(paper, ink, hatch((vWorld.x + vWorld.z * 0.6) * 22.0, (1.0 - sh) * 0.55) * 0.85);
   roof=mix(roof,clay,max(vEnter,vSung));
-  roof+=clay*vHeat*(1.0-vEnter);
   float grain=hash12(floor(vWorld.xz*260.0));
   roof=mix(roof,ink,grain*0.035);
-  // C7: screen-space ink strokes, 1.2 logical px at a fixed 5 px pitch.
-  // Enter is exact palette clay; heat, grain and exit gain do not relight it.
-  if(vEnter>.5){float u=dot(FRAG_PX,vec2(-sin(.6),cos(.6)));float d=abs(mod(u+2.5,5.0)-2.5);roof=mix(clay,ink,pxLine(d,.1,1.1));}
   vec3 col = mix(side,roof,top);
   float clayCoverage = top * max(vEnter,vSung);
   if (glowOnly > 0.5) col = clay * clayCoverage;
@@ -120,33 +111,45 @@ function keycapGeometry() {
 }
 
 
-interface KeyWord {plane:WordPlane;key:typeof TERRAIN_KEYS[number];wi:number;letter?:number}
+interface WordPlate {plate: Plate;texture: THREE.CanvasTexture;mesh: THREE.Mesh;key: typeof WORD_KEYS[number]}
 class KeyboardWorld {
-  users=0;times:CTimes;voice:Voice;scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();
+  users=0;
+  times: CTimes;
+  voice: Voice;
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera();
   bg=new FSPass(GROUND,{ink:{value:new THREE.Vector3(...INK)},paper:{value:new THREE.Vector3(...PAPER)},clay:{value:new THREE.Vector3(...CLAY)},t:{value:0},beat:{value:0}});
-  caps:THREE.InstancedMesh;mat:THREE.ShaderMaterial;words:KeyWord[]=[];
-  legendAtlas=new Layer2D(512,512);legendTexture:THREE.CanvasTexture;
-  legendKeys=TERRAIN_KEYS.filter(k=>!WORD_KEYS.some(w=>w.index===k.index)&&!LOOKING_KEYS.some(w=>w.index===k.index));legends:THREE.InstancedMesh;
-  sprite=new Layer2D(160,50);clawd:THREE.Mesh;
-  constructor(ctx:SceneCtx){
+  caps: THREE.InstancedMesh;
+  mat: THREE.ShaderMaterial;
+  words: WordPlate[];
+  legendAtlas=new Plate(512,512);
+  legendTexture: THREE.CanvasTexture;
+  legendKeys=TERRAIN_KEYS.filter(k=>!WORD_KEYS.some(w=>w.index===k.index));
+  legends: THREE.InstancedMesh;
+  hud=new Layer2D();
+  glow=new GlowLayer();
+  title=new Plate(1180,540);
+  sprite=new Layer2D(160,50);
+  clawd: THREE.Mesh;
+  constructor(ctx: SceneCtx) {
     this.times=resolveCTimes(ctx.audio,ctx.lyrics);this.voice=new Voice(ctx.lyrics,ctx.audio);
-    const geo=keycapGeometry();geo.setAttribute('keyMeta',new THREE.InstancedBufferAttribute(new Float32Array(KEY_FIELD.flatMap(k=>[k.x,k.z,k.index,k.enter?1:0])),4));
-    for(const name of ['keySung','keyLift','keyHeat'])geo.setAttribute(name,new THREE.InstancedBufferAttribute(new Float32Array(KEY_FIELD.length),1));
-    this.mat=new THREE.ShaderMaterial({vertexShader:KEY_VERT,fragmentShader:GLSL_COMMON+KEY_FRAG,uniforms:{beat:{value:0},kick:{value:0},landing:{value:0},opacity:{value:1},glowOnly:{value:0},exitGain:{value:1},ink:{value:new THREE.Vector3(...INK)},paper:{value:new THREE.Vector3(...PAPER)},clay:{value:new THREE.Vector3(...CLAY)}}});
-    this.caps=new THREE.InstancedMesh(geo,this.mat,KEY_FIELD.length);const m=new THREE.Matrix4();KEY_FIELD.forEach((k,i)=>{m.makeScale(k.width,.42,k.depth);m.setPosition(k.x,0,k.z);this.caps.setMatrixAt(i,m);});this.caps.frustumCulled=false;this.scene.add(this.caps);
-    this.times.claws.words.forEach((word,wi)=>{
-      const axes=this.voice.form(word,word.end).axes,parent=new WordPlane(word.w.toUpperCase(),{capH:.55,axes,ay:0,ax:0,outline:0});
-      const planes=wi===7?parent.letters():[parent];if(wi===7)parent.dispose();
-      planes.forEach((plane,j)=>{plane.mesh.geometry.computeBoundingBox();plane.mesh.geometry.translate(-plane.mesh.geometry.boundingBox!.min.x,0,0);plane.mesh.rotation.x=-Math.PI/2;plane.set({aDim:0,cSung:CLAY,cDone:INK});this.words.push({plane,key:wi===7?LOOKING_KEYS[j]!:WORD_KEYS[wi]!,wi,...(wi===7?{letter:j}:{})});this.scene.add(plane.mesh);});
+    const geo=keycapGeometry();
+    geo.setAttribute('keyMeta',new THREE.InstancedBufferAttribute(new Float32Array(KEY_FIELD.flatMap(k=>[k.x,k.z,k.index,k.enter?1:0])),4));
+    geo.setAttribute('keySung',new THREE.InstancedBufferAttribute(new Float32Array(KEY_FIELD.length),1));
+    this.mat=new THREE.ShaderMaterial({vertexShader:KEY_VERT,fragmentShader:GLSL_COMMON+KEY_FRAG,
+      uniforms:{beat:{value:0},kick:{value:0},landing:{value:0},opacity:{value:1},glowOnly:{value:0},ink:{value:new THREE.Vector3(...INK)},paper:{value:new THREE.Vector3(...PAPER)},clay:{value:new THREE.Vector3(...CLAY)}},transparent:true});
+    this.caps=new THREE.InstancedMesh(geo,this.mat,KEY_FIELD.length);
+    const m=new THREE.Matrix4();
+    KEY_FIELD.forEach((k,i)=>{m.makeScale(k.width,0.42,k.depth);m.setPosition(k.x,0,k.z);this.caps.setMatrixAt(i,m);});
+    this.caps.frustumCulled=false;this.scene.add(this.caps);
+    this.words=WORD_KEYS.map(key=>{
+      const plate=new Plate(384,192),texture=new THREE.CanvasTexture(plate.canvas);
+      texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=ctx.renderer.capabilities.getMaxAnisotropy();
+      const mesh=new THREE.Mesh(new THREE.PlaneGeometry(key.width*0.86,key.depth*0.80),new THREE.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,toneMapped:false,side:THREE.DoubleSide}));
+      mesh.rotation.x=-Math.PI/2;this.scene.add(mesh);return {plate,texture,mesh,key};
     });
-    // The completed Enter field includes the word's face: when the key covers
-    // the viewport, its ink/clay screen engraving also replaces the hot ink mask.
-    const back=this.words.find(w=>w.wi===8)!.plane.mesh.material as THREE.RawShaderMaterial;
-    back.uniforms.enterField={value:0};
-    back.fragmentShader=back.fragmentShader.replace('uniform bool engraved;','uniform bool engraved; uniform float enterField;')
-      .replace('vec3 rgb = cover * mix(cold*aDim,cs,sung) * opacity;',`vec3 rgb = cover * mix(cold*aDim,cs,sung) * opacity;
-      float enterU=dot(FRAG_PX,vec2(-sin(.6),cos(.6))),enterD=abs(mod(enterU+2.5,5.0)-2.5);
-      rgb=mix(rgb,a*mix(vec3(${CLAY.join(',')}),vec3(${INK.join(',')}),pxLine(enterD,.1,1.1)),enterField);`);
+    // Intrinsic machine key legends share one atlas / draw call. They do not
+    // repeat the sung line or introduce another typographic protagonist.
     const lc=this.legendAtlas.ctx;lc.fillStyle=css('ink');lc.font=font(F.mono(500),26);lc.textAlign='center';
     for(const k of this.legendKeys)lc.fillText(k.label.length>2?k.label.slice(0,2):k.label,(k.index%8)*64+32,Math.floor(k.index/8)*64+43);
     this.legendTexture=new THREE.CanvasTexture(this.legendAtlas.canvas);this.legendTexture.colorSpace=THREE.SRGBColorSpace;
@@ -161,29 +164,90 @@ class KeyboardWorld {
         .replace('#include <map_fragment>','diffuseColor *= texture2D(map, vMapUv/8.0+vCell);');
     };
     this.legends=new THREE.InstancedMesh(legendGeo,legendMat,this.legendKeys.length);this.legends.frustumCulled=false;this.scene.add(this.legends);
-
+    this.title.ctx.fillStyle=css('paper',0.6);
+    printRun(this.title.ctx,varRun('ENTER',740,{wdth:75,wght:900}),{x:0,y:0,w:1180,h:540},true);
     this.sprite.texture.magFilter=THREE.NearestFilter;this.sprite.texture.minFilter=THREE.NearestFilter;
-    this.clawd=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:this.sprite.texture,transparent:true,depthWrite:false,depthTest:true,toneMapped:false}));this.scene.add(this.clawd);
+    this.clawd=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:this.sprite.texture,transparent:true,depthWrite:false,depthTest:false,toneMapped:false}));
+    this.clawd.renderOrder=2;this.scene.add(this.clawd);
   }
-  dispose(){this.bg.mat.dispose();this.mat.dispose();this.caps.geometry.dispose();this.words.forEach(w=>w.plane.dispose());this.legendTexture.dispose();this.legendAtlas.texture.dispose();this.legends.geometry.dispose();(this.legends.material as THREE.Material).dispose();this.sprite.texture.dispose();this.clawd.geometry.dispose();(this.clawd.material as THREE.Material).dispose();}
+  dispose() {
+    this.bg.mat.dispose();this.mat.dispose();this.caps.geometry.dispose();this.hud.texture.dispose();this.glow.dispose();this.sprite.texture.dispose();
+    this.clawd.geometry.dispose();(this.clawd.material as THREE.Material).dispose();
+    this.legendTexture.dispose();this.legends.geometry.dispose();(this.legends.material as THREE.Material).dispose();
+    for(const w of this.words){w.texture.dispose();w.mesh.geometry.dispose();(w.mesh.material as THREE.Material).dispose();}
+  }
 }
-let world:KeyboardWorld|undefined;
+let world: KeyboardWorld|undefined;
 export default class S07Keyboard extends Scene {
-  w!:KeyboardWorld;override init(){this.w=world??=new KeyboardWorld(this.ctx);this.w.users++;}override dispose(){if(--this.w.users===0){this.w.dispose();world=undefined;}}
-  override render(f:Frame,out:THREE.WebGLRenderTarget){
-    const w=this.w,T=w.times,a=this.ctx.audio,t=f.t,s=keyboardState(a,t,T);w.camera=cameraAt(a,t,T);w.bg.u.t!.value=t;w.bg.u.beat!.value=f.beat;w.bg.render(this.ctx.renderer,out);
-    w.mat.uniforms.beat!.value=f.beat;w.mat.uniforms.kick!.value=a.hit('kick',t);w.mat.uniforms.landing!.value=s.landing;w.mat.uniforms.exitGain!.value=exitEnvelope(t,T.end).gain;
-    const lift=w.caps.geometry.getAttribute('keyLift') as THREE.InstancedBufferAttribute,sung=w.caps.geometry.getAttribute('keySung') as THREE.InstancedBufferAttribute,heat=w.caps.geometry.getAttribute('keyHeat') as THREE.InstancedBufferAttribute,events=keyEvents(T);
-    KEY_FIELD.forEach((key,i)=>{lift.setX(i,keyTop(key,t,a,T)-keyHeight(key.x,key.z,key.enter,f.beat,a.hit('kick',t),s.landing));const event=events.filter(e=>e.key.index===key.index&&t>=e.at).at(-1);sung.setX(i,event?1:0);heat.setX(i,event?Math.exp(-(t-event.at)/.28):0);});lift.needsUpdate=sung.needsUpdate=heat.needsUpdate=true;
-    for(const item of w.words){const {plane,key,wi,letter}=item,word=T.claws.words[wi]!,times=letterTimes(word),at=times[letter??0]!.t0;
-      const size=Math.min(1,key.width*.85/plane.w);plane.mesh.scale.set(size,1,1);plane.mesh.position.set(key.x-plane.w*size/2,keyTop(key,t,a,T)+.004,key.z+.28);
-      const target=letter===undefined?{...word,w:word.w.toUpperCase()}:{...word,w:Array.from(word.w.toUpperCase())[letter]!,start:times[letter]!.t0,end:times[letter]!.t1};
-      plane.set({prog:plane.karaoke(target,t),done:t>=word.end?1:0,heat:t<at?0:Math.exp(-(t-at)/.28)});plane.mesh.visible=t>=at;
-      if(wi===8)(plane.mesh.material as THREE.RawShaderMaterial).uniforms.enterField!.value=enterCovers(t,a,T)?1:0;
+  private w!: KeyboardWorld;
+  override init(){this.w=world??=new KeyboardWorld(this.ctx);this.w.users++;}
+  override dispose(){if(--this.w.users===0){this.w.dispose();world=undefined;}}
+
+  override render(f: Frame,out: THREE.WebGLRenderTarget) {
+    const w=this.w,T=w.times,au=this.ctx.audio,s=keyboardState(au,f.t,T),opacity=terrainOpacity(s.dive);
+    w.camera=cameraAt(au,f.t,T);w.bg.u.t!.value=f.t;w.bg.u.beat!.value=f.beat;
+    w.bg.render(this.ctx.renderer,out);
+    w.mat.uniforms.beat!.value=f.beat;w.mat.uniforms.kick!.value=f.a.kick;w.mat.uniforms.landing!.value=s.landing;w.mat.uniforms.opacity!.value=opacity;
+    // The first key receives S06's exact pen point, then returns to its world layout.
+    const first=WORD_KEYS[0]!,height=keyHeight(first.x,first.z,false,f.beat,f.a.kick,0);
+    const natural=new THREE.Vector3(first.x,height,first.z),tip=handoffIn(f.t,au,T);
+    const shifted=atScreen(tip.x,tip.y,w.camera,natural.distanceTo(w.camera.position));
+    const m=new THREE.Matrix4().makeScale(first.width,0.42,first.depth);
+    m.setPosition(shifted.x,shifted.y-height,shifted.z);w.caps.setMatrixAt(first.index,m);w.caps.instanceMatrix.needsUpdate=true;
+    const sung=w.caps.geometry.getAttribute('keySung') as THREE.InstancedBufferAttribute;
+    (sung.array as Float32Array).fill(0);
+    for(let i=0;i<w.words.length;i++) {
+      const p=w.words[i]!,word=T.claws.words[i]!,form=w.voice.form(word,f.t),c=p.plate.ctx;
+      sung.setX(p.key.index,form.born);
+      p.plate.clear();
+      if(i===0&&f.t<afterBeats(au,T.keyboard,1)) {c.fillStyle=css('clay');c.fillRect(0,0,384,192);}
+      if(form.born>0){const set=setLine([form],92);c.save();c.translate(192,132);c.scale(Math.min(1,340/set.width),1);drawSet(c,set,-set.width/2,0,{on:'clay'});c.restore();}
+      p.texture.needsUpdate=true;
+      const y=keyHeight(p.key.x,p.key.z,p.key.enter,f.beat,f.a.kick,s.landing)+0.012;
+      p.mesh.position.set(p.key.x,y,p.key.z);if(i===0)p.mesh.position.copy(shifted).add(new THREE.Vector3(0,0.012,0));
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity=opacity;
     }
-    const m=new THREE.Matrix4(),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2),sc=new THREE.Vector3();
-    w.legendKeys.forEach((key,i)=>{sc.set(key.width*.72,key.depth*.62,1);m.compose(new THREE.Vector3(key.x,keyTop(key,t,a,T)+.005,key.z),q,sc);w.legends.setMatrixAt(i,m);});w.legends.instanceMatrix.needsUpdate=true;
-    const rider=riderGeometry(a,t,T,w.camera),R=riderAt(a,t,T);w.sprite.clear();Clawd.draw(w.sprite.ctx,0,0,Clawd.pose('A5',{beat:f.beat,beat0:a.beatAt(T.land),p:0,travel:0}),{px:10});w.sprite.upload();w.clawd.position.copy(rider.pos);w.clawd.quaternion.copy(w.camera.quaternion);w.clawd.scale.set(16*R.px*rider.units,5*R.px*rider.units,1);
-    const r=this.ctx.renderer;r.setRenderTarget(out);r.clearDepth();r.render(w.scene,w.camera);return {...POSTER_POST,hud:0,frame:0,bloom:0,grain:.02,exposure:1};
+    sung.needsUpdate=true;
+    const rotation=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
+    w.legendKeys.forEach((k,i)=>{
+      const y=keyHeight(k.x,k.z,false,f.beat,f.a.kick,0)+0.014;
+      w.legends.setMatrixAt(i,new THREE.Matrix4().compose(new THREE.Vector3(k.x,y,k.z),rotation,new THREE.Vector3(k.width*0.75,k.depth*0.75,1)));
+    });
+    w.legends.instanceMatrix.needsUpdate=true;(w.legends.material as THREE.MeshBasicMaterial).opacity=0.6*opacity;
+    // Actual flat nearest-neighbour sprite in the 3D scene, with pixel scale solved
+    // from the low camera. Rigidly rotated, never turned into a 3D mascot.
+    const rider=riderAt(au,f.t,T),{pos,units,support}=riderGeometry(au,f.t,T,w.camera);
+    const crest=new THREE.Matrix4().makeScale(RIDER_KEY.width,0.42,RIDER_KEY.depth);
+    crest.setPosition(support.x,support.y-keyHeight(RIDER_KEY.x,RIDER_KEY.z,false,f.beat,f.a.kick,0),support.z);
+    w.caps.setMatrixAt(RIDER_KEY.index,crest);w.caps.instanceMatrix.needsUpdate=true;
+    w.sprite.clear();Clawd.draw(w.sprite.ctx,0,0,Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(T.land),p:0,travel:0}),{px:10});w.sprite.upload();
+    w.clawd.position.copy(pos);w.clawd.scale.set(16*rider.px*units,5*rider.px*units,1);
+    w.clawd.quaternion.copy(w.camera.quaternion);w.clawd.rotateZ(-rider.roll);
+    (w.clawd.material as THREE.MeshBasicMaterial).opacity=opacity;
+    this.ctx.renderer.setRenderTarget(out);this.ctx.renderer.clearDepth();this.ctx.renderer.render(w.scene,w.camera);
+    // Preserve key depth/coverage; hide paper legends and clay-surface ink lyrics in this pass.
+    w.mat.uniforms.glowOnly!.value=1;
+    w.legends.visible=false; for(const p of w.words)p.mesh.visible=false;
+    w.sprite.clear();
+    const auraPose=Clawd.pose('A5',{beat:f.beat,beat0:au.beatAt(T.land),p:0,travel:0});
+    Clawd.draw(w.sprite.ctx,0,0,{...auraPose,cells:auraPose.cells.filter(cell=>cell.k==='O')},{px:10,alpha:0.25});w.sprite.upload();
+    w.glow.renderScene(this.ctx.renderer,w.scene,w.camera);
+    w.mat.uniforms.glowOnly!.value=0;
+    w.legends.visible=true; for(const p of w.words)p.mesh.visible=true;
+    w.hud.clear();w.glow.clear();const c=w.hud.ctx;
+    // Slice the print plate on the ruled perspective plane; its horizon and enlarged
+    // right edge match the storyboard's cropped title, without a lit billboard.
+    c.globalAlpha=opacity;
+    for(let x=0;x<1180;x+=10) {
+      const q=titleSlice(x/1180),r=titleSlice((x+10)/1180);
+      c.drawImage(w.title.canvas,x*w.title.canvas.width/1180,0,10*w.title.canvas.width/1180,w.title.canvas.height,q.x,q.top,r.x-q.x+0.5,q.bottom-q.top);
+    }
+    c.globalAlpha=1;
+    // The full Enter is clay. A small clay-only halo and deterministic halftone
+    // rays are printed around its surface; bloom never receives the paper caps.
+    const exit=handoffOut(f.t,au,T),reveal=span(f.t,afterBeats(au,T.end,-1),T.end);
+    if(reveal>0) {c.globalAlpha=reveal;drawCursor(c,exit);drawCursor(w.glow.ctx,{...exit,on:reveal});c.globalAlpha=1;}
+    this.ctx.comp.draw(this.ctx.renderer,w.hud.upload(),out);w.glow.composite(this.ctx,out,1.4);
+    return {...postFor('ink'),hud:0,frame:0,ca:0.6,grain:0.023,vignette:0};
   }
 }

@@ -32,7 +32,7 @@ export function resolveCTimes(audio: AudioData, lyrics: Lyrics): CTimes {
     const candidates = snare.filter(([t]) => prev===undefined || t > afterBeats(audio,prev,0.45));
     const nearest = candidates.reduce<[number, number] | undefined>((a, b) =>
       !a || Math.abs(b[0] - vocal) < Math.abs(a[0] - vocal) ? b : a, undefined);
-    checks.push(nearest?.[0] ?? vocal);
+    checks.push(nearest?.[0] ?? Math.max(audio.nearestBeat(vocal), afterBeats(audio, checks.at(-1) ?? vocal, 1)));
   }
   const keyboard = cut('S07-1'), dive = cut('S07-2'), end = cut('S08-1');
   const land = audio.beats.find((t) => t >= afterBeats(audio,keyboard,0.45)) ?? afterBeats(audio, keyboard, 1);
@@ -61,11 +61,10 @@ export function todoState(audio: AudioData, t: number, T: CTimes) {
 export function keyboardState(audio: AudioData, t: number, T: CTimes) {
   const fall = ease.inCubic(span(t, T.keyboard, T.land));
   const landing = t >= T.land ? Math.pow(0.5, beatsSince(audio, t, T.land) / 0.16) : 0;
-  const back=T.claws.words.at(-1)!;
-  const dive = ease.inCubic(span(t,back.start,T.end-1/60));
+  const dive = ease.inOutCubic(span(t, T.launch, T.arrive));
   const settle = ease.outExpo(span(t, T.dive, T.launch));
   return { fall, landing, dive, settle, wave: audio.beatAt(t),
-    typing: t >= T.claws.start, cursorOnly: false,
+    typing: t >= T.dive, cursorOnly: t >= T.arrive,
     altitude: lerp(9, 0, fall),
     camera: {
       x: lerp(lerp(1.5, 3.8, settle), 6.05, dive),

@@ -1,13 +1,11 @@
 // Group A landmarks: resolved editorial cuts, and word-aligned stamp onset.
 import type { AudioData } from '../../engine/audio';
 import { Lyrics } from '../../engine/lyrics';
+import { ease, lerp } from '../../engine/util';
 import { resolveStoryboard, type Storyboard } from '../../storyboard';
-import { beatsSince, span, wordTime } from '../../kit/time';
+import { afterBeats, beatsSince, span, wordTime } from '../../kit/time';
 import board from '../../../../storyboard/shots.json';
-import { AudioData as Audio } from '../../engine/audio';
-import { Voice } from '../../kit/lyric-moves';
-import audioJSON from '../../../../data/audio.json';
-import lyricsJSON from '../../../../data/lyrics.json';
+import { HANDOFF } from '../../kit/handoff';
 
 export interface OpeningTimes {
   start: number; welcome: number; ping: number; screen: number;
@@ -24,12 +22,6 @@ export function openingTimes(audio: AudioData, lyrics: Lyrics): OpeningTimes {
   };
 }
 
-// The scene and its pure geometry exports read the same measured song data.
-export const audio = new Audio(audioJSON as unknown as ConstructorParameters<typeof Audio>[0]);
-export const lyrics = new Lyrics(lyricsJSON);
-export const T = openingTimes(audio, lyrics);
-export const voice = new Voice(lyrics, audio);
-
 export interface View { x: number; y: number; zoom: number; roll: number }
 export const wideView: View = { x: 960, y: 540, zoom: 1, roll: 0 };
 export function bootState(audio: AudioData, t: number, T: OpeningTimes) {
@@ -44,3 +36,15 @@ export function bootState(audio: AudioData, t: number, T: OpeningTimes) {
 // Geometry in logical px, measured from kf-S01 (1672×941). The render consumes these values.
 export const WELCOME_BOX = { x: 480, y: 209, w: 960, h: 479 };
 export const BOOT_CLAWD = { x: 670, y: 403, px: 36.4 };
+/** The final output frame reaches the shared cursor before the cut. */
+export function handoffOut(t: number, audio: AudioData, T: OpeningTimes) {
+  const k = ease.inOutCubic(span(t, afterBeats(audio, T.ping, -1), T.ping - 1 / 60));
+  return { x: lerp(952, HANDOFF.cursor01.x, k), y: lerp(619, HANDOFF.cursor01.y, k), h: lerp(34, HANDOFF.cursor01.h, k) };
+}
+export function bootBounds(audio: AudioData, t: number, T: OpeningTimes) {
+  const s = bootState(audio, t, T);
+  // A1's whole-body breathing offset is used in both the draw and the measured box.
+  const dy = Math.floor(audio.beatAt(t) / 2) % 2;
+  return { dominant: { ...WELCOME_BOX }, clawd: { x: BOOT_CLAWD.x, y: BOOT_CLAWD.y + dy * BOOT_CLAWD.px,
+    w: 16 * BOOT_CLAWD.px, h: 5 * BOOT_CLAWD.px }, revealed: s.pixels };
+}
