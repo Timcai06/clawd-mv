@@ -23,6 +23,22 @@ const g3Score = commitScore(g3Audio,g3Lyrics), g3Next = resolveX9Times({ audio:g
 CUTS.push({ id:'C8',out:'S08',in:'S09',cut:g3Score.end,exitPrim:exit08,entryPrim:t => {
   const p=entry09(t,g3Audio,g3Next); return { kind:'line',x0:p.x0,y0:p.y,x1:p.x1,y1:p.y,w:2 };
 } });
+// G7 owns only these sides. C16 currently compares against the worktree's main S16.
+import aG7 from '../../data/audio.json';
+import lG7 from '../../data/lyrics.json';
+import { greenTimes, handoffOut as greenExit } from '../src/scenes/parts/s16-green-state';
+import { resolveReleaseTimes } from '../src/scenes/parts/s17-release-state';
+import { entryPrim as entry17, exitPrim as exit17 } from '../src/scenes/parts/s17-swarm';
+import { resolveOutroTimes } from '../src/scenes/parts/s18-score';
+import { entryPrim as entry18, exitPrim as exit18 } from '../src/scenes/parts/s18-world';
+import { exitPrim as s01CursorPrim } from '../src/scenes/parts/s01-world';
+const auG7 = new AudioData(aG7), lyG7 = new Lyrics(lG7), rG7 = resolveReleaseTimes(auG7,lyG7), oG7 = resolveOutroTimes(auG7,lyG7), gG7 = greenTimes(auG7,lyG7);
+CUTS.push(
+  {id:'C16',out:'S16',in:'S17',cut:rG7.release[0]!.start,exitPrim:t=>({kind:'rect',...greenExit(t,auG7,gG7)}),entryPrim:t=>entry17(t,auG7,lyG7,rG7)},
+  {id:'C17',out:'S17',in:'S18',cut:oG7.start,exitPrim:exit17,entryPrim:entry18},
+  // C18 closes the loop: S18's last frame vs S01's real cursor at t = 0.
+  {id:'C18',out:'S18',in:'S01',cut:oG7.end,exitPrim:()=>exit18(auG7,oG7.end-1/60,oG7),entryPrim:()=>s01CursorPrim(0)},
+);
 test('registered cuts agree throughout the adjacent frame windows', () => {
   for (const cut of CUTS) for (let i = 0; i <= 4; i++) {
     const ta = cut.motion ? cut.cut : cut.cut-(1-i/4)/60, tb = cut.motion ? cut.cut : cut.cut+i/4/60;

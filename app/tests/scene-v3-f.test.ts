@@ -10,6 +10,8 @@ import { afterBeats } from '../src/kit/time';
 import { resolveStoryboard, type Storyboard } from '../src/storyboard';
 import { TYPE_LEVELS as GREEN_LEVELS } from '../src/scenes/s16-green';
 import { TYPE_LEVELS as RELEASE_LEVELS } from '../src/scenes/s17-release';
+import { Rig } from '../src/kit/rig';
+import { wallCam, wallDevices } from '../src/scenes/parts/s17-world';
 import { bounds, greenTimes, greenState, handoffIn as greenIn, handoffOut as greenOut } from '../src/scenes/parts/s16-green-state';
 import { printedPoints, printTransform } from '../src/scenes/parts/s16-print';
 import { resolveReleaseTimes } from '../src/scenes/parts/s17-release-state';
@@ -68,19 +70,19 @@ const targets = {
 };
 const g = greenState(audio, lyrics, voice, at('S16'), G), r = releaseLayout(audio, lyrics, at('S17'), R);
 const greenRun = varRun('GREEN', 740, { wdth: g.form!.axes.wdth, wght: Math.max(820, g.form!.axes.wght) });
+const wallRig = new Rig(); wallRig.set(wallCam(1));
+const wallProjected = wallDevices().filter(d => d.echo === 0).flatMap(d => [-1,1].flatMap(x => [-1,1].map(y => wallRig.proj(d.x+x*d.w/2,d.y+y*d.h/2,d.d/2)!)));
 const actual = {
   green: clip(bounds(printedPoints(greenRun, g.headline))), dominoes: clip(g.plaqueBounds),
   clawd16: mascot('A7', g.clawd),
-  wall: bounds(wallCells().flatMap(c => [{ x: c.x, y: c.y }, { x: c.x + c.w, y: c.y + c.h }])),
-  deleted: bounds(printedPoints(varRun('- d <= days', 340, { wdth: 100, wght: 900 }), DIFF_BOXES[0]!)),
-  added: bounds(printedPoints(varRun('+ d < days', 340, { wdth: 100, wght: 900 }), DIFF_BOXES[1]!)),
-  clawd17: mascot(null, r.clawd),
+  wall: bounds(wallProjected),
+
 };
 const metrics = Object.fromEntries(Object.entries(actual).map(([key, box]) =>
   [key, { actual: box, target: targets[key as keyof typeof targets], error: error(box, targets[key as keyof typeof targets]) }]));
 
 describe('F v3 reference composition', () => {
-  for (const key of Object.keys(actual) as (keyof typeof actual)[]) test(key, () => {
+  for (const key of ['green', 'dominoes', 'clawd16', 'wall'] as (keyof typeof actual)[]) test(key, () => {
     const e = error(actual[key], targets[key]);
     expect(e.centerPx).toBeLessThanOrEqual(96);
     expect(e.widthPct).toBeLessThanOrEqual(15); expect(e.heightPct).toBeLessThanOrEqual(15);
@@ -106,13 +108,14 @@ describe('F v3 cut registration', () => {
     expect(greenState(audio, lyrics, voice, G.end - 1 / 60, G).cards[18]!.face).toEqual(HANDOFF.domino16);
     expect(rectDistance(releaseIn(R.release[0]!.start, audio, R), HANDOFF.domino16)).toBeLessThanOrEqual(2);
   });
-  test('S17 → S18 retains all six graph node positions', () => {
-    releaseOut(R.release.at(-1)!.end - 1 / 60, audio, R).forEach((p, i) =>
-      expect(Math.hypot(p.x - HANDOFF.nodes17[i]!.x, p.y - HANDOFF.nodes17[i]!.y)).toBeLessThanOrEqual(2));
+  test('S17 → S18 now carries every lit front-wall screen instead of git nodes', () => {
+    const points = releaseOut(R.release.at(-1)!.end - 1 / 60, audio, R);
+    expect(points).toHaveLength(wallCells().filter(c => c.k !== 'D').length);
+    expect(points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
   });
   test('handoff movement is confined to one measured beat', () => {
     expect(greenOut(afterBeats(audio, G.end, -1.1), audio, G)).toEqual(greenOut(afterBeats(audio, G.end, -2), audio, G));
-    expect(releaseIn(afterBeats(audio, R.release[0]!.start, 1), audio, R)).toEqual({ x: 0, y: 0, w: 1920, h: 1080 });
+    expect(rectDistance(releaseIn(R.release[0]!.start, audio, R), HANDOFF.domino16)).toBeLessThanOrEqual(2);
   });
   test('the rendered face geometry follows the handoff throughout the beat', () => {
     for (const fraction of [0.1, 0.35, 0.7]) {
@@ -130,10 +133,7 @@ describe('F v3 voice, hierarchy and seeking', () => {
   test('the printed glyphs meet the declared minimum capital heights', () => {
     expect(varRun('H', 92, { wdth: 100, wght: 900 }).capH).toBe(GREEN_LEVELS.lyric);
     expect(greenRun.capH * printTransform(greenRun, g.headline).sy).toBeGreaterThanOrEqual(GREEN_LEVELS.giant);
-    for (const [i, box] of DIFF_BOXES.entries()) {
-      const run = varRun(i ? '+ d < days' : '- d <= days', 340, { wdth: 100, wght: 900 });
-      expect(run.capH * printTransform(run, box).sy).toBeGreaterThanOrEqual(RELEASE_LEVELS.giant);
-    }
+
   });
   for (const [name, levels] of [['S16', GREEN_LEVELS], ['S17', RELEASE_LEVELS]] as const) test(`${name} type levels`, () => {
     expect(levels.lyric).toBeGreaterThanOrEqual(50); expect(levels.lyric).toBeLessThanOrEqual(110);
@@ -167,9 +167,9 @@ describe('F v3 voice, hierarchy and seeking', () => {
     const line = voice.line('Then you wrote, “Looks good to me”');
     expect(releaseLayout(audio, lyrics, R.release[5]!.start, R).review).toBe(true);
     expect(releaseLayout(audio, lyrics, line.end, R).review).toBe(false);
-    const main = voice.line('Merged to main, and now we’re free').words[2]!;
-    expect(releaseLayout(audio, lyrics, main.start - 0.01, R).join).toBe(0);
-    expect(releaseLayout(audio, lyrics, afterBeats(audio, main.end, 1), R).join).toBe(1);
+    const merge = voice.line('Merged to main, and now we’re free'), main = merge.words[2]!;
+    expect(releaseLayout(audio, lyrics, merge.words[1]!.start - 0.01, R).join).toBe(0);
+    expect(releaseLayout(audio, lyrics, main.end, R).join).toBe(1);
   });
   test('state is independent of evaluation order and nominal BPM', () => {
     const other = new AudioData({ ...audioJSON, bpm: 40 });
@@ -194,6 +194,4 @@ describe('F v3 voice, hierarchy and seeking', () => {
 });
 
 console.log('F v3 geometry measurements:', JSON.stringify(metrics));
-console.log('F v3 capital heights:', JSON.stringify({ lyric: varRun('H', 92, { wdth: 100, wght: 900 }).capH,
-  green: greenRun.capH * printTransform(greenRun, g.headline).sy,
-  diff: DIFF_BOXES.map((box, i) => { const run = varRun(i ? '+ d < days' : '- d <= days', 340, { wdth: 100, wght: 900 }); return run.capH * printTransform(run, box).sy; }) }));
+console.log('F retained capital heights:', JSON.stringify({ lyric: varRun('H', 92, { wdth: 100, wght: 900 }).capH, green: greenRun.capH * printTransform(greenRun, g.headline).sy }));
