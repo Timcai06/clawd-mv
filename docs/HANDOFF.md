@@ -21,9 +21,9 @@
 - 代码 = v5 的画面 + 阶段 9 的 ①②③：
   - ① 切点落在句间（`snap: "cut"`），17 个切点都有几何交接原语，`tests/handoff.test.ts` 实测误差 ≤ 0.01 px。Tim 已验收。
   - ② 歌词长在画面里：`kit/inscribe.ts`（逐字母书写）、`kit/impact.ts`（冲击）、`kit/hookslam.ts`（三次 COMMIT 逐次升级），各场换了载体。
-  - ③ 事件驱动样板：S17 中段改成 PR 页面（`scenes/parts/s17-pr.ts`），S05 读码加了事件（`c6dd3c8`）。**待 Tim 验收。**
+  - ③ 事件驱动：S17 中段 PR 页面、S05 读码两段样板（Tim 2026-10-04 认可）；随后 S13、S12、S08、S15 按事件表改完（`docs/reference/event-tables.md` 末节）。
 - 检查：tsc 0 错，`bun test tests` 321 过 0 失败，分镜检查 0 过短 0 不递增。
-- **整片预览 v6**（`out/preview/clawd-mv-preview-v6.mp4`）是从 `77d383a`（② 第 5 批）渲的，之后的 `133048b`（S13 第二次副歌前半句）和 `c6dd3c8`（③ 样板）还**没有整片**。注意它和阶段 8 回退掉的「v6 尝试」（标签 `v6-attempt`，3D 世界版）不是一回事。
+- **整片预览 v7**（`out/preview/clawd-mv-preview-v7.mp4`）是 ③ 全部改完后的整片，**待 Tim 看**。v6 是从 `77d383a`（② 第 5 批）渲的；它和阶段 8 回退掉的「v6 尝试」（标签 `v6-attempt`，3D 世界版）不是一回事。
 - Tim 看完 v6 整片的意见：有几场「只是单纯的字幕在那里有一点动效」，和 pdoom 差距不小。这就是 ③ 要解决的问题：词是触发器，每句让世界发生 ≥ 2 件事，镜头按词换机位。
 - 未定、等 Tim：S04（3D 城市）沿街铺字的方案；S07 键帽上的字偏小偏浅；S18 睡觉闭眼、S08 反色 Clawd、像素 < 14 px 的场（见 PLAN 阶段 9 眼睛检查那条）。
 
@@ -35,12 +35,9 @@
 5. **节奏和冲击**：每个词一次砸；冲击帧是底色和字色互换（不是 RGB 反相）；副歌三次的 COMMIT 逐次升级（pdoom 的 hook 四次：干净 → 反色 → 最小 → 最大）。
 6. **冷幽默注释**：IBM Plex Mono 小字，同屏不超过两处。
 
-## 四、第一件事：等 Tim 看 ③ 的两段样板
-- 如果 Tim 还没看，给他渲染命令（在 Mac 上跑）：
-  - `cd app && bun scripts/render.ts video --from 12 --to 18 --samples auto --preset medium --crf 18 --out ../out/review/sample-s05.mp4`（S05 读码，前后各带一点邻场）
-  - `cd app && bun scripts/render.ts video --from 116.5 --to 128 --samples auto --preset medium --crf 18 --out ../out/review/sample-s17.mp4`（S17 中段 PR 页面）
-- Tim 认可方向后，按 `event-tables.md` 的格式写其余各场的事件表，先做「唱的过程里画面除了字几乎不变」的那几句：S13、S12、S08、S06、S15，再逐场实现。每场先把事件表给 Tim 看，再动手。
-- 一批场景做完后出整片预览 v7（命令见第六节）。
+## 四、第一件事：等 Tim 看 v7 整片
+- Tim 看完 v7 后，按他的意见逐场改。
+- 还没动、可能要做的：S06（11.4 %，已有 CHECK 砸字）、S14 两句（暗场，镜头在钻，数值偏低但抽帧有变化）、S12「Clear the cache」（8.8 %）、S15「There it is」（8.0 %）。逐句变化率的做法见 `event-tables.md` 末节。
 
 ## 五、之后的做法
 1. **每改一场**：
