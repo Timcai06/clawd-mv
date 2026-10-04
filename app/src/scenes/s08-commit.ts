@@ -28,6 +28,9 @@ import {
   rule,
   polygon,
 } from "./parts/s08-print";
+import { applyCam2 } from "../kit/handoff";
+import * as Clawd from "../kit/clawd";
+import { s08Events, s08Cam, drawBracketWorld, blockClawd, keyPress, pressTime, drawKeyGlyphs, boardFlash, previewState, drawBezel, day32, PANEL, type S08Events } from "./parts/s08-events";
 
 // Values are cap heights for Archivo; label is the Mono font size (as permitted by the task).
 export const TYPE_LEVELS = { giant: 550, lyric: 72, label: 20 };
@@ -41,7 +44,9 @@ class World {
   constructor(ctx: SceneCtx) {
     this.voice = new Voice(ctx.lyrics, ctx.audio);
     this.T = commitScore(ctx.audio, ctx.lyrics);
+    this.E = s08Events(ctx.lyrics, this.T.end);
   }
+  E: S08Events;
   dispose() { this.print.dispose();
     this.layer.texture.dispose();
   }
@@ -76,6 +81,8 @@ export default class S08Commit extends Scene {
     const cam = this.camera(t, s, T);
     c.save();
     c.translate(cam.fx, cam.fy); c.rotate(cam.rot); c.scale(cam.zoom, cam.zoom); c.translate(-cam.fx, -cam.fy);
+    // Stage 9 ③: the bracket block, the keys and my machine key the camera (identity elsewhere).
+    applyCam2(c, s08Cam(t, w.E, au));
     if (clay && s.form.born > 0) {
       drawWarped(
         c,
@@ -117,10 +124,17 @@ export default class S08Commit extends Scene {
       }
     } else {
       if (!(t >= T.brackets && t < T.taps[0]!)) this.brackets(c, "ink");
+      drawBracketWorld(c, t, w.E);
       if (s.taps) this.keyboard(c, f, T);
       else if (s.preview) this.preview(c, f);
       else if (t >= T.quit && t < T.pick2) this.code(c, f, T);
-      if (!s.frozen)
+      const inBlock = t >= w.E.bracket && t < T.taps[0]!;
+      if (inBlock) {
+        // Clawd rides the block down; the landing is a jump.
+        const p = blockClawd(t, w.E), landed = t >= w.E.fit + 0.14;
+        const pose = Clawd.pose(landed ? "A6" : "A4", { beat: au.beatAt(t), beat0: au.beatAt(w.E.fit + 0.14), p: 0, jumpBeats: 0.8 });
+        drawSprite(c, { x: p.x, y: p.y, px: p.px, angle: 0, pose }, "clay", "pit");
+      } else if (!s.frozen && !s.taps)
         drawSprite(c, { ...s.clawd, x: 1560, y: 650, angle: 0 }, "clay", "pit");
     }
     const line = this.ctx.lyrics.lastLine(t);
@@ -218,10 +232,6 @@ export default class S08Commit extends Scene {
       for (const w of line?.words ?? []) if (t >= w.start) { bump = Math.pow(0.5, (t - w.start) / 0.08); sign = w.index % 2 ? 1 : -1; }
       zoom += 0.02 * bump + 0.03 * ease.inOutQuad(span(t, T.brackets, T.end));
       rot += 0.004 * bump * sign;
-      if (s.preview) {
-        const k = ease.inOutCubic(span(t, T.works, T.end));
-        zoom += 0.16 * k; fx = lerp(960, 420, k); fy = lerp(540, 560, k);
-      }
     }
     return { zoom, rot, fx, fy };
   }
@@ -272,9 +282,10 @@ export default class S08Commit extends Scene {
     c.transform(1, shot === 1 ? -0.09 : 0, shot === 2 ? 0 : 0.15, 1, 0, 0);
     for (let row = 0; row < 3; row++)
       for (let col = 0; col < 10; col++) {
+        const i = row * 10 + col, down = keyPress(f.t, this.w.E, this.ctx.audio, i);
         const x = 210 + col * 135,
-          y = 630 + row * 98,
-          hot = (col + row) % 3 === Math.floor(f.beat * 4) % 3;
+          y = 630 + row * 98 + down,
+          hot = down > 0 || boardFlash(f.t, this.w.E) > 0.3 || (col + row) % 3 === Math.floor(f.beat * 4) % 3;
         polygon(
           c,
           [
@@ -298,6 +309,12 @@ export default class S08Commit extends Scene {
         c.fillRect(x, y, 110, 70);
         rule(c, [x, y], [x + 110, y], "ink", 0.4);
       }
+    // Clawd hops onto each pressed key (A4 typing on top of it)
+    const au = this.ctx.audio, E = this.w.E, keyXY = (i: number) => ({ x: 210 + (i % 10) * 135, y: 630 + Math.floor(i / 10) * 98 });
+    const k = f.t >= E.tap && f.t < E.never ? pressTime(f.t, E, au).key : 14;
+    const kp = keyXY(k);
+    drawSprite(c, { x: kp.x + 5, y: kp.y - 5 * 10 + keyPress(f.t, E, au, k), px: 10, angle: 0, pose: Clawd.pose("A4", { beat: au.beatAt(f.t), beat0: 0, p: 0 }) }, "clay", "pit");
+    drawKeyGlyphs(c, f.t, E, au, keyXY);
     c.restore();
   }
   private code(c: CanvasRenderingContext2D, f: Frame, T: CommitScore) {
@@ -314,9 +331,19 @@ export default class S08Commit extends Scene {
       );
   }
   private preview(c: CanvasRenderingContext2D, f: Frame) {
+    const E = this.w.E, st = previewState(f.t, E, this.ctx.audio);
+    c.save(); c.translate(0, st.dy);
+    drawBezel(c, f.t, E);
     c.fillStyle = css("ink", 0.12);
-    c.fillRect(1000, 550, 650, 420);
-    for (let day = 1; day <= 31; day++) {
+    c.fillRect(PANEL.x, PANEL.y, PANEL.w, PANEL.h);
+    const d32 = day32(f.t, E);
+    if (d32) { // after 31, the 32nd: clay, popping in
+      const x = 1020, y = 580 + 5 * 65;
+      c.save(); c.translate(x + 40, y + 27); c.scale(d32.pop, d32.pop); c.translate(-40, -27);
+      c.fillStyle = css("clay"); c.fillRect(0, 0, 80, 55);
+      c.font = font(F.mono(600), 20); c.fillStyle = css("paper"); c.fillText("32", 12, 35); c.restore();
+    }
+    for (let day = 1; day <= st.days; day++) {
       const x = 1020 + ((day + 3) % 7) * 88,
         y = 580 + Math.floor((day + 3) / 7) * 65;
       c.fillStyle = css("paper");
@@ -333,5 +360,6 @@ export default class S08Commit extends Scene {
         c.fillRect(x + 65, y + 8, 5, 5);
       }
     }
+    c.restore();
   }
 }
