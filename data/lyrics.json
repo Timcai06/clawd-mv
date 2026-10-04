@@ -475,12 +475,12 @@
     {
       "i": 9,
       "text": "I need one more commit",
-      "start": 35.19,
+      "start": 35.495,
       "end": 38.273,
       "words": [
         {
           "w": "I",
-          "start": 35.19,
+          "start": 35.495,
           "end": 35.7,
           "conf": 0.531
         },
@@ -493,23 +493,23 @@
         {
           "w": "one",
           "start": 36.42,
-          "end": 37.06,
+          "end": 36.82,
           "conf": 0.41
         },
         {
           "w": "more",
-          "start": 37.06,
-          "end": 37.44,
+          "start": 36.82,
+          "end": 37.25,
           "conf": 0.335
         },
         {
           "w": "commit",
-          "start": 37.44,
+          "start": 37.25,
           "end": 38.273,
           "conf": 0.506,
           "syl": [
             [
-              37.44,
+              37.25,
               37.68
             ],
             [
@@ -1039,33 +1039,33 @@
         {
           "w": "need",
           "start": 78.34,
-          "end": 78.56,
+          "end": 79.204,
           "conf": 0.705
         },
         {
           "w": "one",
-          "start": 78.56,
-          "end": 78.82,
+          "start": 79.204,
+          "end": 79.643,
           "conf": 0.34
         },
         {
           "w": "more",
-          "start": 78.82,
-          "end": 79.64,
+          "start": 79.643,
+          "end": 80.084,
           "conf": 0.059
         },
         {
           "w": "commit",
-          "start": 79.64,
+          "start": 80.084,
           "end": 81.21,
           "conf": 0.091,
           "syl": [
             [
-              79.64,
-              80.337
+              80.084,
+              80.545
             ],
             [
-              80.337,
+              80.545,
               81.21
             ]
           ]
@@ -1492,7 +1492,7 @@
       "i": 29,
       "text": "Nineteen green!",
       "start": 112.54,
-      "end": 113.88,
+      "end": 113.736,
       "words": [
         {
           "w": "Nineteen",
@@ -1503,7 +1503,7 @@
         {
           "w": "green!",
           "start": 113.48,
-          "end": 113.88,
+          "end": 113.736,
           "conf": 0.57
         }
       ]
@@ -1511,30 +1511,30 @@
     {
       "i": 30,
       "text": "I need one last commit",
-      "start": 113.88,
+      "start": 113.736,
       "end": 116.156,
       "words": [
         {
           "w": "I",
-          "start": 113.88,
-          "end": 113.92,
+          "start": 113.736,
+          "end": 113.942,
           "conf": 0.277
         },
         {
           "w": "need",
-          "start": 113.92,
+          "start": 113.942,
           "end": 114.62,
           "conf": 0.257
         },
         {
           "w": "one",
           "start": 114.62,
-          "end": 114.809,
+          "end": 115.02,
           "conf": 0.406
         },
         {
           "w": "last",
-          "start": 114.879,
+          "start": 115.02,
           "end": 115.44,
           "conf": 0.721
         },
@@ -1792,5 +1792,5 @@
       "desc": "unlisted vocal activity; -42 dBFS threshold"
     }
   ],
-  "notes": "Source audio timeline; per-song measured stem offset. MMS_FA + LV60K mono vocal CTC probability mixture, 20 ms frames, global Viterbi with garbage tokens between lines. Exact Whisper sequence matches constrain characters to word window +/-0.8 s. Signal-based starts and held-note ends; no manual song timestamps. conf is a heuristic score, not a calibrated probability. syl contains compound parts."
+  "notes": "Source audio timeline; per-song measured stem offset. MMS_FA + LV60K mono vocal CTC probability mixture, 20 ms frames, global Viterbi with garbage tokens between lines. Exact Whisper sequence matches constrain characters to word window +/-0.8 s. Signal-based starts and held-note ends; no manual song timestamps. conf is a heuristic score, not a calibrated probability. syl contains compound parts. Manual fix 2026-10-04: lines 9, 20 and 30 (the \"I need one … commit\" pickups) re-timed to the chorus rhythm of lines 6/17/30, checked against the vocal-stem onsets (docs/PLAN.md)."
 }
