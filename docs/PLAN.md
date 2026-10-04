@@ -236,6 +236,12 @@ T 2026-10-03：下一阶段 Claude 做核心设计，并亲自开发部分章节
 - ✅ ③ 事件驱动样板：S17 中段（PR 页面）和 S05（读码），按 `docs/reference/event-tables.md` 的事件表做。tsc 0 错，测试 320 过 1 跳过 0 失败，分镜检查 0 过短 0 不递增。待 T 在 Mac 上看两段短片。
 - 🔜 T 认可方向后，按同一方法写其余各场的事件表（先 S13、S12、S08、S06、S15 那几句），再逐场实现。
 
+### 2026-10-04 清理（T 同意）
+- `out/` 只留 `preview/` 的整片 v1–v6（含 v4a、v4b）、`storyboard/`、`design/`；其余（`wip/`、`review/`、`compare/`、`codex/`、`v3-*`、`v6-*`、样片和静帧）已移到废纸篓。上文提到的 `out/wip/…`、`out/review/…`、`out/compare/…` 路径都已不存在，需要时按当时的提交重新渲染。
+- `analysis/.cache`（5.5 GB 模型和依赖缓存）已移到废纸篓，重跑阶段 3 的分析会重新下载。
+- 删除 `docs/tasks/` 的旧任务说明和 `tools/v3_dispatch.sh`、`v6_dispatch.sh`、`v6_merge.sh`；要看用 `git show c9b94b7:<路径>`。
+- **整片预览 v6 对应提交 `77d383a`**（② 第 5 批，2026-10-03 渲染），不是阶段 8 回退掉的 v6 尝试（标签 `v6-attempt`）。之后的 `133048b`（S13 第二次副歌前半句）、`c6dd3c8`（③ 样板 S17、S05）还没有整片渲染。
+
 ## ⏳ 阶段 10：渲染和发布（T 决定）
 - 整片预览命令（成片同画质）：`cd app && bun scripts/render.ts video --samples auto --preset medium --crf 16 --out ../out/preview/<名字>.mp4`（1080p 约 10 分钟）。
 - 先出 1080p60 完整版给 T 整片过一遍，满意再出 4K（加 `--scale 2`，估计一个多小时）。发不发、发到哪里，都由 T 决定。

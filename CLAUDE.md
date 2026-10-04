@@ -26,12 +26,12 @@
 - `docs/CUTS.md`：阶段 9 ① 的切点与交接表（每个切点的时间、交接原语、跨切点的词）
 - `docs/ARCHITECTURE.md`：本项目在引擎之上的组织方式（分镜驱动的时间线、场景文件约定、公共部件）
 - `docs/STORYBOARD.md`：分镜表（场景、镜头、Clawd 动作库、组件清单）
-- `docs/tasks/`：交给 Codex 的任务说明
+- `docs/tasks/`：交给 Codex 的任务说明（旧的已在 2026-10-04 清理，要看用 `git show c9b94b7:docs/tasks/<文件名>`；新任务照常写在这里）
 - `reference/clawd/`：Clawd 官方形象（以终端欢迎界面为准）
 - `app/`：渲染器（bun + Vite + three.js）。`src/engine/` 是引擎；`src/kit/` 是公共部件（活背景、光标、舞台、Clawd、各种界面组件、歌词层、时间工具）；`src/scenes/sNN-*.ts` 是 18 个正式场景（辅助代码在 `scenes/parts/`），`gallery-*.ts` 是组件陈列页（`--gallery 名字`）；`src/timeline.ts` 从分镜数据生成剪辑表；`src/theme.ts` 是色板 token
 - `storyboard/`：`shots.json`（分镜数据，剪辑的唯一来源）、`keyframes.json`（分镜图提示词）
 - `tools/`：`storyboard_md.py`（由分镜数据生成 STORYBOARD.md 的表格）、`render_keyframes.sh` 和 `keyframe_sheet.py`（生成分镜图和总览）、`merge_group.sh`（合并 Codex 组的分支）
-- `out/`（gitignored）：`preview/` 整片预览，`storyboard/v2/` 分镜图 v2，`wip/` 各种中间产物，`codex/` Codex 的日志和交付报告
+- `out/`（gitignored）：`preview/` 整片预览（只留 v1–v6），`storyboard/v2/` 分镜图 v2（`scripts/compare.ts` 要用），`design/` 阶段 1 的风格探索图；`wip/`、`review/`、`codex/` 是临时产物，用到时再建，2026-10-04 已清空
 - `analysis/`：上游的 Python 分析脚本（Demucs 分离、逐词对齐、拍点）。**里面有大量针对 pdoom 那首歌写死的参数**（`analyze.py` 的 `SECTION_BARS`、`align.py` 的手工锚点），阶段 3 要按我们的歌重写
 - `audio/song.wav`：定稿歌的母带拷贝（2026-10-03 起提交进仓库，云上会话要用；原件在 `audio/candidates/c1-works-on-my-machine.wav`，仍 gitignored）。`audio/song.mp3` 是占位音轨，只在没有母带时使用
 - `data/audio.json`、`data/lyrics.json`：定稿歌的逐拍网格和逐词对齐（已提交）
