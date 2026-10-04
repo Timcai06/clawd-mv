@@ -19,12 +19,18 @@ import { resolveFTimes, type FTimes } from './parts/s15-f-timing';
 import { Lens } from '../kit/lens';
 import { RaymarchPass } from '../kit/raymarch';
 import { Rig, planeAffine, p3, type P3 } from '../kit/rig';
+import { MONTH_SOURCE } from '../kit/content';
 import { VoxelClawd } from '../kit/clawd3d';
 import { lin } from '../theme';
 import { S15_GLSL, BAR_C, BAR_H, TIP, UPPER_END, LOWER_END, BEAM_HW, DEPTH_HZ, CUT_X, CLAWD_AT, CLAWD_VOX, barPose, cameraAt, onBar } from './parts/s15-world';
 import { TYPE_LEVELS as PRINT_LEVELS, LYRIC_SIZE, drawFree, handoffIn, monumentState } from './parts/s15-layout';
 export const TYPE_LEVELS = { ...PRINT_LEVELS };
 const CODE = 'for (let d = 0; d <= days; d++) {';
+// Stage 9 ③ (docs/reference/event-tables.md "S15"): the file is searched. From the cut the source
+// scrolls fast through month.ts, brakes on "is," with line 42 on the code row; the found line grows
+// from the file's size to the specimen's; "on" pops the gutter's 42 in clay; "line" underlines it.
+const FILE_SIZE = 24, FILE_LH = 34;
+const fileLine = (n: number) => (n === 42 ? CODE : MONTH_SOURCE[(n * 7) % MONTH_SOURCE.length]!);
 
 // v5: the ≤ is a raymarched solid lit by one key light and turned into engraving (pdoom's
 // light-to-line method); the snip lights the cut with a clay flash. Ground: engraved strokes that
@@ -114,12 +120,19 @@ export default class S15Line42 extends Scene {
     if (t < T.s15[2]!) {
       // a slow push, then (from "forty-two") a dive into the "<=" — at the bottom of the dive it is
       // the solid, whose camera is born close on the tip of the "<"
-      const g = this.leGlyph();
-      const k = ease.inOutCubic(span(t, T.s15[0]!, T.s15[2]!));
+      const g = this.leGlyph(), E = this.found();
+      // stage 9 ③: a key per keyword (snap, hold) instead of the slow push, then the dive
+      let k = { zoom: 1, x: 960, y: 540, rot: 0 };
+      for (const n of [{ t: E.is, zoom: 1.08, x: 900, y: 640, rot: -0.006 }, { t: E.line, zoom: 1.14, x: 760, y: 650, rot: -0.012 }]) {
+        const e = ease.outExpo(span(t, n.t - 0.02, n.t + 0.2));
+        if (e <= 0) break;
+        k = { zoom: lerp(k.zoom, n.zoom, e), x: lerp(k.x, n.x, e), y: lerp(k.y, n.y, e), rot: lerp(k.rot, n.rot, e) };
+      }
+      const kick = 1 + 0.04 * (t >= E.is ? Math.pow(0.5, (t - E.is) / 0.07) : 0) + 0.03 * (t >= E.on ? Math.pow(0.5, (t - E.on) / 0.07) : 0);
       const dive = ease.inExpo(span(t, T.fortyTwo + 0.2, T.s15[2]!));
-      const fx = lerp(lerp(960, 900, k), g.cx - g.w * 0.25, Math.min(1, dive * 3));
-      const fy = lerp(lerp(540, 600, k), g.cy, Math.min(1, dive * 3));
-      return { zoom: (1 + 0.12 * k) * Math.pow(26, dive), fx, fy, ax: 960, ay: 540, rot: -0.01 * k + 0.05 * dive };
+      const fx = lerp(k.x, g.cx - g.w * 0.25, Math.min(1, dive * 3));
+      const fy = lerp(k.y, g.cy, Math.min(1, dive * 3));
+      return { zoom: k.zoom * kick * Math.pow(26, dive), fx, fy, ax: 960, ay: 540, rot: k.rot + 0.05 * dive };
     }
     // from the solid on, the camera is the 3D camera (parts/s15-world.ts cameraAt); a snip hit only
     const hit = t >= T.snip ? Math.pow(0.5, (t - T.snip) / 0.09) : 0;
@@ -227,6 +240,18 @@ export default class S15Line42 extends Scene {
     c.strokeStyle = css(paper ? 'ink' : 'paper', 0.8); c.lineWidth = 1.2; c.strokeRect(-35, -105, 70, 210); c.restore();
   }
 
+  /** The search's word times. */
+  private found() {
+    const wd = this.w.voice.line('There it is, on line forty-two').words;
+    return { there: wd[0]!.start, is: wd[2]!.start, on: wd[3]!.start, line: wd[4]!.start };
+  }
+  /** Which file line sits on the code row (fractional): scrolling from line 1, braking onto 42 on "is,". */
+  private scrollLine(t: number) {
+    const T = this.w.T, E = this.found();
+    const u = span(t, T.s15[0]!, E.is + 0.12);
+    // fast through most of it, then a hard brake (outExpo) onto 42
+    return lerp(1, 42, ease.outExpo(u) * 0.35 + 0.65 * ease.outCubic(u));
+  }
   /** Where the "<=" of line 42 sits in the source panel (the camera dives into it). */
   private leGlyph() {
     const c = this.w.layer.ctx, size = 58, x0 = 128, y = 760;
@@ -242,9 +267,33 @@ export default class S15Line42 extends Scene {
     c.font = font(F.mono(500), TYPE_LEVELS.label); c.fillStyle = css('paper', 0.6);
     c.fillText('src/calendar/month.ts:42', 120, 268);
     c.fillRect(120, 294, 1680, 1);
-    const T = this.w.T, t = this.ctx.audio ? this.tNow : 0, g = this.leGlyph();
+    const T = this.w.T, t = this.tNow, g = this.leGlyph(), E = this.found();
     const lit = t >= T.fortyTwo ? 1 : 0;
-    c.font = font(F.mono(500), 18); c.fillStyle = css('paper', 0.4); c.fillText('42', g.x0 - 52, g.y - 6);
+    // the file scrolling past behind the lyric (dim Mono, with its gutter)
+    const L = this.scrollLine(t), grow = ease.outExpo(span(t, E.is + 0.06, E.is + 0.26));
+    c.save(); c.beginPath(); c.rect(96, 300, 1728, 525); c.clip();
+    c.font = font(F.mono(400), FILE_SIZE);
+    for (let n = Math.floor(L) - 16; n <= Math.floor(L) + 3; n++) {
+      if (n < 1 || (n >= 42 && grow > 0)) continue;
+      // once found, the rest of the file steps back
+      const y = g.y - (L - n) * FILE_LH, dim = lerp(1, 0.55, grow);
+      c.fillStyle = css('paper', (n === 42 ? 0.6 : 0.22) * dim); c.fillText(fileLine(n), g.x0, y);
+      c.fillStyle = css('paper', 0.18 * dim); c.fillText(String(n).padStart(2, ' '), g.x0 - 64, y);
+    }
+    c.restore();
+    if (grow <= 0) return;
+    // "on": the gutter's 42 pops in clay; "line": the found line is underlined
+    const pop = t >= E.on ? 1 + 0.8 * Math.pow(0.5, (t - E.on) / 0.06) : 0;
+    if (pop > 0) {
+      c.save(); c.translate(g.x0 - 40, g.y - 6); c.scale(pop, pop); c.font = font(F.mono(600), 26); c.fillStyle = css('clay'); c.textAlign = 'right'; c.fillText('42', 0, 0); c.restore();
+      glowDraw(c, this.w.glow.ctx, gg => { gg.font = font(F.mono(600), 26); gg.fillStyle = css('clay'); gg.textAlign = 'right'; gg.fillText('42', g.x0 - 40, g.y - 6); gg.textAlign = 'left'; });
+    } else { c.font = font(F.mono(500), 18); c.fillStyle = css('paper', 0.4); c.fillText('42', g.x0 - 52, g.y - 6); }
+    if (t >= E.line) {
+      const u = ease.outExpo(span(t, E.line, E.line + 0.22));
+      c.fillStyle = css('clay'); c.fillRect(g.x0, g.y + 16, (1824 - 96 - 64) * u, 4);
+    }
+    // the found line grows from the file's size to the specimen's
+    c.save(); c.translate(g.x0, g.y); const sc = lerp(FILE_SIZE / g.size, 1, grow); c.scale(sc, sc); c.translate(-g.x0, -g.y);
     c.font = font(F.mono(500), g.size);
     const i = CODE.indexOf('<=');
     c.fillStyle = css('paper', 0.82); c.fillText(CODE.slice(0, i), g.x0, g.y);
@@ -252,6 +301,7 @@ export default class S15Line42 extends Scene {
     c.fillText('<=', g.x0 + c.measureText(CODE.slice(0, i)).width, g.y);
     c.fillStyle = css('paper', 0.82); c.fillText(CODE.slice(i + 2), g.x0 + c.measureText(CODE.slice(0, i + 2)).width, g.y);
     if (lit) glowDraw(c, this.w.glow.ctx, gg => { gg.font = c.font; gg.fillStyle = css('clay'); gg.fillText('<=', g.x0 + c.measureText(CODE.slice(0, i)).width, g.y); });
+    c.restore();
     // No dormant lyrics in the code specimen: only the sung Archivo words enter its fields.
   }
 
