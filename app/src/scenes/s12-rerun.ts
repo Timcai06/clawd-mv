@@ -2,7 +2,9 @@ import { PrintOverlay } from '../kit/print-overlay';
 // S12: six side-by-side xerox generations persist behind the complete count-to-eleven row.
 import type * as THREE from 'three';
 import { Scene, type Frame, type SceneCtx } from '../engine/scene';
-import { Layer2D } from '../engine/gl';
+import { Layer2D, scaleContext2D } from '../engine/gl';
+import { SCALE } from '../engine/scale';
+import { SHEET_M, sheetPlace, failFlash, cacheBar, s12Kick, RUN_FOCUS } from './parts/s12-events';
 import { ease, hash, lerp } from '../engine/util';
 import { afterBeats, span } from '../kit/time';
 import { impact } from '../kit/impact';
@@ -23,12 +25,16 @@ import { COPIES, countState, handoffIn, stutterTime } from './parts/s12-layout';
 export const TYPE_LEVELS = { giant: 385, lyric: 65.856, label: 18 };
 class World {
   print = new PrintOverlay();
-  ground = new Ground(); layer = new Layer2D(); copies = new Layer2D(); times: X9Times; voice: Voice; users = 0;
+  ground = new Ground(); layer = new Layer2D(); times: X9Times; voice: Voice; users = 0;
+  /** One baked sheet per xerox generation (stage 9 ③: they arrive one per rerun). */
+  copies: HTMLCanvasElement[] = [];
   constructor(ctx: SceneCtx) {
     this.times = resolveX9Times(ctx); this.voice = new Voice(ctx.lyrics, ctx.audio);
-    const c = this.copies.ctx;
     COPIES.forEach((p, gen) => {
-      c.save(); c.translate(p.x, p.y); c.rotate(p.roll);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round((p.w + 2 * SHEET_M) * SCALE); cv.height = Math.round((p.h + 2 * SHEET_M) * SCALE);
+      const c = scaleContext2D(cv.getContext('2d')!, SCALE); this.copies.push(cv);
+      c.save(); c.translate(SHEET_M, SHEET_M);
       // Toner smear and increasingly large halftone clusters, baked once.
       c.fillStyle = css('ink', 0.6);
       const settings = xeroxSettings(gen), grain = settings.grain;
@@ -65,9 +71,8 @@ class World {
       }
       c.restore(); c.restore();
     });
-    this.copies.upload();
   }
-  dispose() { this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); this.copies.texture.dispose(); }
+  dispose() { this.print.dispose(); this.ground.pass.mat.dispose(); this.layer.texture.dispose(); }
 }
 /** Words [a, b) of a line typed letter by letter at (x, y) in their final shapes (stage 9 ②);
  *  with `cursor`, the clay cursor rides the typing head while the row is being written. */
@@ -87,6 +92,7 @@ export default class S12Rerun extends Scene {
   override render(f: Frame, out: THREE.WebGLRenderTarget) {
     const w = this.w, T = w.times, v = w.voice, au = this.ctx.audio;
     // The third "again" replays itself three times, faster each pass (stutterTime).
+    const runs = v.line('Run it again, run it again, again');
     const again3 = v.line('Run it again, run it again, again').words.at(-1)!, t = stutterTime(f.t, again3.start, again3.end);
     w.ground.render(this.ctx.renderer, out, { kind: 'paper', t, grid: 0, haze: 0, halftone: 0 });
     const entrance = enterBeat(au, t, T.rerunStart);
@@ -97,24 +103,39 @@ export default class S12Rerun extends Scene {
     const at = run >= 0 ? T.runs[run]! : T.rerunStart;
     const whip = run >= 0 ? 1 - ease.outExpo(span(t, at, at + 0.22)) : 0;
     const clearK = ease.inCubic(span(t, T.clear, T.cache + 0.15));
-    const stepZoom = run < 0 ? 1 : [1.06, 1.14, 1.26][run]!;
+    // Stage 9 ③: each rerun snaps the lens to the sheet it just printed and the row it sang.
+    const key = (i: number) => (i < 0 ? { x: 960, y: 540, zoom: 1 } : RUN_FOCUS[i]!);
+    const cur = { x: lerp(key(run - 1).x, key(run).x, 1 - whip), y: lerp(key(run - 1).y, key(run).y, 1 - whip), zoom: lerp(key(run - 1).zoom, key(run).zoom, 1 - whip) };
     const settle = ease.inOutCubic(span(t, T.clear, T.count));
+    // "Clear" snaps the lens back home at once (the typed row starts at x 250).
+    const home = ease.outExpo(span(t, T.clear, T.clear + 0.25));
+    const fx = lerp(cur.x, 960, home), fy = lerp(cur.y, 540, home);
     const punch = t >= T.count ? Math.pow(0.5, ((f.beat * 2) % 1) / 0.12) * 0.035 * (1 - ease.inCubic(span(t, afterBeats(au, T.end, -1), T.end - 0.1))) : 0;
-    const zoom = lerp(stepZoom, 1, settle) + punch;
+    const zoom = lerp(lerp(cur.zoom, 1.12, home), 1, settle) + punch + s12Kick(t, T);
     const dx = 420 * whip - 2200 * clearK * (t < T.count ? 1 : 0);
     const rot = run >= 0 && t < T.clear ? (run % 2 ? 0.012 : -0.012) * (1 - settle) : 0;
-    this.ctx.comp.draw(this.ctx.renderer, w.copies.texture, out, { opacity: entrance, scale: [1 / zoom, 1 / zoom], offset: [-dx / (1920 * zoom), 0] });
     w.layer.clear(); const c = w.layer.ctx;
+    // Stage 9 ③: the copies, each placed by its own event (a new generation per rerun, swept off on
+    // "clear"), under the copies' camera (no roll, as before).
+    c.save(); c.translate(960 + dx, 540); c.scale(zoom, zoom); c.translate(-fx, -fy); c.globalAlpha = entrance;
+    COPIES.forEach((p, gen) => {
+      const q = sheetPlace(t, gen, T, au);
+      if (!q) return;
+      c.save(); c.translate(p.x + q.dx + p.w / 2, p.y + q.dy + p.h / 2); c.rotate(p.roll + q.rot); c.scale(q.scale, q.scale); c.translate(-p.w / 2, -p.h / 2);
+      c.drawImage(w.copies[gen]!, -SHEET_M, -SHEET_M, p.w + 2 * SHEET_M, p.h + 2 * SHEET_M);
+      failFlash(c, t, gen, p, runs, T);
+      c.restore();
+    });
+    c.restore();
     // C11 (R2): "why" is still sung for 0.86 s after the cut; finish it in S11's layout (outside the camera).
     const why = v.line('Undefined, undefined, and I don’t know why').words.at(-1)!;
     if (t < why.end + 0.12) drawWhyLine(c, v, t, 'paper', undefined, true);
-    c.save(); c.translate(960 + (t < T.clear ? dx : 0), 540); c.rotate(rot); c.scale(zoom, zoom); c.translate(-960, -540);
+    c.save(); c.translate(960 + (t < T.clear ? dx : 0), 540); c.rotate(rot); c.scale(zoom, zoom); c.translate(-fx, -fy);
     if (entrance < 1) {
       const h = handoffIn(t, au, T);
       c.strokeStyle = css('ink', 1 - entrance); c.lineWidth = 4;
       for (const b of handoffBoxes(h)) c.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
     }
-    const runs = v.line('Run it again, run it again, again');
     if (t < T.clear) {
       for (let i = 0; i < 3; i++) {
         const forms = v.forms(runs, t).slice(i * 3, i * 3 + 3), lead = forms[0];
@@ -130,6 +151,7 @@ export default class S12Rerun extends Scene {
     if (t >= T.clear) {
       typeRow(c, v, clear, 0, 4, 250, 615, t, true); // x 250: stays in frame while the lens settles from 1.26
       typeRow(c, v, clear, 4, 6, 1130, 740, t, true);
+      cacheBar(c, t, T, clear);
     }
     const s = countState(v, t, T);
     for (const d of s.digits) {

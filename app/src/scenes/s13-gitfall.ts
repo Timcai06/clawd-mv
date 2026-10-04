@@ -16,6 +16,9 @@ import { afterBeats, beatsSince, span } from "../kit/time";
 import { chorusScore, chorusState, commitId, type ChorusScore } from "./parts/s13-score";
 import { inscribe, land, typeWords } from "../kit/inscribe";
 import { gitfallLayout, handoffIn, implode, implodeTarget } from "./parts/s13-layout";
+import { s13Events, s13Cam, s13Shake, drawTapes, drawFailures, riverHits, type S13Events } from "./parts/s13-events";
+import { applyCam2 } from "../kit/handoff";
+import * as Clawd from "../kit/clawd";
 import {
   drawWarped,
   drawSprite,
@@ -41,7 +44,9 @@ class World {
     this.voice = new Voice(ctx.lyrics, ctx.audio);
     this.T = chorusScore(ctx.audio, ctx.lyrics);
     this.target = implodeTarget(ctx.audio, ctx.lyrics, this.T);
+    this.E = s13Events(ctx.lyrics, this.T.pickup2);
   }
+  E: S13Events;
   target: { x: number; y: number; w: number; h: number };
   dispose() {
     this.layer.texture.dispose(); this.glow.dispose(); this.printMask.texture.dispose(); this.print.dispose();
@@ -50,6 +55,7 @@ class World {
 let world: World | undefined;
 export default class S13Gitfall extends Scene {
   private w!: World;
+  private tNow = 0;
   override init() {
     this.w = world ??= new World(this.ctx);
     this.w.users++;
@@ -85,7 +91,7 @@ export default class S13Gitfall extends Scene {
         rot = 0.03 * Math.exp(-b * 5) * Math.sin(b * 11);
         const line = this.ctx.lyrics.lastLine(t);
         for (const wd of line?.words ?? []) if (t >= wd.start) { const k = Math.pow(0.5, (t - wd.start) / 0.08); zoom += 0.02 * k; rot += (wd.index % 2 ? 0.006 : -0.006) * k; }
-        if (st.testMode) { const fi = frameIdx(t); jx = (hash(fi, 7) - 0.5) * 14; jy = (hash(fi, 8) - 0.5) * 10; rot += (hash(fi >> 2, 9) - 0.5) * 0.01; }
+        if (st.testMode && t >= w.E.is) { const fi = frameIdx(t); jx = (hash(fi, 7) - 0.5) * 7; jy = (hash(fi, 8) - 0.5) * 5; rot += (hash(fi >> 2, 9) - 0.5) * 0.006; }
         if (st.split) {
           const push = ease.inOutCubic(span(t, T.split, T.collision));
           const back = ease.inOutCubic(span(t, afterBeats(au, T.end, -1), T.end));
@@ -96,6 +102,8 @@ export default class S13Gitfall extends Scene {
       const k = Math.min(implode(t, au, T), 0.9999), q = w.target, qx = q.x + q.w / 2, qy = q.y + q.h / 2;
       c.save(); c.translate(qx, qy); c.scale(1 - k, 1 - k); c.translate(-qx, -qy);
       c.save(); c.translate(fx + jx, fy + jy); c.rotate(rot); c.scale(zoom, zoom); c.translate(-fx, -fy);
+      // Stage 9 ③: the fixes and the failures key the camera (identity outside 70.5-77.3 s).
+      applyCam2(c, s13Cam(t, w.E, au));
     }
     const entering = t < afterBeats(au, T.start, 1);
     if (entering) {
@@ -124,6 +132,7 @@ export default class S13Gitfall extends Scene {
     if (entering) { const r = handoffIn(t, au, T); g.rect(r.x,r.y,r.w,r.h); }
     else { g.moveTo(0,0); g.lineTo(937,0); g.lineTo(1096,1080); g.lineTo(0,1080); g.closePath(); }
     g.clip('evenodd');
+    this.tNow = t;
     this.river(c, s.travel, s.handoff.pitch);
     // Printed archive retains the previous sung COMMIT; it is never drawn before that onset.
     if (s.form.born > 0) {
@@ -145,16 +154,19 @@ export default class S13Gitfall extends Scene {
         }
       }
     }
+    drawTapes(c, t, w.E);
     this.speedLines(c, t, T);
     if (s.split) {
       this.panel(c, s.local, true);
       this.panel(c, s.ci, false);
       this.splinters(c, t, T, s.arrive, s.crush);
-    } else if (s.testMode) this.tests(c, t);
+    } else if (s.testMode) drawFailures(c, t, w.E, au);
     if (s.split) {
       const q = s.ci, cx = (q[0]![0] + q[1]![0]) / 2, top = Math.min(q[0]![1], q[1]![1]);
       drawNote(c, { ax: cx, ay: top, x: cx - 120, y: top - 70, text: 'works on: 1 machine', t0: afterBeats(au, T.collision, 0.6), on: 'ink' }, t);
     }
+    // While the fixes land Clawd snips (A10: an arm out and back per beat, slapping on the tape).
+    if (t >= w.E.fix[0] && t < w.E.every) s.clawd.pose = Clawd.pose("A10", { beat: au.beatAt(t), beat0: au.beatAt(w.E.fix[0]), p: 0 });
     drawSprite(c, s.clawd, "clay", "pit");
     glowDraw(c, g, g => drawSprite(g, { ...s.clawd, pose: { ...s.clawd.pose, cells: s.clawd.pose.cells.filter(cell => cell.k === 'O') } }, 'clay', 'ink'), 0.25);
     const line = this.ctx.lyrics.lastLine(t);
@@ -205,7 +217,7 @@ export default class S13Gitfall extends Scene {
     w.glow.composite(this.ctx, out, 1.6);
     const fi = frameIdx(t),
       magnitude = (s.split ? 4 * s.crush : 13 * s.impact) * (1 - implode(t, au, T));
-    const kick = s.frozen ? hitK.shake : [0, 0];
+    const kick = s.frozen ? hitK.shake : s13Shake(t, w.E);
     return {
       ...postFor("ink"),
       hud: 0,
@@ -243,6 +255,11 @@ export default class S13Gitfall extends Scene {
       if (id % 3 === 2) glowDraw(c, this.w.glow.ctx, g => { g.font = c.font; g.fillStyle = c.fillStyle; g.fillText('fix a bit', 1585, y); });
     }
     c.restore();
+    // Stage 9 ③: rows hit by a thrown failure (screen space, sheared like the log column).
+    for (const h of riverHits(this.tNow, this.w.E)) {
+      c.save(); c.beginPath(); c.rect(1410, 0, 510, 1080); c.clip(); c.translate(1665, h.y); c.rotate(-0.075);
+      c.fillStyle = css("fail", 0.55 * h.k); c.fillRect(-250, -16, 500, 28); c.restore();
+    }
   }
   private panel(c: CanvasRenderingContext2D, q: Quad, local: boolean) {
     const shifted = q.map(([x, y]) => [x - 12, y + 12] as Point);
